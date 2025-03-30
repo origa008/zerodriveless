@@ -1,12 +1,9 @@
-
 import React from 'react';
 import BottomNavigation from '@/components/layout/BottomNavigation';
 import { Button } from '@/components/ui/button';
 import { CreditCard, DollarSign, Building, Clock } from 'lucide-react';
-
 const Wallet: React.FC = () => {
-  return (
-    <div className="min-h-screen bg-white p-6 pb-20">
+  return <div className="min-h-screen bg-white p-6 pb-20">
       <h1 className="text-3xl font-bold mb-6">Wallet</h1>
       
       <div className="bg-black text-white p-6 rounded-2xl mb-6">
@@ -18,7 +15,7 @@ const Wallet: React.FC = () => {
       </div>
       
       <div className="grid grid-cols-2 gap-4 mb-6">
-        <div className="bg-gray-100 p-4 rounded-xl">
+        <div className="bg-gray-100 p-4 rounded-xl px-[16px] mx-0">
           <div className="flex items-center">
             <div className="bg-zerodrive-purple w-10 h-10 rounded-full flex items-center justify-center mr-3">
               <CreditCard size={20} className="text-white" />
@@ -27,14 +24,7 @@ const Wallet: React.FC = () => {
           </div>
         </div>
         
-        <div className="bg-gray-100 p-4 rounded-xl">
-          <div className="flex items-center">
-            <div className="bg-zerodrive-purple w-10 h-10 rounded-full flex items-center justify-center mr-3">
-              <DollarSign size={20} className="text-white" />
-            </div>
-            <span>Cash</span>
-          </div>
-        </div>
+        
         
         <div className="bg-gray-100 p-4 rounded-xl">
           <div className="flex items-center">
@@ -45,14 +35,7 @@ const Wallet: React.FC = () => {
           </div>
         </div>
         
-        <div className="bg-gray-100 p-4 rounded-xl">
-          <div className="flex items-center">
-            <div className="bg-zerodrive-purple w-10 h-10 rounded-full flex items-center justify-center mr-3">
-              <Clock size={20} className="text-white" />
-            </div>
-            <span>History</span>
-          </div>
-        </div>
+        
       </div>
       
       <h2 className="text-xl font-medium mb-4">Recent Transactions</h2>
@@ -90,8 +73,6 @@ const Wallet: React.FC = () => {
       </div>
       
       <BottomNavigation />
-    </div>
-  );
+    </div>;
 };
-
 export default Wallet;
