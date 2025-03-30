@@ -2,7 +2,7 @@
 import React from 'react';
 import BottomNavigation from '@/components/layout/BottomNavigation';
 import { Button } from '@/components/ui/button';
-import { CreditCard, DollarSign, Bank, Clock } from 'lucide-react';
+import { CreditCard, DollarSign, Building, Clock } from 'lucide-react';
 
 const Wallet: React.FC = () => {
   return (
@@ -39,7 +39,7 @@ const Wallet: React.FC = () => {
         <div className="bg-gray-100 p-4 rounded-xl">
           <div className="flex items-center">
             <div className="bg-zerodrive-purple w-10 h-10 rounded-full flex items-center justify-center mr-3">
-              <Bank size={20} className="text-white" />
+              <Building size={20} className="text-white" />
             </div>
             <span>Bank</span>
           </div>
