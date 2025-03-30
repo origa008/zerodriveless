@@ -1,15 +1,12 @@
-
 import React from 'react';
 import { useRide } from '@/lib/context/RideContext';
 import { MapPin, MessageCircle } from 'lucide-react';
-
 const RideDetails: React.FC = () => {
-  const { currentRide } = useRide();
-
+  const {
+    currentRide
+  } = useRide();
   if (!currentRide) return null;
-
-  return (
-    <div className="bg-white rounded-t-3xl shadow-lg p-6">
+  return <div className="bg-white rounded-t-3xl shadow-lg p-6 my-0">
       <div className="grid grid-cols-3 border-b border-gray-200 py-4">
         <div className="text-center">
           <p className="text-gray-500 text-lg">Distance</p>
@@ -27,11 +24,7 @@ const RideDetails: React.FC = () => {
 
       <div className="flex items-center mt-6 mb-10">
         <div className="h-16 w-16 rounded-full overflow-hidden mr-4">
-          <img 
-            src={currentRide.driver?.avatar} 
-            alt={currentRide.driver?.name} 
-            className="w-full h-full object-cover"
-          />
+          <img src={currentRide.driver?.avatar} alt={currentRide.driver?.name} className="w-full h-full object-cover" />
         </div>
         <div className="flex-1">
           <h3 className="text-2xl font-medium">{currentRide.driver?.name}</h3>
@@ -47,8 +40,6 @@ const RideDetails: React.FC = () => {
           <MessageCircle size={24} />
         </div>
       </div>
-    </div>
-  );
+    </div>;
 };
-
 export default RideDetails;
