@@ -40,9 +40,9 @@ const Wallet: React.FC = () => {
       
       <h2 className="mb-4 text-4xl font-normal">Transactions</h2>
       
-      <div className="space-y-4 bg-transparent">
+      <div className="space-y-4 bg-transparent my-[20px]">
         <div className="border-b border-gray-100 pb-4">
-          <div className="flex justify-between">
+          <div className="flex justify-between py-[15px]">
             <div>
               <h3 className="font-medium text-gray-500">Ride To Bahria</h3>
               <p className="text-gray-500 text-sm">Today, 2:30 PM</p>
@@ -52,7 +52,7 @@ const Wallet: React.FC = () => {
         </div>
         
         <div className="border-b border-gray-100 pb-4">
-          <div className="flex justify-between">
+          <div className="flex justify-between my-[15px]">
             <div>
               <h3 className="font-medium text-base text-gray-500">Added To Wallet</h3>
               <p className="text-gray-500 text-sm">Yesterday, 5:45 PM</p>
@@ -62,7 +62,7 @@ const Wallet: React.FC = () => {
         </div>
         
         <div className="border-b border-gray-100 pb-4">
-          <div className="flex justify-between">
+          <div className="flex justify-between my-[15px]">
             <div>
               <h3 className="font-medium text-gray-500">Ride to Gulberg</h3>
               <p className="text-gray-500 text-sm">May 15, 10:20 AM</p>
