@@ -130,7 +130,7 @@ const Index: React.FC = () => {
             </div>
           </div>
           
-          <Button className="w-full bg-black text-white hover:bg-gray-800 py-6 text-xl rounded-xl" onClick={handleOrderNow} disabled={!selectedRideOption}>
+          <Button onClick={handleOrderNow} disabled={!selectedRideOption} className="w-full bg-black text-white hover:bg-gray-800 text-xl py-[30px] rounded-2xl my-[10px]">
             Order now
           </Button>
         </div> : <div className="bg-white rounded-t-3xl -mt-6 relative z-10 p-6 py-[24px] my-[50px]">
