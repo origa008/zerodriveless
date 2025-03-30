@@ -10,15 +10,15 @@ const RideDetails: React.FC = () => {
       <div className="grid grid-cols-3 border-b border-gray-200 py-4">
         <div className="text-center">
           <p className="text-gray-500 text-lg">Distance</p>
-          <p className="text-2xl font-medium">{currentRide.distance} km</p>
+          <p className="text-2xl font-medium text-gray-500">{currentRide.distance} km</p>
         </div>
         <div className="text-center border-x border-gray-200">
           <p className="text-gray-500 text-lg">Price</p>
-          <p className="text-2xl font-medium">{currentRide.price}{currentRide.currency}</p>
+          <p className="text-2xl font-medium text-gray-500">{currentRide.price}{currentRide.currency}</p>
         </div>
         <div className="text-center">
           <p className="text-gray-500 text-lg">Arrival</p>
-          <p className="text-2xl font-medium">in {currentRide.duration} min</p>
+          <p className="text-2xl font-medium text-gray-500">in {currentRide.duration} min</p>
         </div>
       </div>
 
