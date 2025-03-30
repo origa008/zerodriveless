@@ -6,7 +6,7 @@ const RideDetails: React.FC = () => {
     currentRide
   } = useRide();
   if (!currentRide) return null;
-  return <div className="rounded-t-3xl shadow-lg p-6 my-0 py-0 bg-white">
+  return <div className="rounded-t-3xl shadow-lg p-6 my-0 bg-white py-[10px]">
       <div className="grid grid-cols-3 border-b border-gray-200 py-4">
         <div className="text-center">
           <p className="text-gray-500 text-lg">Distance</p>
