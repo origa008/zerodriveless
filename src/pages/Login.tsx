@@ -51,7 +51,7 @@ const Login: React.FC = () => {
           </a>
         </div>
         
-        <Button type="submit" disabled={isLoading} className="w-full bg-black text-white hover:bg-gray-800 py-6 text-xl rounded-xl">
+        <Button type="submit" disabled={isLoading} className="w-full bg-black text-white hover:bg-gray-800 text-xl rounded-xl py-[30px]">
           {isLoading ? 'Logging in...' : 'Login'}
         </Button>
         
