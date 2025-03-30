@@ -30,8 +30,8 @@ const Login: React.FC = () => {
   };
   return <div className="min-h-screen bg-white p-6 flex flex-col">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold">Login</h1>
-        <p className="text-gray-500">Welcome back to Zerodrive</p>
+        <h1 className="text-3xl font-bold">LOGIN ACCOUNT</h1>
+        
       </div>
       
       <form onSubmit={handleLogin} className="flex-1 flex flex-col">
