@@ -1,0 +1,48 @@
+
+export type User = {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  avatar?: string;
+  isLoggedIn: boolean;
+};
+
+export type Location = {
+  name: string;
+  address: string;
+  coordinates?: [number, number];
+};
+
+export type RideOption = {
+  id: string;
+  name: string;
+  image: string;
+  price: number;
+  currency: string;
+  duration: number;
+  capacity: number;
+};
+
+export type Driver = {
+  id: string;
+  name: string;
+  rating: number;
+  licensePlate: string;
+  avatar: string;
+};
+
+export type Ride = {
+  id: string;
+  pickup: Location;
+  dropoff: Location;
+  rideOption: RideOption;
+  driver?: Driver;
+  status: "searching" | "confirmed" | "in_progress" | "completed" | "cancelled";
+  price: number;
+  currency: string;
+  distance: number;
+  duration: number;
+  startTime?: Date;
+  endTime?: Date;
+};
