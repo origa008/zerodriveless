@@ -44,7 +44,7 @@ const Wallet: React.FC = () => {
         <div className="border-b border-gray-100 pb-4">
           <div className="flex justify-between py-[15px]">
             <div>
-              <h3 className="font-medium text-gray-500">Ride To Bahria</h3>
+              <h3 className="font-medium text-gray-500">Ride To Bahria Town</h3>
               <p className="text-gray-500 text-sm">Today, 2:30 PM</p>
             </div>
             <p className="font-medium">-RS 120</p>
