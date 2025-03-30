@@ -24,7 +24,7 @@ const Wallet: React.FC = () => {
         
       </div>
       
-      <h2 className="mb-4 text-4xl font-normal">Transactions</h2>
+      <h2 className="mb-4 text-4xl font-normal">Spendings</h2>
       
       <div className="space-y-4 bg-transparent my-[20px]">
         <div className="border-b border-gray-100 pb-4">
