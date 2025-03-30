@@ -54,7 +54,7 @@ const Wallet: React.FC = () => {
         <div className="border-b border-gray-100 pb-4">
           <div className="flex justify-between my-[15px]">
             <div>
-              <h3 className="font-medium text-base text-gray-500">Added To Wallet</h3>
+              <h3 className="font-medium text-base text-gray-500">Drive To Johar Town</h3>
               <p className="text-gray-500 text-sm">Yesterday, 5:45 PM</p>
             </div>
             <p className="font-medium text-green-600">+RS 500</p>
@@ -64,7 +64,7 @@ const Wallet: React.FC = () => {
         <div className="border-b border-gray-100 pb-4">
           <div className="flex justify-between my-[15px]">
             <div>
-              <h3 className="font-medium text-gray-500">Ride to Gulberg</h3>
+              <h3 className="font-medium text-gray-500">Ride to Dolmen Mall</h3>
               <p className="text-gray-500 text-sm">May 15, 10:20 AM</p>
             </div>
             <p className="font-medium">-RS 85</p>
