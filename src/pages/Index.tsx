@@ -119,7 +119,7 @@ const Index: React.FC = () => {
           </div>
           
           <div className="mb-4">
-            <h3 className="text-xl font-medium mb-2">Available Rides</h3>
+            <h3 className="text-xl font-medium mb-2 px-[8px]">Choose Vehicle</h3>
             {availableRideOptions.map(option => <RideOptionCard key={option.id} option={option} isSelected={selectedRideOption?.id === option.id} onSelect={handleSelectRideOption} />)}
           </div>
           
