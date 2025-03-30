@@ -55,7 +55,7 @@ const Login: React.FC = () => {
           {isLoading ? 'Logging in...' : 'Login'}
         </Button>
         
-        <div className="mt-auto text-center pt-8">
+        <div className="mt-auto text-center pt-8 py-0">
           <p className="text-gray-600">
             Don't have an account?{' '}
             <button type="button" onClick={() => navigate('/signup')} className="text-zerodrive-purple hover:underline">
