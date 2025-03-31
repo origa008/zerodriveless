@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Ride, Location, RideOption, Driver } from '../types';
 import { calculateDistance } from '../utils/mapsApi';
@@ -237,7 +236,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const startRide = () => {
     if (!currentRide) return;
     
-    const updatedRide = {
+    const updatedRide: Ride = {
       ...currentRide,
       status: 'in_progress',
       startTime: new Date()
@@ -251,7 +250,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const completeRide = () => {
     if (!currentRide) return;
     
-    const updatedRide = {
+    const updatedRide: Ride = {
       ...currentRide,
       status: 'completed',
       endTime: new Date()
@@ -267,7 +266,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const cancelRide = () => {
     if (!currentRide) return;
     
-    const updatedRide = {
+    const updatedRide: Ride = {
       ...currentRide,
       status: 'cancelled'
     };
