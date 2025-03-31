@@ -1,12 +1,16 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useRide } from '@/lib/context/RideContext';
 import { useAuth } from '@/lib/context/AuthContext';
-import { User, Phone, MapPin, Clock, Navigation } from 'lucide-react';
+import { User, Phone, MapPin, Clock, Navigation, MessageSquare } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
 
 const RideDetails: React.FC = () => {
   const { currentRide, isDriverMode, rideTimer } = useRide();
   const { user } = useAuth();
+  const { toast } = useToast();
+  const [showContactModal, setShowContactModal] = useState(false);
 
   if (!currentRide) return null;
 
@@ -14,6 +18,24 @@ const RideDetails: React.FC = () => {
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = seconds % 60;
     return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+  };
+
+  const handleCall = () => {
+    toast({
+      title: "Calling...",
+      description: `Connecting you to the ${isDriverMode ? 'passenger' : 'driver'}`,
+      duration: 3000
+    });
+    setShowContactModal(false);
+  };
+  
+  const handleMessage = () => {
+    toast({
+      title: "Message sent",
+      description: `Your message has been sent to the ${isDriverMode ? 'passenger' : 'driver'}`,
+      duration: 3000
+    });
+    setShowContactModal(false);
   };
 
   return (
@@ -51,27 +73,23 @@ const RideDetails: React.FC = () => {
             {!isDriverMode && currentRide.driver?.licensePlate && (
               <p className="text-gray-500 text-sm">{currentRide.driver.licensePlate}</p>
             )}
-            {isDriverMode && (
-              <div className="flex mt-1">
-                <button className="text-sm bg-gray-100 px-2 py-1 rounded-full mr-2 flex items-center">
-                  <Phone size={12} className="mr-1" />
-                  Call
-                </button>
-                <button className="text-sm bg-gray-100 px-2 py-1 rounded-full flex items-center">
-                  <Navigation size={12} className="mr-1" />
-                  Navigate
-                </button>
-              </div>
-            )}
           </div>
-          {!isDriverMode && currentRide.driver?.rating && (
-            <div className="ml-auto">
+          <div className="ml-auto">
+            {!isDriverMode && currentRide.driver?.rating && (
               <div className="bg-gray-100 px-3 py-1 rounded-full flex items-center">
                 <User size={16} className="mr-1" />
                 <span>{currentRide.driver.rating}</span>
               </div>
-            </div>
-          )}
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="ml-2 h-9 text-blue-500 border-blue-200"
+              onClick={() => setShowContactModal(true)}
+            >
+              Contact
+            </Button>
+          </div>
         </div>
         
         <div className="space-y-4 mb-6">
@@ -110,6 +128,43 @@ const RideDetails: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Contact Modal */}
+      {showContactModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md">
+            <h3 className="text-xl font-medium mb-4">
+              Contact {isDriverMode ? 'Passenger' : 'Driver'}
+            </h3>
+            
+            <div className="flex justify-center space-x-6 my-4">
+              <button 
+                onClick={handleCall}
+                className="flex flex-col items-center justify-center p-4 bg-green-50 rounded-full w-24 h-24"
+              >
+                <Phone size={32} className="text-green-500 mb-2" />
+                <span>Call</span>
+              </button>
+              
+              <button
+                onClick={handleMessage}
+                className="flex flex-col items-center justify-center p-4 bg-blue-50 rounded-full w-24 h-24"
+              >
+                <MessageSquare size={32} className="text-blue-500 mb-2" />
+                <span>Message</span>
+              </button>
+            </div>
+            
+            <Button 
+              variant="outline" 
+              className="w-full mt-4"
+              onClick={() => setShowContactModal(false)}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

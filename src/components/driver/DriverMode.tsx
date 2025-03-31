@@ -1,10 +1,11 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useRide } from '@/lib/context/RideContext';
-import { Map, Users, Clock, DollarSign } from 'lucide-react';
+import { Map, Users, Clock, DollarSign, PhoneCall, MessageSquare } from 'lucide-react';
 import { Ride } from '@/lib/types';
+import { useToast } from '@/hooks/use-toast';
 
 const mockNearbyRequests: Partial<Ride>[] = [
   {
@@ -50,22 +51,58 @@ interface DriverModeProps {
 
 const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
   const navigate = useNavigate();
-  const { setCurrentRide } = useRide();
+  const { toast } = useToast();
+  const { setCurrentRide, calculateBaseFare } = useRide();
   const [showBidModal, setShowBidModal] = useState(false);
   const [selectedRide, setSelectedRide] = useState<Partial<Ride> | null>(null);
   const [bidAmount, setBidAmount] = useState<number>(0);
+  const [nearbyRequests, setNearbyRequests] = useState<Partial<Ride>[]>(mockNearbyRequests);
+  const [showContactModal, setShowContactModal] = useState(false);
+
+  useEffect(() => {
+    // In a real app, we would fetch nearby requests from an API
+    if (isOnline) {
+      // Simulate real-time requests by adding random price variations every 30 seconds
+      const interval = setInterval(() => {
+        setNearbyRequests(prev => prev.map(req => ({
+          ...req,
+          price: Math.round((req.price || 0) * (0.95 + Math.random() * 0.1)) // +/- 5% variation
+        })));
+      }, 30000);
+      
+      return () => clearInterval(interval);
+    }
+  }, [isOnline]);
 
   const handleGoOnline = () => {
     setIsOnline(true);
+    toast({
+      title: "You're online",
+      description: "You'll now receive ride requests",
+      duration: 3000
+    });
   };
 
   const handleGoOffline = () => {
     setIsOnline(false);
+    toast({
+      title: "You're offline",
+      description: "You won't receive any new ride requests",
+      duration: 3000
+    });
   };
 
   const handleShowBid = (ride: Partial<Ride>) => {
     setSelectedRide(ride);
-    setBidAmount(ride.price || 0);
+    // Set initial bid to the minimum required amount
+    if (ride.distance) {
+      // Use Bike as default vehicle type if not specified
+      const vehicleType = 'Bike';
+      const minBid = calculateBaseFare(ride.distance, vehicleType);
+      setBidAmount(minBid);
+    } else {
+      setBidAmount(ride.price || 0);
+    }
     setShowBidModal(true);
   };
 
@@ -95,8 +132,33 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
       
       setCurrentRide(ride);
       setShowBidModal(false);
+      
+      toast({
+        title: "Ride accepted",
+        description: "You have accepted the ride. Navigating to passenger...",
+        duration: 3000
+      });
+      
       navigate('/ride-progress');
     }
+  };
+
+  const handleCall = () => {
+    toast({
+      title: "Calling...",
+      description: "Connecting you to the passenger",
+      duration: 3000
+    });
+    setShowContactModal(false);
+  };
+  
+  const handleMessage = () => {
+    toast({
+      title: "Message sent",
+      description: "Your message has been sent to the passenger",
+      duration: 3000
+    });
+    setShowContactModal(false);
   };
 
   return (
@@ -129,7 +191,7 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
           
           <h3 className="text-xl font-medium mb-3">Nearby Requests</h3>
           <div className="space-y-4">
-            {mockNearbyRequests.map((request) => (
+            {nearbyRequests.map((request) => (
               <div 
                 key={request.id} 
                 className="border border-gray-200 rounded-xl p-4 hover:border-gray-400 transition-colors"
@@ -153,16 +215,25 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
                   </div>
                   <div className="flex items-center">
                     <DollarSign className="mr-1" size={14} />
-                    <span>~{Math.round(Number(request.price) * 0.9)} profit</span>
+                    <span>~{Math.round(Number(request.price) * 0.8)} profit</span>
                   </div>
                 </div>
                 
-                <Button 
-                  className="w-full"
-                  onClick={() => handleShowBid(request)}
-                >
-                  Place Bid
-                </Button>
+                <div className="flex space-x-2">
+                  <Button 
+                    className="flex-1"
+                    onClick={() => handleShowBid(request)}
+                  >
+                    View & Accept
+                  </Button>
+                  <Button 
+                    variant="outline"
+                    className="w-10"
+                    onClick={() => setShowContactModal(true)}
+                  >
+                    <PhoneCall size={16} />
+                  </Button>
+                </div>
               </div>
             ))}
           </div>
@@ -173,24 +244,25 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
       {showBidModal && selectedRide && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl p-6 w-full max-w-md">
-            <h3 className="text-xl font-medium mb-4">Place Your Bid</h3>
+            <h3 className="text-xl font-medium mb-4">Ride Details</h3>
             
             <div className="mb-4">
               <p className="text-gray-600 mb-2">Route: {selectedRide.pickup?.name} → {selectedRide.dropoff?.name}</p>
               <p className="text-gray-600 mb-2">Distance: {selectedRide.distance} km</p>
-              <p className="text-gray-600 mb-2">Base fare: {Math.round(selectedRide.distance! * 9)} RS</p>
+              <p className="text-gray-600 mb-2">Passenger Bid: {selectedRide.price} RS</p>
+              <p className="text-gray-600 mb-2">Your Profit: ~{Math.round(Number(selectedRide.price) * 0.8)} RS</p>
             </div>
             
             <div className="mb-6">
               <label className="block text-sm font-medium mb-2">Your Bid (RS)</label>
               <input
                 type="number"
-                min={Math.round(selectedRide.distance! * 9)}
+                min={Math.round((selectedRide.distance || 0) * 10)} // Minimum bid for Bike
                 value={bidAmount}
                 onChange={(e) => setBidAmount(Number(e.target.value))}
                 className="w-full border border-gray-300 rounded-lg p-3"
               />
-              <p className="text-sm text-gray-500 mt-1">Minimum bid: {Math.round(selectedRide.distance! * 9)} RS</p>
+              <p className="text-sm text-gray-500 mt-1">You can set your bid lower to be more competitive or higher for larger profit</p>
             </div>
             
             <div className="flex space-x-3">
@@ -208,6 +280,41 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
                 Accept Ride
               </Button>
             </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Contact Modal */}
+      {showContactModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md">
+            <h3 className="text-xl font-medium mb-4">Contact Passenger</h3>
+            
+            <div className="flex justify-center space-x-6 my-4">
+              <button 
+                onClick={handleCall}
+                className="flex flex-col items-center justify-center p-4 bg-green-50 rounded-full w-24 h-24"
+              >
+                <PhoneCall size={32} className="text-green-500 mb-2" />
+                <span>Call</span>
+              </button>
+              
+              <button
+                onClick={handleMessage}
+                className="flex flex-col items-center justify-center p-4 bg-blue-50 rounded-full w-24 h-24"
+              >
+                <MessageSquare size={32} className="text-blue-500 mb-2" />
+                <span>Message</span>
+              </button>
+            </div>
+            
+            <Button 
+              variant="outline" 
+              className="w-full mt-4"
+              onClick={() => setShowContactModal(false)}
+            >
+              Cancel
+            </Button>
           </div>
         </div>
       )}

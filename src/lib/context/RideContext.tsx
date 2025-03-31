@@ -1,6 +1,8 @@
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Ride, Location, RideOption, Driver } from '../types';
 import { calculateDistance } from '../utils/mapsApi';
+import { useToast } from '@/hooks/use-toast';
 
 type RideContextType = {
   currentRide: Ride | null;
@@ -32,6 +34,11 @@ type RideContextType = {
   updateFareMultiplier: () => void;
   userBid: number | null;
   setUserBid: (bid: number | null) => void;
+  calculateBaseFare: (distance: number, vehicleType: string) => number;
+  isWaitingForDriverAcceptance: boolean;
+  setWaitingForDriverAcceptance: (isWaiting: boolean) => void;
+  driverAcceptanceTimer: number;
+  resetDriverAcceptanceTimer: () => void;
 };
 
 const defaultRideOptions: RideOption[] = [
@@ -66,6 +73,7 @@ const defaultDriver: Driver = {
 const RideContext = createContext<RideContextType | undefined>(undefined);
 
 export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { toast } = useToast();
   const [currentRide, setCurrentRide] = useState<Ride | null>(null);
   const [pickupLocation, setPickupLocation] = useState<Location | null>(null);
   const [dropoffLocation, setDropoffLocation] = useState<Location | null>(null);
@@ -82,8 +90,50 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [rideHistory, setRideHistory] = useState<Ride[]>([]);
   const [fareMultiplier, setFareMultiplier] = useState<number>(1);
   const [userBid, setUserBid] = useState<number | null>(null);
+  const [isWaitingForDriverAcceptance, setWaitingForDriverAcceptance] = useState<boolean>(false);
+  const [driverAcceptanceTimer, setDriverAcceptanceTimer] = useState<number>(60); // 60 seconds = 1 minute
+  const [driverAcceptanceInterval, setDriverAcceptanceInterval] = useState<NodeJS.Timeout | null>(null);
 
   const availableRideOptions = availableRideOptionsWithPricing;
+
+  // Calculate base fare based on vehicle type and distance
+  const calculateBaseFare = (distance: number, vehicleType: string): number => {
+    const baseRate = vehicleType === 'Bike' ? 10 : 17; // RS per km
+    const driverProfit = 1.25; // 25% profit for driver
+    return Math.round(distance * baseRate * driverProfit * fareMultiplier);
+  };
+
+  const resetDriverAcceptanceTimer = () => {
+    setDriverAcceptanceTimer(60);
+    if (driverAcceptanceInterval) {
+      clearInterval(driverAcceptanceInterval);
+      setDriverAcceptanceInterval(null);
+    }
+  };
+
+  // Start driver acceptance countdown
+  useEffect(() => {
+    if (isWaitingForDriverAcceptance && driverAcceptanceTimer > 0) {
+      const interval = setInterval(() => {
+        setDriverAcceptanceTimer((prev) => {
+          if (prev <= 1) {
+            setWaitingForDriverAcceptance(false);
+            clearInterval(interval);
+            toast({
+              title: "Driver didn't accept",
+              description: "Please try increasing your bid to find a driver faster.",
+              duration: 5000
+            });
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      
+      setDriverAcceptanceInterval(interval);
+      return () => clearInterval(interval);
+    }
+  }, [isWaitingForDriverAcceptance, driverAcceptanceTimer, toast]);
 
   // Calculate fare multiplier based on time of day, traffic, demand
   const updateFareMultiplier = () => {
@@ -136,22 +186,14 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setEstimatedDistance(parseFloat(result.distance.toFixed(1)));
           setEstimatedDuration(result.duration);
           
-          // Apply fare multiplier to base price (9 RS per km)
-          const basePrice = Math.round(result.distance * 9 * fareMultiplier);
-          
+          // Apply new fare calculation based on vehicle type
           const updatedOptions = defaultRideOptions.map(option => {
-            let price = basePrice;
-            
-            // Apply vehicle-specific modifiers
-            if (option.id === '1') { // Bike is cheaper
-              price = Math.round(basePrice * 0.8);
-            } else if (option.id === '2') { // Auto is more expensive
-              price = Math.round(basePrice * 1.2);
-            }
+            // Calculate base fare based on vehicle type (Bike or Auto)
+            const baseFare = calculateBaseFare(result.distance, option.name);
             
             return {
               ...option,
-              price,
+              price: baseFare,
               duration: result.duration
             };
           });
@@ -192,12 +234,6 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     setIsSearchingRides(true);
     
-    // Apply the base price calculation
-    if (estimatedDistance) {
-      const basePrice = Math.round(estimatedDistance * 9 * fareMultiplier);
-      setUserBid(basePrice); // Set initial bid to base price
-    }
-    
     setTimeout(() => {
       setIsSearchingRides(false);
       setPanelOpen(true);
@@ -231,6 +267,8 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setCurrentRide(newRide);
     setPanelOpen(false);
+    setWaitingForDriverAcceptance(false);
+    resetDriverAcceptanceTimer();
   };
 
   const startRide = () => {
@@ -307,7 +345,12 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fareMultiplier,
     updateFareMultiplier,
     userBid,
-    setUserBid
+    setUserBid,
+    calculateBaseFare,
+    isWaitingForDriverAcceptance,
+    setWaitingForDriverAcceptance,
+    driverAcceptanceTimer,
+    resetDriverAcceptanceTimer
   };
 
   return (
