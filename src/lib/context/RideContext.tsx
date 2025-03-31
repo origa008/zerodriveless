@@ -39,26 +39,32 @@ type RideContextType = {
   setWaitingForDriverAcceptance: (isWaiting: boolean) => void;
   driverAcceptanceTimer: number;
   resetDriverAcceptanceTimer: () => void;
+  walletBalance: number;
+  updateWalletBalance: (amount: number) => void;
+  pendingRideRequests: Ride[];
+  addRideRequest: (ride: Ride) => void;
+  removeRideRequest: (rideId: string) => void;
+  acceptRideRequest: (rideId: string) => void;
 };
 
 const defaultRideOptions: RideOption[] = [
   {
     id: '1',
     name: 'Bike',
-    image: '/lovable-uploads/e30d2010-d04d-4e54-b564-033da8613f0b.png',
+    image: '/lovable-uploads/9d241d1a-9ada-443f-bd07-bd8bf87b4509.png',
     price: 120,
     currency: 'RS',
     duration: 3,
-    capacity: 4
+    capacity: 1
   },
   {
     id: '2',
     name: 'Auto',
-    image: '/lovable-uploads/92f50cbc-8a9a-4634-b7fa-d3b0bbf59202.png',
+    image: '/lovable-uploads/6469b465-e0ea-438a-b000-170e5626ef39.png',
     price: 210,
     currency: 'RS',
     duration: 3,
-    capacity: 4
+    capacity: 3
   }
 ];
 
@@ -93,8 +99,47 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isWaitingForDriverAcceptance, setWaitingForDriverAcceptance] = useState<boolean>(false);
   const [driverAcceptanceTimer, setDriverAcceptanceTimer] = useState<number>(60); // 60 seconds = 1 minute
   const [driverAcceptanceInterval, setDriverAcceptanceInterval] = useState<NodeJS.Timeout | null>(null);
+  const [walletBalance, setWalletBalance] = useState<number>(0);
+  const [pendingRideRequests, setPendingRideRequests] = useState<Ride[]>([]);
 
   const availableRideOptions = availableRideOptionsWithPricing;
+
+  // Update wallet balance
+  const updateWalletBalance = (amount: number) => {
+    setWalletBalance(prevBalance => {
+      const newBalance = prevBalance + amount;
+      // Store in local storage for persistence
+      localStorage.setItem('walletBalance', newBalance.toString());
+      return newBalance;
+    });
+  };
+
+  // Initialize wallet balance from localStorage if available
+  useEffect(() => {
+    const storedBalance = localStorage.getItem('walletBalance');
+    if (storedBalance) {
+      setWalletBalance(parseFloat(storedBalance));
+    }
+  }, []);
+
+  // Add a new ride request
+  const addRideRequest = (ride: Ride) => {
+    setPendingRideRequests(prev => [...prev, ride]);
+  };
+
+  // Remove a ride request
+  const removeRideRequest = (rideId: string) => {
+    setPendingRideRequests(prev => prev.filter(ride => ride.id !== rideId));
+  };
+
+  // Accept a ride request
+  const acceptRideRequest = (rideId: string) => {
+    const acceptedRide = pendingRideRequests.find(ride => ride.id === rideId);
+    if (acceptedRide) {
+      setCurrentRide(acceptedRide);
+      removeRideRequest(rideId);
+    }
+  };
 
   // Calculate base fare based on vehicle type and distance
   const calculateBaseFare = (distance: number, vehicleType: string): number => {
@@ -265,10 +310,21 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
       duration: estimatedDuration || 15
     };
 
+    // Add ride to pending ride requests for drivers to see
+    if (!isDriverMode) {
+      addRideRequest(newRide);
+    }
+
     setCurrentRide(newRide);
     setPanelOpen(false);
     setWaitingForDriverAcceptance(false);
     resetDriverAcceptanceTimer();
+
+    toast({
+      title: "Ride confirmed",
+      description: "Your ride has been confirmed and is waiting for a driver.",
+      duration: 3000
+    });
   };
 
   const startRide = () => {
@@ -299,6 +355,25 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     // Add to ride history
     addToHistory(updatedRide);
+
+    // Update wallet balance
+    if (isDriverMode) {
+      // Driver earns the fare
+      updateWalletBalance(updatedRide.price);
+      toast({
+        title: "Ride completed",
+        description: `You earned RS ${updatedRide.price} for this ride.`,
+        duration: 3000
+      });
+    } else {
+      // Passenger pays the fare
+      updateWalletBalance(-updatedRide.price);
+      toast({
+        title: "Ride completed",
+        description: `RS ${updatedRide.price} has been deducted from your wallet.`,
+        duration: 3000
+      });
+    }
   };
 
   const cancelRide = () => {
@@ -314,6 +389,17 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     // Add to ride history
     addToHistory(updatedRide);
+
+    // If this was a passenger cancellation, remove from pending ride requests
+    if (!isDriverMode) {
+      removeRideRequest(currentRide.id);
+    }
+
+    toast({
+      title: "Ride cancelled",
+      description: "Your ride has been cancelled.",
+      duration: 3000
+    });
   };
 
   const contextValue: RideContextType = {
@@ -350,7 +436,13 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     isWaitingForDriverAcceptance,
     setWaitingForDriverAcceptance,
     driverAcceptanceTimer,
-    resetDriverAcceptanceTimer
+    resetDriverAcceptanceTimer,
+    walletBalance,
+    updateWalletBalance,
+    pendingRideRequests,
+    addRideRequest,
+    removeRideRequest,
+    acceptRideRequest
   };
 
   return (

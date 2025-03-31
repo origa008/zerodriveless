@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 
 const RideDetails: React.FC = () => {
-  const { currentRide, isDriverMode, rideTimer } = useRide();
+  const { currentRide, isDriverMode, rideTimer, walletBalance } = useRide();
   const { user } = useAuth();
   const { toast } = useToast();
   const [showContactModal, setShowContactModal] = useState(false);
@@ -91,6 +91,23 @@ const RideDetails: React.FC = () => {
             </Button>
           </div>
         </div>
+
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center">
+            <div className="w-12 h-12 mr-3 flex items-center justify-center">
+              <img 
+                src={currentRide.rideOption.image}
+                alt={currentRide.rideOption.name} 
+                className="h-10 w-10 object-contain" 
+              />
+            </div>
+            <span className="font-medium">{currentRide.rideOption.name}</span>
+          </div>
+          <div className="text-right">
+            <p className="text-sm text-gray-500">Wallet Balance</p>
+            <p className="font-bold">RS {walletBalance.toFixed(0)}</p>
+          </div>
+        </div>
         
         <div className="space-y-4 mb-6">
           <div className="flex">
@@ -126,6 +143,12 @@ const RideDetails: React.FC = () => {
             <span className="text-gray-600">Est. Duration:</span>
             <span>{currentRide.duration} min</span>
           </div>
+          {isDriverMode && (
+            <div className="flex justify-between mt-3 pt-3 border-t border-gray-200">
+              <span className="text-gray-600">Your Earnings:</span>
+              <span className="font-bold text-green-600">~{Math.round(currentRide.price * 0.8)} {currentRide.currency}</span>
+            </div>
+          )}
         </div>
       </div>
 

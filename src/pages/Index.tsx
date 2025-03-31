@@ -13,7 +13,7 @@ import RideOptionCard from '@/components/ride/RideOptionCard';
 import DriverMode from '@/components/driver/DriverMode';
 import Sidebar from '@/components/layout/Sidebar';
 import { Location } from '@/lib/types';
-import { Loader2, Clock, AlertCircle, PhoneCall, MessageSquare } from 'lucide-react';
+import { Loader2, Clock, PhoneCall, MessageSquare, Wallet } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 const Index: React.FC = () => {
@@ -42,7 +42,8 @@ const Index: React.FC = () => {
     isWaitingForDriverAcceptance,
     setWaitingForDriverAcceptance,
     driverAcceptanceTimer,
-    resetDriverAcceptanceTimer
+    resetDriverAcceptanceTimer,
+    walletBalance
   } = useRide();
   
   const [isDriverOnline, setIsDriverOnline] = useState(false);
@@ -88,9 +89,21 @@ const Index: React.FC = () => {
   };
 
   const handleOrderNow = () => {
+    // Validate wallet balance first
+    if (walletBalance < (userBid || 0)) {
+      toast({
+        title: "Insufficient balance",
+        description: "Please add money to your wallet to place this ride.",
+        duration: 5000
+      });
+      return;
+    }
+
     // Start the driver acceptance timer when passenger places order
+    confirmRide();
     setWaitingForDriverAcceptance(true);
     resetDriverAcceptanceTimer();
+    
     toast({
       title: "Looking for drivers",
       description: "Waiting for a driver to accept your bid. This will take about a minute.",
@@ -159,6 +172,11 @@ const Index: React.FC = () => {
         <RideMap />
         <ModeSwitcher />
         <Sidebar />
+        
+        <div className="absolute top-4 right-4 bg-white rounded-full shadow-md p-3 flex items-center z-30">
+          <Wallet className="text-gray-600 mr-2" size={18} />
+          <span className="font-bold">RS {walletBalance.toFixed(0)}</span>
+        </div>
       </div>
       
       {isPanelOpen ? (
@@ -238,14 +256,14 @@ const Index: React.FC = () => {
           
           <div className="mb-6">
             <div className="border border-gray-200 rounded-2xl p-4 flex justify-between">
-              <button className="text-xl">Cash Payment</button>
-              <button className="text-xl text-gray-500">Change</button>
+              <span className="text-xl">Wallet Balance</span>
+              <span className="text-xl font-bold">RS {walletBalance.toFixed(0)}</span>
             </div>
           </div>
           
           <Button 
             onClick={handleOrderNow} 
-            disabled={!selectedRideOption || !userBid || isWaitingForDriverAcceptance} 
+            disabled={!selectedRideOption || !userBid || isWaitingForDriverAcceptance || walletBalance < (userBid || 0)} 
             className="w-full bg-black text-white hover:bg-gray-800 text-xl py-[30px] rounded-2xl my-[10px]"
           >
             {isWaitingForDriverAcceptance ? (
@@ -253,6 +271,8 @@ const Index: React.FC = () => {
                 <Loader2 className="animate-spin mr-2" />
                 Waiting for driver...
               </div>
+            ) : walletBalance < (userBid || 0) ? (
+              'Insufficient Balance'
             ) : (
               'Confirm Ride'
             )}
@@ -317,6 +337,10 @@ const Index: React.FC = () => {
                 className="w-full border border-gray-300 rounded-lg p-3"
               />
               <p className="text-sm text-gray-500 mt-1">Minimum bid: {calculateBaseFare(estimatedDistance, selectedRideOption.name)} RS</p>
+              
+              {bidAmount > walletBalance && (
+                <p className="text-sm text-red-500 mt-2">Your wallet balance is insufficient for this bid. Please add money to your wallet.</p>
+              )}
             </div>
             
             <div className="flex space-x-3">
@@ -330,7 +354,7 @@ const Index: React.FC = () => {
               <Button 
                 className="flex-1 bg-black text-white"
                 onClick={handlePlaceBid}
-                disabled={bidAmount < calculateBaseFare(estimatedDistance, selectedRideOption.name)}
+                disabled={bidAmount < calculateBaseFare(estimatedDistance, selectedRideOption.name) || bidAmount > walletBalance}
               >
                 Place Bid
               </Button>
