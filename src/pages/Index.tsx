@@ -1,4 +1,3 @@
-
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -35,22 +34,17 @@ const Index: React.FC = () => {
   } = useRide();
 
   useEffect(() => {
-    // Redirect to welcome if not logged in
     if (!isLoading && !user?.isLoggedIn) {
       navigate('/welcome');
     }
   }, [user, isLoading, navigate]);
 
-  // Handle input changes
   const handlePickupChange = (value: string) => {
-    // Just update the input value, but don't set the location yet
   };
 
   const handleDropoffChange = (value: string) => {
-    // Just update the input value, but don't set the location yet
   };
 
-  // Handle location selection
   const handlePickupSelect = (location: Location) => {
     setPickupLocation(location);
   };

@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Ride, Location, RideOption, Driver } from '../types';
 import { calculateDistance } from '../utils/mapsApi';
@@ -75,10 +74,8 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [estimatedDuration, setEstimatedDuration] = useState<number | null>(null);
   const [availableRideOptionsWithPricing, setAvailableRideOptionsWithPricing] = useState<RideOption[]>(defaultRideOptions);
 
-  // For demo purposes, we'll use a static list of ride options
   const availableRideOptions = availableRideOptionsWithPricing;
 
-  // Calculate distance and duration when both pickup and dropoff locations have coordinates
   useEffect(() => {
     const calculateDistanceAndDuration = async () => {
       if (
@@ -94,7 +91,6 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setEstimatedDistance(parseFloat(result.distance.toFixed(1)));
           setEstimatedDuration(result.duration);
           
-          // Update ride options with calculated prices based on distance
           const updatedOptions = defaultRideOptions.map(option => ({
             ...option,
             price: Math.round(option.price * (result.distance || 1)),
@@ -109,7 +105,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     calculateDistanceAndDuration();
   }, [pickupLocation?.coordinates, dropoffLocation?.coordinates]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (isRideTimerActive && currentRide?.status === 'in_progress') {
       const interval = setInterval(() => {
         setRideTimer((prev) => prev + 1);
@@ -120,7 +116,6 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
       clearInterval(timerInterval);
     }
     
-    // Auto complete ride after 2 minutes (120 seconds)
     if (rideTimer >= 120 && currentRide?.status === 'in_progress') {
       completeRide();
     }
@@ -134,7 +129,6 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     setIsSearchingRides(true);
     
-    // Simulate searching for rides
     setTimeout(() => {
       setIsSearchingRides(false);
       setPanelOpen(true);
@@ -200,32 +194,34 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsRideTimerActive(false);
   };
 
+  const contextValue: RideContextType = {
+    currentRide,
+    setCurrentRide,
+    pickupLocation,
+    dropoffLocation,
+    setPickupLocation,
+    setDropoffLocation,
+    availableRideOptions,
+    selectedRideOption,
+    setSelectedRideOption,
+    findRides,
+    confirmRide,
+    startRide,
+    completeRide,
+    cancelRide,
+    rideTimer,
+    isRideTimerActive,
+    isPanelOpen,
+    setPanelOpen,
+    isDriverMode,
+    setDriverMode,
+    isSearchingRides,
+    estimatedDistance,
+    estimatedDuration
+  };
+
   return (
-    <RideContext.Provider value={{
-      currentRide,
-      setCurrentRide,
-      pickupLocation,
-      dropoffLocation,
-      setPickupLocation,
-      setDropoffLocation,
-      availableRideOptions,
-      selectedRideOption,
-      setSelectedRideOption,
-      findRides,
-      confirmRide,
-      startRide,
-      completeRide,
-      cancelRide,
-      rideTimer,
-      isRideTimerActive,
-      isPanelOpen,
-      setPanelOpen,
-      isDriverMode,
-      setDriverMode,
-      isSearchingRides,
-      estimatedDistance,
-      estimatedDuration
-    }}>
+    <RideContext.Provider value={contextValue}>
       {children}
     </RideContext.Provider>
   );
