@@ -9,7 +9,7 @@ export const searchPlaces = async (query: string): Promise<Location[]> => {
     if (!query || query.trim().length < 2) return [];
     
     const response = await fetch(
-      `${MAPS_API_BASE_URL}/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&key=${process.env.VITE_MAPS_API_KEY}`
+      `${MAPS_API_BASE_URL}/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&key=${import.meta.env.VITE_MAPS_API_KEY}`
     );
     
     const data = await response.json();
@@ -33,7 +33,7 @@ export const searchPlaces = async (query: string): Promise<Location[]> => {
 export const getPlaceDetails = async (placeId: string): Promise<Location | null> => {
   try {
     const response = await fetch(
-      `${MAPS_API_BASE_URL}/maps/api/place/details/json?place_id=${placeId}&key=${process.env.VITE_MAPS_API_KEY}`
+      `${MAPS_API_BASE_URL}/maps/api/place/details/json?place_id=${placeId}&key=${import.meta.env.VITE_MAPS_API_KEY}`
     );
     
     const data = await response.json();
@@ -68,7 +68,7 @@ export const calculateDistance = async (
     const destStr = `${destination[1]},${destination[0]}`;  // lat,lng
     
     const response = await fetch(
-      `${MAPS_API_BASE_URL}/maps/api/distancematrix/json?origins=${originStr}&destinations=${destStr}&key=${process.env.VITE_MAPS_API_KEY}`
+      `${MAPS_API_BASE_URL}/maps/api/distancematrix/json?origins=${originStr}&destinations=${destStr}&key=${import.meta.env.VITE_MAPS_API_KEY}`
     );
     
     const data = await response.json();

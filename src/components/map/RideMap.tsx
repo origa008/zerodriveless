@@ -3,10 +3,26 @@ import React, { useEffect, useRef } from 'react';
 import { useRide } from '@/lib/context/RideContext';
 import { Clock } from 'lucide-react';
 
+// Add Google Maps type declarations
 declare global {
   interface Window {
     initMap?: () => void;
-    google?: any;
+    google: {
+      maps: {
+        Map: new (element: HTMLElement, options: any) => any;
+        Marker: new (options: any) => any;
+        DirectionsService: new () => any;
+        DirectionsRenderer: new (options?: any) => any;
+        SymbolPath: {
+          CIRCLE: number;
+          FORWARD_CLOSED_ARROW: number;
+        };
+        TravelMode: {
+          DRIVING: string;
+        };
+        MapOptions: any;
+      }
+    };
   }
 }
 
@@ -20,9 +36,9 @@ const RideMap: React.FC = () => {
   } = useRide();
 
   const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<google.maps.Map | null>(null);
-  const markersRef = useRef<google.maps.Marker[]>([]);
-  const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
+  const mapInstanceRef = useRef<any>(null);
+  const markersRef = useRef<any[]>([]);
+  const directionsRendererRef = useRef<any>(null);
 
   // Format timer as MM:SS
   const formatTime = (seconds: number): string => {
@@ -40,7 +56,7 @@ const RideMap: React.FC = () => {
       const center = { lat: 40.7484, lng: -73.9857 };
       
       // Create map instance
-      const mapOptions: google.maps.MapOptions = {
+      const mapOptions = {
         center,
         zoom: 13,
         disableDefaultUI: true,
@@ -70,7 +86,8 @@ const RideMap: React.FC = () => {
     if (!window.google) {
       window.initMap = initMap;
       const script = document.createElement('script');
-      script.src = `https://maps.gomaps.pro/maps/api/js?key=${process.env.VITE_MAPS_API_KEY}&libraries=places&callback=initMap`;
+      // Use import.meta.env instead of process.env for Vite
+      script.src = `https://maps.gomaps.pro/maps/api/js?key=${import.meta.env.VITE_MAPS_API_KEY}&libraries=places&callback=initMap`;
       script.async = true;
       script.defer = true;
       document.head.appendChild(script);
