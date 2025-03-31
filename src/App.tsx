@@ -17,6 +17,12 @@ import RideCompleted from "./pages/RideCompleted";
 import Community from "./pages/Community";
 import Offers from "./pages/Offers";
 import Wallet from "./pages/Wallet";
+import Profile from "./pages/Profile";
+import History from "./pages/History";
+import Partners from "./pages/Partners";
+import AboutUs from "./pages/AboutUs";
+import Policies from "./pages/Policies";
+import OfficialDriver from "./pages/OfficialDriver";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -39,6 +45,12 @@ const App = () => (
               <Route path="/community" element={<Community />} />
               <Route path="/offers" element={<Offers />} />
               <Route path="/wallet" element={<Wallet />} />
+              <Route path="/profile" element={<Profile />} />
+              <Route path="/history" element={<History />} />
+              <Route path="/partners" element={<Partners />} />
+              <Route path="/about" element={<AboutUs />} />
+              <Route path="/policies" element={<Policies />} />
+              <Route path="/official-driver" element={<OfficialDriver />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>

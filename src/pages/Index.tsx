@@ -1,4 +1,5 @@
-import React, { useEffect } from 'react';
+
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/context/AuthContext';
@@ -9,8 +10,10 @@ import RideMap from '@/components/map/RideMap';
 import BottomNavigation from '@/components/layout/BottomNavigation';
 import ModeSwitcher from '@/components/shared/ModeSwitcher';
 import RideOptionCard from '@/components/ride/RideOptionCard';
+import DriverMode from '@/components/driver/DriverMode';
+import Sidebar from '@/components/layout/Sidebar';
 import { Location } from '@/lib/types';
-import { Grid, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 const Index: React.FC = () => {
   const navigate = useNavigate();
@@ -32,6 +35,10 @@ const Index: React.FC = () => {
     estimatedDistance,
     estimatedDuration
   } = useRide();
+  
+  const [isDriverOnline, setIsDriverOnline] = useState(false);
+  const [showBidModal, setShowBidModal] = useState(false);
+  const [bidAmount, setBidAmount] = useState<number>(0);
 
   useEffect(() => {
     if (!isLoading && !user?.isLoggedIn) {
@@ -55,6 +62,7 @@ const Index: React.FC = () => {
 
   const handleFindRides = () => {
     findRides();
+    setShowBidModal(true);
   };
 
   const handleSelectRideOption = (option: any) => {
@@ -64,6 +72,10 @@ const Index: React.FC = () => {
   const handleOrderNow = () => {
     confirmRide();
     navigate('/ride-progress');
+  };
+
+  const handlePlaceBid = () => {
+    setShowBidModal(false);
   };
 
   if (isLoading) {
@@ -76,22 +88,10 @@ const Index: React.FC = () => {
         <div className="relative">
           <RideMap />
           <ModeSwitcher />
-          
-          <div className="absolute top-4 left-4 z-20">
-            <div className="bg-white p-3 rounded-full shadow-md">
-              <Grid size={24} />
-            </div>
-          </div>
+          <Sidebar />
         </div>
         
-        <div className="p-6">
-          <h2 className="text-2xl font-medium mb-4">Driver Mode</h2>
-          <p className="text-gray-600 mb-6">You are currently in driver mode. No ride requests at the moment.</p>
-          
-          <Button className="w-full bg-black text-white hover:bg-gray-800 py-6 text-xl rounded-xl">
-            Go Online
-          </Button>
-        </div>
+        <DriverMode isOnline={isDriverOnline} setIsOnline={setIsDriverOnline} />
         
         <BottomNavigation />
       </div>
@@ -103,12 +103,7 @@ const Index: React.FC = () => {
       <div className="relative">
         <RideMap />
         <ModeSwitcher />
-        
-        <div className="absolute top-4 left-4 z-20">
-          <div className="bg-white p-3 rounded-full shadow-md">
-            <Grid size={24} />
-          </div>
-        </div>
+        <Sidebar />
       </div>
       
       {isPanelOpen ? (
@@ -196,6 +191,49 @@ const Index: React.FC = () => {
               'Find rides'
             )}
           </Button>
+        </div>
+      )}
+
+      {/* Bid Modal for Passenger */}
+      {showBidModal && estimatedDistance && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md">
+            <h3 className="text-xl font-medium mb-4">Place Your Bid</h3>
+            
+            <div className="mb-4">
+              <p className="text-gray-600 mb-2">Route: {pickupLocation?.name} → {dropoffLocation?.name}</p>
+              <p className="text-gray-600 mb-2">Distance: {estimatedDistance} km</p>
+              <p className="text-gray-600 mb-2">Base fare: {Math.round(estimatedDistance * 9)} RS</p>
+            </div>
+            
+            <div className="mb-6">
+              <label className="block text-sm font-medium mb-2">Your Bid (RS)</label>
+              <input
+                type="number"
+                min={Math.round(estimatedDistance * 9)}
+                value={bidAmount || Math.round(estimatedDistance * 9)}
+                onChange={(e) => setBidAmount(Number(e.target.value))}
+                className="w-full border border-gray-300 rounded-lg p-3"
+              />
+              <p className="text-sm text-gray-500 mt-1">Minimum bid: {Math.round(estimatedDistance * 9)} RS</p>
+            </div>
+            
+            <div className="flex space-x-3">
+              <Button 
+                variant="outline" 
+                className="flex-1"
+                onClick={() => setShowBidModal(false)}
+              >
+                Cancel
+              </Button>
+              <Button 
+                className="flex-1 bg-black text-white"
+                onClick={handlePlaceBid}
+              >
+                Place Bid
+              </Button>
+            </div>
+          </div>
         </div>
       )}
       

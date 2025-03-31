@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Ride, Location, RideOption, Driver } from '../types';
 import { calculateDistance } from '../utils/mapsApi';
@@ -26,6 +27,12 @@ type RideContextType = {
   isSearchingRides: boolean;
   estimatedDistance: number | null;
   estimatedDuration: number | null;
+  rideHistory: Ride[];
+  addToHistory: (ride: Ride) => void;
+  fareMultiplier: number;
+  updateFareMultiplier: () => void;
+  userBid: number | null;
+  setUserBid: (bid: number | null) => void;
 };
 
 const defaultRideOptions: RideOption[] = [
@@ -73,8 +80,47 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [estimatedDistance, setEstimatedDistance] = useState<number | null>(null);
   const [estimatedDuration, setEstimatedDuration] = useState<number | null>(null);
   const [availableRideOptionsWithPricing, setAvailableRideOptionsWithPricing] = useState<RideOption[]>(defaultRideOptions);
+  const [rideHistory, setRideHistory] = useState<Ride[]>([]);
+  const [fareMultiplier, setFareMultiplier] = useState<number>(1);
+  const [userBid, setUserBid] = useState<number | null>(null);
 
   const availableRideOptions = availableRideOptionsWithPricing;
+
+  // Calculate fare multiplier based on time of day, traffic, demand
+  const updateFareMultiplier = () => {
+    // Check current hour to determine peak time
+    const hour = new Date().getHours();
+    let timeMultiplier = 1;
+    
+    // Peak hours: 7-10 AM and 5-8 PM
+    if ((hour >= 7 && hour <= 10) || (hour >= 17 && hour <= 20)) {
+      timeMultiplier = 1.2;
+    }
+    
+    // Weekend multiplier (Friday and Saturday nights)
+    const day = new Date().getDay(); // 0-6, 5 is Friday, 6 is Saturday
+    const isWeekend = (day === 5 && hour >= 20) || (day === 6 && hour >= 18);
+    const weekendMultiplier = isWeekend ? 1.15 : 1;
+    
+    // Random demand factor (1.0 - 1.25)
+    const demandMultiplier = 1 + (Math.random() * 0.25);
+    
+    // Combine all factors
+    const newMultiplier = timeMultiplier * weekendMultiplier * demandMultiplier;
+    
+    // Round to 2 decimal places
+    setFareMultiplier(parseFloat(newMultiplier.toFixed(2)));
+  };
+
+  useEffect(() => {
+    // Update fare multiplier when component mounts and every 10 minutes
+    updateFareMultiplier();
+    const intervalId = setInterval(updateFareMultiplier, 10 * 60 * 1000);
+    
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, []);
 
   useEffect(() => {
     const calculateDistanceAndDuration = async () => {
@@ -91,11 +137,25 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setEstimatedDistance(parseFloat(result.distance.toFixed(1)));
           setEstimatedDuration(result.duration);
           
-          const updatedOptions = defaultRideOptions.map(option => ({
-            ...option,
-            price: Math.round(option.price * (result.distance || 1)),
-            duration: result.duration
-          }));
+          // Apply fare multiplier to base price (9 RS per km)
+          const basePrice = Math.round(result.distance * 9 * fareMultiplier);
+          
+          const updatedOptions = defaultRideOptions.map(option => {
+            let price = basePrice;
+            
+            // Apply vehicle-specific modifiers
+            if (option.id === '1') { // Bike is cheaper
+              price = Math.round(basePrice * 0.8);
+            } else if (option.id === '2') { // Auto is more expensive
+              price = Math.round(basePrice * 1.2);
+            }
+            
+            return {
+              ...option,
+              price,
+              duration: result.duration
+            };
+          });
           
           setAvailableRideOptionsWithPricing(updatedOptions);
         }
@@ -103,7 +163,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     calculateDistanceAndDuration();
-  }, [pickupLocation?.coordinates, dropoffLocation?.coordinates]);
+  }, [pickupLocation?.coordinates, dropoffLocation?.coordinates, fareMultiplier]);
 
   useEffect(() => {
     if (isRideTimerActive && currentRide?.status === 'in_progress') {
@@ -121,6 +181,10 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [isRideTimerActive, rideTimer, currentRide?.status]);
 
+  const addToHistory = (ride: Ride) => {
+    setRideHistory(prev => [ride, ...prev]);
+  };
+
   const findRides = async () => {
     if (!pickupLocation || !dropoffLocation) {
       console.error('Pickup and dropoff locations are required');
@@ -128,6 +192,12 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     
     setIsSearchingRides(true);
+    
+    // Apply the base price calculation
+    if (estimatedDistance) {
+      const basePrice = Math.round(estimatedDistance * 9 * fareMultiplier);
+      setUserBid(basePrice); // Set initial bid to base price
+    }
     
     setTimeout(() => {
       setIsSearchingRides(false);
@@ -141,14 +211,20 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
+    // Use user bid if available, otherwise use the selected ride option price
+    const finalPrice = userBid || selectedRideOption.price;
+
     const newRide: Ride = {
       id: Math.random().toString(36).substr(2, 9),
       pickup: pickupLocation,
       dropoff: dropoffLocation,
-      rideOption: selectedRideOption,
+      rideOption: {
+        ...selectedRideOption,
+        price: finalPrice
+      },
       driver: defaultDriver,
       status: 'confirmed',
-      price: selectedRideOption.price,
+      price: finalPrice,
       currency: selectedRideOption.currency,
       distance: estimatedDistance || 4.8,
       duration: estimatedDuration || 15
@@ -161,12 +237,13 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const startRide = () => {
     if (!currentRide) return;
     
-    setCurrentRide({
+    const updatedRide = {
       ...currentRide,
       status: 'in_progress',
       startTime: new Date()
-    });
+    };
     
+    setCurrentRide(updatedRide);
     setRideTimer(0);
     setIsRideTimerActive(true);
   };
@@ -174,24 +251,32 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const completeRide = () => {
     if (!currentRide) return;
     
-    setCurrentRide({
+    const updatedRide = {
       ...currentRide,
       status: 'completed',
       endTime: new Date()
-    });
+    };
     
+    setCurrentRide(updatedRide);
     setIsRideTimerActive(false);
+    
+    // Add to ride history
+    addToHistory(updatedRide);
   };
 
   const cancelRide = () => {
     if (!currentRide) return;
     
-    setCurrentRide({
+    const updatedRide = {
       ...currentRide,
       status: 'cancelled'
-    });
+    };
     
+    setCurrentRide(updatedRide);
     setIsRideTimerActive(false);
+    
+    // Add to ride history
+    addToHistory(updatedRide);
   };
 
   const contextValue: RideContextType = {
@@ -217,7 +302,13 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setDriverMode,
     isSearchingRides,
     estimatedDistance,
-    estimatedDuration
+    estimatedDuration,
+    rideHistory,
+    addToHistory,
+    fareMultiplier,
+    updateFareMultiplier,
+    userBid,
+    setUserBid
   };
 
   return (
