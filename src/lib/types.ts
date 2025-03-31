@@ -6,6 +6,10 @@ export type User = {
   phone?: string;
   avatar?: string;
   isLoggedIn: boolean;
+  address?: string;
+  referralCode?: string;
+  referralEarnings?: number;
+  isRegisteredDriver?: boolean;
 };
 
 export type Location = {
@@ -46,4 +50,23 @@ export type Ride = {
   duration: number;
   startTime?: Date;
   endTime?: Date;
+  paymentMethod?: 'cash' | 'wallet';
 };
+
+export type CommunityPost = {
+  id: string;
+  userId: string;
+  userName: string;
+  userAvatar: string;
+  content: string;
+  timestamp: Date;
+  likes: number;
+  comments: number;
+};
+
+export type DriverRegistrationStatus = 
+  | 'not_started'
+  | 'in_progress'
+  | 'pending_review'
+  | 'approved'
+  | 'rejected';

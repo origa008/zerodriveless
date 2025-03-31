@@ -11,6 +11,10 @@ type RideContextType = {
   dropoffLocation: Location | null;
   setPickupLocation: (location: Location | null) => void;
   setDropoffLocation: (location: Location | null) => void;
+  handlePickupChange: (value: string) => void;
+  handleDropoffChange: (value: string) => void;
+  handlePickupSelect: (location: Location) => void;
+  handleDropoffSelect: (location: Location) => void;
   availableRideOptions: RideOption[];
   selectedRideOption: RideOption | null;
   setSelectedRideOption: (option: RideOption | null) => void;
@@ -45,13 +49,15 @@ type RideContextType = {
   addRideRequest: (ride: Ride) => void;
   removeRideRequest: (rideId: string) => void;
   acceptRideRequest: (rideId: string) => void;
+  paymentMethod: 'cash' | 'wallet';
+  setPaymentMethod: (method: 'cash' | 'wallet') => void;
 };
 
 const defaultRideOptions: RideOption[] = [
   {
     id: '1',
     name: 'Bike',
-    image: '/lovable-uploads/9d241d1a-9ada-443f-bd07-bd8bf87b4509.png',
+    image: '/lovable-uploads/debf7624-f989-4b17-a657-b4eb13735f8b.png',
     price: 120,
     currency: 'RS',
     duration: 3,
@@ -60,7 +66,7 @@ const defaultRideOptions: RideOption[] = [
   {
     id: '2',
     name: 'Auto',
-    image: '/lovable-uploads/6469b465-e0ea-438a-b000-170e5626ef39.png',
+    image: '/lovable-uploads/413bd9ac-22fa-4c69-aa6c-991edcf8f3ff.png',
     price: 210,
     currency: 'RS',
     duration: 3,
@@ -76,12 +82,19 @@ const defaultDriver: Driver = {
   avatar: '/lovable-uploads/498e0bf1-4c8a-4cad-8ee2-6f43fdccc511.png'
 };
 
+// Default location for Lahore, Pakistan
+const defaultLocation: Location = {
+  name: 'Lahore, Pakistan',
+  address: 'Lahore, Punjab, Pakistan',
+  coordinates: [74.3587, 31.5204] // [longitude, latitude] for Lahore
+};
+
 const RideContext = createContext<RideContextType | undefined>(undefined);
 
 export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { toast } = useToast();
   const [currentRide, setCurrentRide] = useState<Ride | null>(null);
-  const [pickupLocation, setPickupLocation] = useState<Location | null>(null);
+  const [pickupLocation, setPickupLocation] = useState<Location | null>(defaultLocation);
   const [dropoffLocation, setDropoffLocation] = useState<Location | null>(null);
   const [selectedRideOption, setSelectedRideOption] = useState<RideOption | null>(null);
   const [rideTimer, setRideTimer] = useState<number>(0);
@@ -101,9 +114,41 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [driverAcceptanceInterval, setDriverAcceptanceInterval] = useState<NodeJS.Timeout | null>(null);
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [pendingRideRequests, setPendingRideRequests] = useState<Ride[]>([]);
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'wallet'>('cash');
 
   const availableRideOptions = availableRideOptionsWithPricing;
 
+  // Initialize wallet balance from localStorage if available
+  useEffect(() => {
+    const storedBalance = localStorage.getItem('walletBalance');
+    if (storedBalance) {
+      setWalletBalance(parseFloat(storedBalance));
+    }
+    
+    // Initialize ride history from localStorage if available
+    const storedHistory = localStorage.getItem('rideHistory');
+    if (storedHistory) {
+      setRideHistory(JSON.parse(storedHistory));
+    }
+  }, []);
+
+  // Simple handlers for location inputs
+  const handlePickupChange = (value: string) => {
+    // Placeholder for input change handler
+  };
+
+  const handleDropoffChange = (value: string) => {
+    // Placeholder for input change handler
+  };
+
+  const handlePickupSelect = (location: Location) => {
+    setPickupLocation(location);
+  };
+
+  const handleDropoffSelect = (location: Location) => {
+    setDropoffLocation(location);
+  };
+  
   // Update wallet balance
   const updateWalletBalance = (amount: number) => {
     setWalletBalance(prevBalance => {
@@ -113,14 +158,6 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return newBalance;
     });
   };
-
-  // Initialize wallet balance from localStorage if available
-  useEffect(() => {
-    const storedBalance = localStorage.getItem('walletBalance');
-    if (storedBalance) {
-      setWalletBalance(parseFloat(storedBalance));
-    }
-  }, []);
 
   // Add a new ride request
   const addRideRequest = (ride: Ride) => {
@@ -268,7 +305,9 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [isRideTimerActive, rideTimer, currentRide?.status]);
 
   const addToHistory = (ride: Ride) => {
-    setRideHistory(prev => [ride, ...prev]);
+    const updatedHistory = [ride, ...rideHistory];
+    setRideHistory(updatedHistory);
+    localStorage.setItem('rideHistory', JSON.stringify(updatedHistory));
   };
 
   const findRides = async () => {
@@ -307,7 +346,8 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
       price: finalPrice,
       currency: selectedRideOption.currency,
       distance: estimatedDistance || 4.8,
-      duration: estimatedDuration || 15
+      duration: estimatedDuration || 15,
+      paymentMethod: paymentMethod
     };
 
     // Add ride to pending ride requests for drivers to see
@@ -365,12 +405,18 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
         description: `You earned RS ${updatedRide.price} for this ride.`,
         duration: 3000
       });
-    } else {
-      // Passenger pays the fare
+    } else if (updatedRide.paymentMethod === 'wallet') {
+      // Passenger pays the fare if using wallet
       updateWalletBalance(-updatedRide.price);
       toast({
         title: "Ride completed",
         description: `RS ${updatedRide.price} has been deducted from your wallet.`,
+        duration: 3000
+      });
+    } else {
+      toast({
+        title: "Ride completed",
+        description: `Please pay RS ${updatedRide.price} in cash to the driver.`,
         duration: 3000
       });
     }
@@ -402,6 +448,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
+  // Provide all context values
   const contextValue: RideContextType = {
     currentRide,
     setCurrentRide,
@@ -409,6 +456,10 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     dropoffLocation,
     setPickupLocation,
     setDropoffLocation,
+    handlePickupChange,
+    handleDropoffChange,
+    handlePickupSelect,
+    handleDropoffSelect,
     availableRideOptions,
     selectedRideOption,
     setSelectedRideOption,
@@ -442,7 +493,9 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     pendingRideRequests,
     addRideRequest,
     removeRideRequest,
-    acceptRideRequest
+    acceptRideRequest,
+    paymentMethod,
+    setPaymentMethod
   };
 
   return (
