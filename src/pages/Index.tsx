@@ -1,21 +1,21 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/context/AuthContext';
 import { useRide } from '@/lib/context/RideContext';
+import LocationSearch from '@/components/ride/LocationSearch';
 import LocationInput from '@/components/ride/LocationInput';
 import RideMap from '@/components/map/RideMap';
 import BottomNavigation from '@/components/layout/BottomNavigation';
 import ModeSwitcher from '@/components/shared/ModeSwitcher';
 import RideOptionCard from '@/components/ride/RideOptionCard';
 import { Location } from '@/lib/types';
-import { Grid } from 'lucide-react';
+import { Grid, Loader2 } from 'lucide-react';
+
 const Index: React.FC = () => {
   const navigate = useNavigate();
-  const {
-    user,
-    isLoading
-  } = useAuth();
+  const { user, isLoading } = useAuth();
   const {
     pickupLocation,
     dropoffLocation,
@@ -28,10 +28,12 @@ const Index: React.FC = () => {
     confirmRide,
     isPanelOpen,
     setPanelOpen,
-    isDriverMode
+    isDriverMode,
+    isSearchingRides,
+    estimatedDistance,
+    estimatedDuration
   } = useRide();
-  const [pickupValue, setPickupValue] = useState('');
-  const [dropoffValue, setDropoffValue] = useState('');
+
   useEffect(() => {
     // Redirect to welcome if not logged in
     if (!isLoading && !user?.isLoggedIn) {
@@ -39,44 +41,44 @@ const Index: React.FC = () => {
     }
   }, [user, isLoading, navigate]);
 
-  // Handle input changes and update location contexts
+  // Handle input changes
   const handlePickupChange = (value: string) => {
-    setPickupValue(value);
-    if (value) {
-      setPickupLocation({
-        name: value,
-        address: value
-      });
-    } else {
-      setPickupLocation(null);
-    }
+    // Just update the input value, but don't set the location yet
   };
+
   const handleDropoffChange = (value: string) => {
-    setDropoffValue(value);
-    if (value) {
-      setDropoffLocation({
-        name: value,
-        address: value
-      });
-    } else {
-      setDropoffLocation(null);
-    }
+    // Just update the input value, but don't set the location yet
   };
+
+  // Handle location selection
+  const handlePickupSelect = (location: Location) => {
+    setPickupLocation(location);
+  };
+
+  const handleDropoffSelect = (location: Location) => {
+    setDropoffLocation(location);
+  };
+
   const handleFindRides = () => {
     findRides();
   };
+
   const handleSelectRideOption = (option: any) => {
     setSelectedRideOption(option);
   };
+
   const handleOrderNow = () => {
     confirmRide();
     navigate('/ride-progress');
   };
+
   if (isLoading) {
     return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
   }
+
   if (isDriverMode) {
-    return <div className="min-h-screen bg-white">
+    return (
+      <div className="min-h-screen bg-white">
         <div className="relative">
           <RideMap />
           <ModeSwitcher />
@@ -98,9 +100,12 @@ const Index: React.FC = () => {
         </div>
         
         <BottomNavigation />
-      </div>;
+      </div>
+    );
   }
-  return <div className="min-h-screen bg-white">
+
+  return (
+    <div className="min-h-screen bg-white">
       <div className="relative">
         <RideMap />
         <ModeSwitcher />
@@ -112,15 +117,41 @@ const Index: React.FC = () => {
         </div>
       </div>
       
-      {isPanelOpen ? <div className="bg-white rounded-t-3xl -mt-6 relative z-10 p-6">
+      {isPanelOpen ? (
+        <div className="bg-white rounded-t-3xl -mt-6 relative z-10 p-6">
           <div className="mb-4">
-            <LocationInput label="Pickup" value={pickupLocation?.name || ''} onChange={handlePickupChange} placeholder="Choose pickup location" readOnly />
-            <LocationInput label="Dropoff" value={dropoffLocation?.name || ''} onChange={handleDropoffChange} placeholder="Choose drop location" readOnly />
+            <LocationInput 
+              label="Pickup" 
+              value={pickupLocation?.name || ''} 
+              onChange={handlePickupChange} 
+              placeholder="Choose pickup location" 
+              readOnly 
+            />
+            <LocationInput 
+              label="Dropoff" 
+              value={dropoffLocation?.name || ''} 
+              onChange={handleDropoffChange} 
+              placeholder="Choose drop location" 
+              readOnly 
+            />
           </div>
+          
+          {estimatedDistance && estimatedDuration && (
+            <div className="mb-4 p-3 bg-gray-50 rounded-xl">
+              <p className="text-gray-600">Estimated Trip: {estimatedDistance} km • {estimatedDuration} min</p>
+            </div>
+          )}
           
           <div className="mb-4">
             <h3 className="text-xl font-medium mb-2 px-[8px]">Choose Vehicle</h3>
-            {availableRideOptions.map(option => <RideOptionCard key={option.id} option={option} isSelected={selectedRideOption?.id === option.id} onSelect={handleSelectRideOption} />)}
+            {availableRideOptions.map(option => (
+              <RideOptionCard 
+                key={option.id} 
+                option={option} 
+                isSelected={selectedRideOption?.id === option.id} 
+                onSelect={handleSelectRideOption} 
+              />
+            ))}
           </div>
           
           <div className="mb-6">
@@ -130,21 +161,53 @@ const Index: React.FC = () => {
             </div>
           </div>
           
-          <Button onClick={handleOrderNow} disabled={!selectedRideOption} className="w-full bg-black text-white hover:bg-gray-800 text-xl py-[30px] rounded-2xl my-[10px]">
+          <Button 
+            onClick={handleOrderNow} 
+            disabled={!selectedRideOption} 
+            className="w-full bg-black text-white hover:bg-gray-800 text-xl py-[30px] rounded-2xl my-[10px]"
+          >
             Order now
           </Button>
-        </div> : <div className="bg-white rounded-t-3xl -mt-6 relative z-10 p-6 py-[24px] my-[50px]">
+        </div>
+      ) : (
+        <div className="bg-white rounded-t-3xl -mt-6 relative z-10 p-6 py-[24px] my-[50px]">
           <div className="mb-6">
-            <LocationInput label="Pickup" value={pickupValue} onChange={handlePickupChange} placeholder="Choose pickup location" />
-            <LocationInput label="Dropoff" value={dropoffValue} onChange={handleDropoffChange} placeholder="Choose drop location" />
+            <LocationSearch
+              label="Pickup"
+              value={pickupLocation?.name || ''}
+              onChange={handlePickupChange}
+              onSelect={handlePickupSelect}
+              placeholder="Choose pickup location"
+            />
+            <LocationSearch
+              label="Dropoff"
+              value={dropoffLocation?.name || ''}
+              onChange={handleDropoffChange}
+              onSelect={handleDropoffSelect}
+              placeholder="Choose drop location"
+            />
           </div>
           
-          <Button className="w-full bg-black text-white hover:bg-gray-800 py-6 text-xl rounded-xl" onClick={handleFindRides} disabled={!pickupLocation || !dropoffLocation}>
-            Find rides
+          <Button 
+            className="w-full bg-black text-white hover:bg-gray-800 py-6 text-xl rounded-xl" 
+            onClick={handleFindRides} 
+            disabled={!pickupLocation || !dropoffLocation || isSearchingRides}
+          >
+            {isSearchingRides ? (
+              <>
+                <Loader2 className="animate-spin mr-2" />
+                Finding rides...
+              </>
+            ) : (
+              'Find rides'
+            )}
           </Button>
-        </div>}
+        </div>
+      )}
       
       <BottomNavigation />
-    </div>;
+    </div>
+  );
 };
+
 export default Index;

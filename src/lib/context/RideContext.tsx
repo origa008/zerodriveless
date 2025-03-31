@@ -1,6 +1,7 @@
 
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Ride, Location, RideOption, Driver } from '../types';
+import { calculateDistance } from '../utils/mapsApi';
 
 type RideContextType = {
   currentRide: Ride | null;
@@ -23,6 +24,9 @@ type RideContextType = {
   setPanelOpen: (isOpen: boolean) => void;
   isDriverMode: boolean;
   setDriverMode: (isDriver: boolean) => void;
+  isSearchingRides: boolean;
+  estimatedDistance: number | null;
+  estimatedDuration: number | null;
 };
 
 const defaultRideOptions: RideOption[] = [
@@ -66,9 +70,44 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [timerInterval, setTimerInterval] = useState<NodeJS.Timeout | null>(null);
   const [isPanelOpen, setPanelOpen] = useState<boolean>(false);
   const [isDriverMode, setDriverMode] = useState<boolean>(false);
+  const [isSearchingRides, setIsSearchingRides] = useState<boolean>(false);
+  const [estimatedDistance, setEstimatedDistance] = useState<number | null>(null);
+  const [estimatedDuration, setEstimatedDuration] = useState<number | null>(null);
+  const [availableRideOptionsWithPricing, setAvailableRideOptionsWithPricing] = useState<RideOption[]>(defaultRideOptions);
 
   // For demo purposes, we'll use a static list of ride options
-  const availableRideOptions = defaultRideOptions;
+  const availableRideOptions = availableRideOptionsWithPricing;
+
+  // Calculate distance and duration when both pickup and dropoff locations have coordinates
+  useEffect(() => {
+    const calculateDistanceAndDuration = async () => {
+      if (
+        pickupLocation?.coordinates && 
+        dropoffLocation?.coordinates
+      ) {
+        const result = await calculateDistance(
+          pickupLocation.coordinates,
+          dropoffLocation.coordinates
+        );
+        
+        if (result) {
+          setEstimatedDistance(parseFloat(result.distance.toFixed(1)));
+          setEstimatedDuration(result.duration);
+          
+          // Update ride options with calculated prices based on distance
+          const updatedOptions = defaultRideOptions.map(option => ({
+            ...option,
+            price: Math.round(option.price * (result.distance || 1)),
+            duration: result.duration
+          }));
+          
+          setAvailableRideOptionsWithPricing(updatedOptions);
+        }
+      }
+    };
+
+    calculateDistanceAndDuration();
+  }, [pickupLocation?.coordinates, dropoffLocation?.coordinates]);
 
   React.useEffect(() => {
     if (isRideTimerActive && currentRide?.status === 'in_progress') {
@@ -87,13 +126,19 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [isRideTimerActive, rideTimer, currentRide?.status]);
 
-  const findRides = () => {
+  const findRides = async () => {
     if (!pickupLocation || !dropoffLocation) {
       console.error('Pickup and dropoff locations are required');
       return;
     }
     
-    setPanelOpen(true);
+    setIsSearchingRides(true);
+    
+    // Simulate searching for rides
+    setTimeout(() => {
+      setIsSearchingRides(false);
+      setPanelOpen(true);
+    }, 1500);
   };
 
   const confirmRide = () => {
@@ -111,8 +156,8 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
       status: 'confirmed',
       price: selectedRideOption.price,
       currency: selectedRideOption.currency,
-      distance: 4.8,
-      duration: 15
+      distance: estimatedDistance || 4.8,
+      duration: estimatedDuration || 15
     };
 
     setCurrentRide(newRide);
@@ -176,7 +221,10 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isPanelOpen,
       setPanelOpen,
       isDriverMode,
-      setDriverMode
+      setDriverMode,
+      isSearchingRides,
+      estimatedDistance,
+      estimatedDuration
     }}>
       {children}
     </RideContext.Provider>

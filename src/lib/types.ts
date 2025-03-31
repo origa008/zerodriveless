@@ -11,7 +11,8 @@ export type User = {
 export type Location = {
   name: string;
   address: string;
-  coordinates?: [number, number];
+  placeId?: string;
+  coordinates?: [number, number]; // [longitude, latitude]
 };
 
 export type RideOption = {

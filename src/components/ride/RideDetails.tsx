@@ -1,12 +1,17 @@
+
 import React from 'react';
 import { useRide } from '@/lib/context/RideContext';
 import { MapPin, MessageCircle } from 'lucide-react';
+
 const RideDetails: React.FC = () => {
   const {
     currentRide
   } = useRide();
+  
   if (!currentRide) return null;
-  return <div className="rounded-t-3xl shadow-lg p-6 my-0 bg-white py-[10px]">
+  
+  return (
+    <div className="rounded-t-3xl shadow-lg p-6 my-0 bg-white py-[10px]">
       <div className="grid grid-cols-3 border-b border-gray-200 py-4">
         <div className="text-center">
           <p className="text-gray-500 text-lg">Distance</p>
@@ -40,6 +45,30 @@ const RideDetails: React.FC = () => {
           <MessageCircle size={24} />
         </div>
       </div>
-    </div>;
+      
+      {/* Show pickup and dropoff locations */}
+      <div className="mt-4 space-y-3">
+        <div className="flex items-start">
+          <div className="min-w-[40px] flex justify-center">
+            <div className="w-3 h-3 rounded-full bg-green-500 mt-1.5"></div>
+          </div>
+          <div>
+            <p className="font-medium">Pickup</p>
+            <p className="text-gray-500">{currentRide.pickup.address}</p>
+          </div>
+        </div>
+        <div className="flex items-start">
+          <div className="min-w-[40px] flex justify-center">
+            <div className="w-3 h-3 rounded-full bg-red-500 mt-1.5"></div>
+          </div>
+          <div>
+            <p className="font-medium">Dropoff</p>
+            <p className="text-gray-500">{currentRide.dropoff.address}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 };
+
 export default RideDetails;
