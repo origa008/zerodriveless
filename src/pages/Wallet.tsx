@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import BottomNavigation from '@/components/layout/BottomNavigation';
@@ -6,30 +5,24 @@ import { Button } from '@/components/ui/button';
 import { CreditCard, ArrowLeft, Plus, Wallet as WalletIcon } from 'lucide-react';
 import WithdrawForm, { WithdrawFormData } from '@/components/wallet/WithdrawForm';
 import { useToast } from '@/hooks/use-toast';
-
 const Wallet: React.FC = () => {
   const navigate = useNavigate();
-  const { toast } = useToast();
+  const {
+    toast
+  } = useToast();
   const [showWithdrawForm, setShowWithdrawForm] = useState(false);
-
   const handleWithdraw = (data: WithdrawFormData) => {
     console.log('Withdraw request:', data);
     setShowWithdrawForm(false);
-    
     toast({
       title: "Withdrawal Request Submitted",
       description: `RS ${data.amount} will be transferred to your account within 24-48 hours.`,
-      duration: 5000,
+      duration: 5000
     });
   };
-
-  return (
-    <div className="min-h-screen bg-white pb-20">
+  return <div className="min-h-screen bg-white pb-20">
       <div className="bg-black text-white p-6">
-        <button 
-          onClick={() => navigate('/')}
-          className="mb-4 flex items-center text-white"
-        >
+        <button onClick={() => navigate('/')} className="mb-4 flex items-center text-white">
           <ArrowLeft size={20} className="mr-2" />
           Back
         </button>
@@ -38,17 +31,13 @@ const Wallet: React.FC = () => {
         
         <div className="bg-black text-white p-0 rounded-2xl mb-6 py-[34px] px-[0]">
           <p className="text-gray-300 mb-1">Available Balance</p>
-          <h2 className="text-3xl font-bold mb-4">RS 1,250</h2>
+          <h2 className="mb-4 text-5xl font-bold">RS 1,250</h2>
           <div className="flex space-x-3">
             <Button className="bg-white text-black hover:bg-gray-100 flex-1">
               <Plus size={18} className="mr-2" />
               Add Money
             </Button>
-            <Button 
-              variant="outline" 
-              className="text-white border-white hover:bg-gray-800 flex-1"
-              onClick={() => setShowWithdrawForm(true)}
-            >
+            <Button variant="outline" onClick={() => setShowWithdrawForm(true)} className="border-white flex-1 text-black bg-white">
               <WalletIcon size={18} className="mr-2" />
               Withdraw
             </Button>
@@ -102,16 +91,9 @@ const Wallet: React.FC = () => {
         </div>
       </div>
       
-      {showWithdrawForm && (
-        <WithdrawForm 
-          onClose={() => setShowWithdrawForm(false)} 
-          onSubmit={handleWithdraw}
-        />
-      )}
+      {showWithdrawForm && <WithdrawForm onClose={() => setShowWithdrawForm(false)} onSubmit={handleWithdraw} />}
       
       <BottomNavigation />
-    </div>
-  );
+    </div>;
 };
-
 export default Wallet;
