@@ -1,14 +1,16 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { User, Mail, Phone, MapPin, Shield, ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import BottomNavigation from '@/components/layout/BottomNavigation';
+import { useToast } from '@/hooks/use-toast';
 
 const Profile: React.FC = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [driverMode, setDriverMode] = useState(false);
   
@@ -16,8 +18,19 @@ const Profile: React.FC = () => {
     name: user?.name || '',
     email: user?.email || '',
     phone: user?.phone || '',
-    address: 'Lahore, Pakistan',
+    address: user?.address || 'Lahore, Pakistan',
   });
+
+  // Check for phone number on component load
+  useEffect(() => {
+    if (user && !user.phone) {
+      toast({
+        title: "Profile incomplete",
+        description: "Please update your profile with your phone number and address",
+        duration: 5000
+      });
+    }
+  }, [user, toast]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -27,10 +40,42 @@ const Profile: React.FC = () => {
     });
   };
 
+  const validatePhoneNumber = (phone: string) => {
+    return phone.length === 11 && /^\d+$/.test(phone);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!validatePhoneNumber(formData.phone)) {
+      toast({
+        title: "Invalid phone number",
+        description: "Please enter a valid 11-digit phone number",
+        variant: "destructive",
+        duration: 3000
+      });
+      return;
+    }
+    
+    if (!formData.address.trim()) {
+      toast({
+        title: "Address required",
+        description: "Please enter your home address",
+        variant: "destructive",
+        duration: 3000
+      });
+      return;
+    }
+    
     // In a real app, you would update the user data here
     setIsEditing(false);
+    
+    toast({
+      title: "Profile updated",
+      description: "Your profile has been successfully updated",
+      duration: 3000
+    });
+    
     // Just for demo purposes, we'll console log the updated data
     console.log('Updated profile:', formData);
   };
@@ -99,7 +144,7 @@ const Profile: React.FC = () => {
               </div>
               
               <div>
-                <label className="block text-sm font-medium mb-1">Phone Number</label>
+                <label className="block text-sm font-medium mb-1">Phone Number *</label>
                 <div className="flex items-center border border-gray-300 rounded-lg px-3 py-2">
                   <Phone size={18} className="text-gray-500 mr-2" />
                   <input
@@ -107,14 +152,17 @@ const Profile: React.FC = () => {
                     name="phone"
                     value={formData.phone}
                     onChange={handleChange}
-                    placeholder="+92 300 1234567"
+                    placeholder="e.g., 03001234567"
+                    maxLength={11}
                     className="flex-1 outline-none"
+                    required
                   />
                 </div>
+                <p className="text-xs text-gray-500 mt-1">Enter your 11-digit number without dashes or spaces</p>
               </div>
               
               <div>
-                <label className="block text-sm font-medium mb-1">Address</label>
+                <label className="block text-sm font-medium mb-1">Home Address *</label>
                 <div className="flex items-center border border-gray-300 rounded-lg px-3 py-2">
                   <MapPin size={18} className="text-gray-500 mr-2" />
                   <input
@@ -123,6 +171,7 @@ const Profile: React.FC = () => {
                     value={formData.address}
                     onChange={handleChange}
                     className="flex-1 outline-none"
+                    required
                   />
                 </div>
               </div>
@@ -168,14 +217,18 @@ const Profile: React.FC = () => {
                 <Phone size={18} className="text-gray-500 mr-3" />
                 <div>
                   <p className="text-sm text-gray-500">Phone Number</p>
-                  <p>{formData.phone || 'Not provided'}</p>
+                  {formData.phone ? (
+                    <p>{formData.phone}</p>
+                  ) : (
+                    <p className="text-red-500">Not provided (Required)</p>
+                  )}
                 </div>
               </div>
               
               <div className="flex items-center border border-gray-100 rounded-lg p-3">
                 <MapPin size={18} className="text-gray-500 mr-3" />
                 <div>
-                  <p className="text-sm text-gray-500">Address</p>
+                  <p className="text-sm text-gray-500">Home Address</p>
                   <p>{formData.address}</p>
                 </div>
               </div>

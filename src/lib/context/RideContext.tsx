@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Ride, Location, RideOption, Driver } from '../types';
+import { Ride, Location, RideOption, Driver, PaymentMethod } from '../types';
 import { calculateDistance } from '../utils/mapsApi';
 import { useToast } from '@/hooks/use-toast';
 
@@ -15,7 +15,7 @@ type RideContextType = {
   selectedRideOption: RideOption | null;
   setSelectedRideOption: (option: RideOption | null) => void;
   findRides: () => void;
-  confirmRide: () => void;
+  confirmRide: (paymentMethod?: PaymentMethod) => void;
   startRide: () => void;
   completeRide: () => void;
   cancelRide: () => void;
@@ -51,7 +51,7 @@ const defaultRideOptions: RideOption[] = [
   {
     id: '1',
     name: 'Bike',
-    image: '/lovable-uploads/9d241d1a-9ada-443f-bd07-bd8bf87b4509.png',
+    image: '/lovable-uploads/cfd3fd57-c24d-402a-9e79-91bdb781be21.png',
     price: 120,
     currency: 'RS',
     duration: 3,
@@ -60,7 +60,7 @@ const defaultRideOptions: RideOption[] = [
   {
     id: '2',
     name: 'Auto',
-    image: '/lovable-uploads/6469b465-e0ea-438a-b000-170e5626ef39.png',
+    image: '/lovable-uploads/28c00f11-f954-45d1-94a5-4c5604aa633c.png',
     price: 210,
     currency: 'RS',
     duration: 3,
@@ -74,6 +74,13 @@ const defaultDriver: Driver = {
   rating: 4.8,
   licensePlate: 'ABC-123',
   avatar: '/lovable-uploads/498e0bf1-4c8a-4cad-8ee2-6f43fdccc511.png'
+};
+
+// Default location for Lahore, Pakistan
+const defaultLocation: Location = {
+  name: 'Lahore, Pakistan',
+  address: 'Lahore, Punjab, Pakistan',
+  coordinates: [74.3587, 31.5204] // [longitude, latitude]
 };
 
 const RideContext = createContext<RideContextType | undefined>(undefined);
@@ -103,6 +110,13 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [pendingRideRequests, setPendingRideRequests] = useState<Ride[]>([]);
 
   const availableRideOptions = availableRideOptionsWithPricing;
+
+  // Initialize with default location for Lahore
+  useEffect(() => {
+    if (!pickupLocation) {
+      setPickupLocation(defaultLocation);
+    }
+  }, []);
 
   // Update wallet balance
   const updateWalletBalance = (amount: number) => {
@@ -285,7 +299,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, 1500);
   };
 
-  const confirmRide = () => {
+  const confirmRide = (paymentMethod: PaymentMethod = 'cash') => {
     if (!pickupLocation || !dropoffLocation || !selectedRideOption) {
       console.error('Pickup, dropoff, and ride option are required');
       return;
@@ -307,7 +321,8 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
       price: finalPrice,
       currency: selectedRideOption.currency,
       distance: estimatedDistance || 4.8,
-      duration: estimatedDuration || 15
+      duration: estimatedDuration || 15,
+      paymentMethod: paymentMethod
     };
 
     // Add ride to pending ride requests for drivers to see
@@ -356,21 +371,27 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Add to ride history
     addToHistory(updatedRide);
 
-    // Update wallet balance
+    // Update wallet balance only if payment method is wallet
     if (isDriverMode) {
-      // Driver earns the fare
+      // Driver earns the fare regardless of payment method
       updateWalletBalance(updatedRide.price);
       toast({
         title: "Ride completed",
         description: `You earned RS ${updatedRide.price} for this ride.`,
         duration: 3000
       });
-    } else {
-      // Passenger pays the fare
+    } else if (updatedRide.paymentMethod === 'wallet') {
+      // Passenger pays the fare only if payment method is wallet
       updateWalletBalance(-updatedRide.price);
       toast({
         title: "Ride completed",
         description: `RS ${updatedRide.price} has been deducted from your wallet.`,
+        duration: 3000
+      });
+    } else {
+      toast({
+        title: "Ride completed",
+        description: `Please pay RS ${updatedRide.price} in cash to your driver.`,
         duration: 3000
       });
     }

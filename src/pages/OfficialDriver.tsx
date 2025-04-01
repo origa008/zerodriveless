@@ -1,12 +1,32 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Check, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Check, AlertCircle, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import BottomNavigation from '@/components/layout/BottomNavigation';
+import DriverRegistration from '@/components/driver/DriverRegistration';
+import { useToast } from '@/hooks/use-toast';
+import { DriverDocument } from '@/lib/types';
+import { useAuth } from '@/lib/context/AuthContext';
 
 const OfficialDriver: React.FC = () => {
   const navigate = useNavigate();
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const [showRegistrationForm, setShowRegistrationForm] = useState(false);
+  
+  const handleSubmitDocuments = (data: DriverDocument) => {
+    console.log('Driver registration data:', data);
+    
+    // In a real app, this would be sent to the backend
+    toast({
+      title: "Application submitted!",
+      description: "We'll review your documents and get back to you within 3-5 business days.",
+      duration: 5000
+    });
+    
+    setShowRegistrationForm(false);
+  };
 
   return (
     <div className="min-h-screen bg-white pb-20">
@@ -54,8 +74,12 @@ const OfficialDriver: React.FC = () => {
             </div>
           </div>
           
-          <Button className="w-full bg-black text-white">
-            Apply Now
+          <Button 
+            className="w-full bg-black text-white"
+            onClick={() => setShowRegistrationForm(true)}
+          >
+            <FileText size={18} className="mr-2" />
+            Submit Documents
           </Button>
         </div>
         
@@ -106,6 +130,36 @@ const OfficialDriver: React.FC = () => {
                 </li>
               </ul>
             </div>
+            
+            <div className="border border-gray-200 rounded-lg p-4">
+              <h3 className="font-medium mb-2">Required Documents</h3>
+              <ul className="space-y-2 text-gray-600 text-sm">
+                <li className="flex items-start">
+                  <span className="mr-2 mt-0.5">•</span>
+                  <span>CNIC (front and back)</span>
+                </li>
+                <li className="flex items-start">
+                  <span className="mr-2 mt-0.5">•</span>
+                  <span>Driving license (front and back)</span>
+                </li>
+                <li className="flex items-start">
+                  <span className="mr-2 mt-0.5">•</span>
+                  <span>Vehicle registration certificate</span>
+                </li>
+                <li className="flex items-start">
+                  <span className="mr-2 mt-0.5">•</span>
+                  <span>Vehicle photos (front, back, sides)</span>
+                </li>
+                <li className="flex items-start">
+                  <span className="mr-2 mt-0.5">•</span>
+                  <span>Selfie photo holding CNIC</span>
+                </li>
+                <li className="flex items-start">
+                  <span className="mr-2 mt-0.5">•</span>
+                  <span>Clear profile photo for your driver account</span>
+                </li>
+              </ul>
+            </div>
           </div>
         </div>
         
@@ -117,6 +171,13 @@ const OfficialDriver: React.FC = () => {
           </p>
         </div>
       </div>
+      
+      {showRegistrationForm && (
+        <DriverRegistration 
+          onClose={() => setShowRegistrationForm(false)}
+          onSubmit={handleSubmitDocuments}
+        />
+      )}
       
       <BottomNavigation />
     </div>

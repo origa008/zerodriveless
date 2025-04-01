@@ -3,18 +3,23 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import BottomNavigation from '@/components/layout/BottomNavigation';
 import { Button } from '@/components/ui/button';
-import { CreditCard, ArrowLeft, Plus, Wallet as WalletIcon } from 'lucide-react';
+import { CreditCard, ArrowLeft, Plus, Wallet as WalletIcon, Gift } from 'lucide-react';
 import WithdrawForm, { WithdrawFormData } from '@/components/wallet/WithdrawForm';
 import { useToast } from '@/hooks/use-toast';
 import { useRide } from '@/lib/context/RideContext';
+import { useAuth } from '@/lib/context/AuthContext';
 
 const Wallet: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { walletBalance, updateWalletBalance, rideHistory } = useRide();
+  const { user } = useAuth();
   const [showWithdrawForm, setShowWithdrawForm] = useState(false);
   const [showAddMoneyForm, setShowAddMoneyForm] = useState(false);
   const [addAmount, setAddAmount] = useState('');
+
+  // Referral earnings (in a real app, this would come from an API)
+  const referralEarnings = user?.referralEarnings || 50;
 
   const handleWithdraw = (data: WithdrawFormData) => {
     if (Number(data.amount) > walletBalance) {
@@ -58,23 +63,25 @@ const Wallet: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-white pb-20">
-      <div className="bg-black text-white p-6">
+      <div className="bg-gradient-to-r from-black to-gray-800 text-white p-6 pb-12">
         <button onClick={() => navigate('/')} className="mb-4 flex items-center text-white">
           <ArrowLeft size={20} className="mr-2" />
           Back
         </button>
         
-        <h1 className="text-3xl font-bold mb-6">Wallet</h1>
+        <h1 className="text-3xl font-bold mb-8">Wallet</h1>
         
-        <div className="bg-black text-white p-0 rounded-2xl mb-6 py-[34px] px-[0]">
-          <p className="text-gray-300 mb-1">Available Balance</p>
-          <h2 className="mb-4 text-5xl font-bold">RS {walletBalance.toFixed(0)}</h2>
+        <div className="bg-white text-black p-8 rounded-2xl shadow-lg relative">
+          <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 bg-black text-white px-4 py-2 rounded-full text-sm font-medium">
+            Available Balance
+          </div>
+          <h2 className="mt-4 mb-4 text-5xl font-bold text-center">RS {walletBalance.toFixed(0)}</h2>
           <div className="flex space-x-3">
-            <Button className="bg-white text-black hover:bg-gray-100 flex-1" onClick={() => setShowAddMoneyForm(true)}>
+            <Button className="bg-black text-white hover:bg-gray-800 flex-1 py-6" onClick={() => setShowAddMoneyForm(true)}>
               <Plus size={18} className="mr-2" />
               Add Money
             </Button>
-            <Button variant="outline" onClick={() => setShowWithdrawForm(true)} className="border-white flex-1 text-black bg-white">
+            <Button variant="outline" onClick={() => setShowWithdrawForm(true)} className="border-gray-300 flex-1 py-6">
               <WalletIcon size={18} className="mr-2" />
               Withdraw
             </Button>
@@ -82,8 +89,30 @@ const Wallet: React.FC = () => {
         </div>
       </div>
       
-      <div className="p-6">
-        <h2 className="mb-4 text-4xl font-normal">Spendings</h2>
+      <div className="p-6 -mt-6">
+        {referralEarnings > 0 && (
+          <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-center justify-between mb-6">
+            <div className="flex items-center">
+              <div className="bg-green-100 p-2 rounded-full mr-3">
+                <Gift className="text-green-600" size={20} />
+              </div>
+              <div>
+                <p className="font-medium">Referral Earnings</p>
+                <p className="text-green-600 font-medium">RS {referralEarnings}</p>
+              </div>
+            </div>
+            <Button 
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate('/community')}
+              className="text-green-600"
+            >
+              Invite More
+            </Button>
+          </div>
+        )}
+        
+        <h2 className="mb-4 text-2xl font-bold">Transaction History</h2>
         
         <div className="space-y-4 bg-transparent my-[20px]">
           {rideHistory.length > 0 ? (

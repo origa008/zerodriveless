@@ -6,6 +6,10 @@ export type User = {
   phone?: string;
   avatar?: string;
   isLoggedIn: boolean;
+  address?: string;
+  isVerifiedDriver?: boolean;
+  referralCode?: string;
+  referralEarnings?: number;
 };
 
 export type Location = {
@@ -33,6 +37,8 @@ export type Driver = {
   avatar: string;
 };
 
+export type PaymentMethod = 'cash' | 'wallet';
+
 export type Ride = {
   id: string;
   pickup: Location;
@@ -46,4 +52,40 @@ export type Ride = {
   duration: number;
   startTime?: Date;
   endTime?: Date;
+  paymentMethod?: PaymentMethod;
+};
+
+export type DriverDocument = {
+  fullName: string;
+  phoneNumber: string;
+  cnicNumber: string;
+  cnicFrontPhoto?: File;
+  cnicBackPhoto?: File;
+  driverLicenseFrontPhoto?: File;
+  driverLicenseBackPhoto?: File;
+  vehicleRegistrationNumber: string;
+  vehicleRegistrationPhoto?: File;
+  vehiclePhoto?: File;
+  selfieWithCNIC?: File;
+  selfiePhoto?: File;
+};
+
+export type Post = {
+  id: string;
+  author: {
+    name: string;
+    avatar?: string;
+    time: string;
+  };
+  content: string;
+  likes?: number;
+  comments?: number;
+};
+
+export type ReferralInfo = {
+  code: string;
+  totalInvited: number;
+  pending: number;
+  completed: number;
+  earned: number;
 };

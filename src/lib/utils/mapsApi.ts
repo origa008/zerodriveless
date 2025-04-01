@@ -3,6 +3,9 @@ import { Location } from '../types';
 
 const MAPS_API_BASE_URL = 'https://maps.gomaps.pro';
 
+// Default location coordinates for Lahore, Pakistan
+const DEFAULT_COORDINATES: [number, number] = [74.3587, 31.5204]; // [longitude, latitude]
+
 // Function to search for places based on query
 export const searchPlaces = async (query: string): Promise<Location[]> => {
   try {
@@ -89,4 +92,13 @@ export const calculateDistance = async (
     console.error('Error calculating distance:', error);
     return null;
   }
+};
+
+// Function to get default map location (Lahore, Pakistan)
+export const getDefaultLocation = (): Location => {
+  return {
+    name: 'Lahore, Pakistan',
+    address: 'Lahore, Punjab, Pakistan',
+    coordinates: DEFAULT_COORDINATES
+  };
 };
