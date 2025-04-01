@@ -48,7 +48,7 @@ export const mapSupabaseProfileToUser = (
     name: profile.name,
     email: profile.email,
     phone: profile.phone,
-    avatar: profile.avatar || '/lovable-uploads/default_avatar.png',
+    avatar: profile.avatar || '/lovable-uploads/avatar.png',
     isLoggedIn: true,
     address: profile.address,
     isVerifiedDriver: profile.is_verified_driver,

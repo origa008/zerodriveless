@@ -9,7 +9,7 @@ interface ProfileAvatarProps {
   className?: string;
 }
 
-const DEFAULT_AVATAR = '/lovable-uploads/default_avatar.png';
+const DEFAULT_AVATAR = '/lovable-uploads/avatar.png';
 
 const ProfileAvatar: React.FC<ProfileAvatarProps> = ({ 
   user, 

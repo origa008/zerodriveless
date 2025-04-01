@@ -84,7 +84,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (supabaseUser) {
           const mappedUser = mapSupabaseProfileToUser(data as ProfileFromSupabase, supabaseUser);
           if (!mappedUser.avatar) {
-            mappedUser.avatar = '/lovable-uploads/default_avatar.png';
+            mappedUser.avatar = '/lovable-uploads/avatar.png';
           }
           setUser(mappedUser);
         }
@@ -179,12 +179,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { error: signUpError, data } = await supabase.auth.signUp({
         email,
         password,
-        options: {
-          data: {
-            name,
-            referral_code: userReferralCode
-          }
-        }
       });
       
       if (signUpError) throw signUpError;
@@ -196,7 +190,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           name,
           email,
           referral_code: userReferralCode,
-          avatar: '/lovable-uploads/default_avatar.png'
+          avatar: '/lovable-uploads/avatar.png'
         };
         
         const { error: profileError } = await supabase
@@ -209,7 +203,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         
         // Step 3: Process referral code if provided
-        if (referralCode) {
+        if (referralCode && referralCode.trim() !== '') {
           try {
             // Find the referrer using the provided referral code
             const { data: referrerData, error: referrerError } = await supabase
@@ -246,6 +240,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
           } catch (error) {
             console.error('Error processing referral:', error);
+            // Don't fail signup if referral processing fails
           }
         }
         
