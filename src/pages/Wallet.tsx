@@ -3,22 +3,18 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import BottomNavigation from '@/components/layout/BottomNavigation';
 import { Button } from '@/components/ui/button';
-import { CreditCard, ArrowLeft, Plus, Wallet as WalletIcon, Gift, ArrowDown, ArrowUp } from 'lucide-react';
+import { CreditCard, ArrowLeft, Plus, Wallet as WalletIcon } from 'lucide-react';
 import WithdrawForm, { WithdrawFormData } from '@/components/wallet/WithdrawForm';
 import { useToast } from '@/hooks/use-toast';
 import { useRide } from '@/lib/context/RideContext';
-import { useAuth } from '@/lib/context/AuthContext';
 
 const Wallet: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { walletBalance, updateWalletBalance, rideHistory } = useRide();
-  const { referralEarnings } = useAuth();
   const [showWithdrawForm, setShowWithdrawForm] = useState(false);
   const [showAddMoneyForm, setShowAddMoneyForm] = useState(false);
   const [addAmount, setAddAmount] = useState('');
-  
-  const [activeTab, setActiveTab] = useState<'all' | 'rides' | 'referrals'>('all');
 
   const handleWithdraw = (data: WithdrawFormData) => {
     if (Number(data.amount) > walletBalance) {
@@ -60,51 +56,26 @@ const Wallet: React.FC = () => {
     });
   };
 
-  const filteredTransactions = () => {
-    switch (activeTab) {
-      case 'rides':
-        return rideHistory;
-      case 'referrals':
-        // In a real app, we'd have actual referral transactions
-        return [];
-      default:
-        return rideHistory; // All transactions
-    }
-  };
-
   return (
     <div className="min-h-screen bg-white pb-20">
-      <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white p-6 pt-10 rounded-b-3xl">
+      <div className="bg-black text-white p-6">
         <button onClick={() => navigate('/')} className="mb-4 flex items-center text-white">
           <ArrowLeft size={20} className="mr-2" />
           Back
         </button>
         
-        <div className="flex justify-between items-center mb-3">
-          <h1 className="text-2xl font-bold">Wallet</h1>
-          <WalletIcon size={28} className="text-white/70" />
-        </div>
+        <h1 className="text-3xl font-bold mb-6">Wallet</h1>
         
-        <div className="bg-white/10 rounded-2xl p-6 mb-6">
-          <p className="text-white/80 mb-1">Available Balance</p>
-          <h2 className="mb-2 text-4xl font-bold">RS {walletBalance.toFixed(0)}</h2>
-          
-          {referralEarnings > 0 && (
-            <div className="mb-4 bg-white/10 rounded-lg p-2 inline-block">
-              <div className="flex items-center">
-                <Gift size={16} className="mr-1 text-white/70" />
-                <span className="text-sm">Referral earnings: RS {referralEarnings}</span>
-              </div>
-            </div>
-          )}
-          
-          <div className="flex space-x-3 mt-4">
-            <Button className="bg-white text-purple-600 hover:bg-white/90 flex-1" onClick={() => setShowAddMoneyForm(true)}>
+        <div className="bg-black text-white p-0 rounded-2xl mb-6 py-[34px] px-[0]">
+          <p className="text-gray-300 mb-1">Available Balance</p>
+          <h2 className="mb-4 text-5xl font-bold">RS {walletBalance.toFixed(0)}</h2>
+          <div className="flex space-x-3">
+            <Button className="bg-white text-black hover:bg-gray-100 flex-1" onClick={() => setShowAddMoneyForm(true)}>
               <Plus size={18} className="mr-2" />
               Add Money
             </Button>
-            <Button variant="outline" onClick={() => setShowWithdrawForm(true)} className="border-white text-white hover:bg-white/10 flex-1">
-              <ArrowDown size={18} className="mr-2" />
+            <Button variant="outline" onClick={() => setShowWithdrawForm(true)} className="border-white flex-1 text-black bg-white">
+              <WalletIcon size={18} className="mr-2" />
               Withdraw
             </Button>
           </div>
@@ -112,32 +83,11 @@ const Wallet: React.FC = () => {
       </div>
       
       <div className="p-6">
-        <div className="flex rounded-lg bg-gray-100 p-1 mb-4">
-          <button 
-            className={`flex-1 py-2 rounded-md text-sm font-medium ${activeTab === 'all' ? 'bg-white shadow' : 'text-gray-500'}`}
-            onClick={() => setActiveTab('all')}
-          >
-            All
-          </button>
-          <button 
-            className={`flex-1 py-2 rounded-md text-sm font-medium ${activeTab === 'rides' ? 'bg-white shadow' : 'text-gray-500'}`}
-            onClick={() => setActiveTab('rides')}
-          >
-            Rides
-          </button>
-          <button 
-            className={`flex-1 py-2 rounded-md text-sm font-medium ${activeTab === 'referrals' ? 'bg-white shadow' : 'text-gray-500'}`}
-            onClick={() => setActiveTab('referrals')}
-          >
-            Referrals
-          </button>
-        </div>
-        
-        <h2 className="mb-4 text-xl font-bold">Transaction History</h2>
+        <h2 className="mb-4 text-4xl font-normal">Spendings</h2>
         
         <div className="space-y-4 bg-transparent my-[20px]">
-          {filteredTransactions().length > 0 ? (
-            filteredTransactions().map((ride, index) => {
+          {rideHistory.length > 0 ? (
+            rideHistory.map((ride, index) => {
               const isDriverEarning = ride.driver?.id === '1'; // If driver ID matches the user's ID
               const amount = isDriverEarning ? ride.price : -ride.price;
               const formattedDate = ride.endTime ? new Date(ride.endTime).toLocaleString('en-US', {
@@ -149,24 +99,15 @@ const Wallet: React.FC = () => {
               }) : 'Unknown date';
 
               return (
-                <div key={ride.id || index} className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 ${amount > 0 ? 'bg-green-100' : 'bg-red-100'}`}>
-                        {amount > 0 ? (
-                          <ArrowDown size={16} className="text-green-600" />
-                        ) : (
-                          <ArrowUp size={16} className="text-red-600" />
-                        )}
-                      </div>
-                      <div>
-                        <h3 className="font-medium">
-                          {isDriverEarning ? 'Drive To ' : 'Ride To '}{ride.dropoff.name}
-                        </h3>
-                        <p className="text-gray-500 text-sm">{formattedDate}</p>
-                      </div>
+                <div key={ride.id || index} className="border-b border-gray-100 pb-4">
+                  <div className="flex justify-between py-[15px]">
+                    <div>
+                      <h3 className="font-medium text-gray-500">
+                        {isDriverEarning ? 'Drive To ' : 'Ride To '}{ride.dropoff.name}
+                      </h3>
+                      <p className="text-gray-500 text-sm">{formattedDate}</p>
                     </div>
-                    <p className={`font-medium ${amount > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                    <p className={`font-medium ${amount > 0 ? 'text-green-600' : ''}`}>
                       {amount > 0 ? '+' : ''}{ride.currency} {Math.abs(amount)}
                     </p>
                   </div>
@@ -174,9 +115,9 @@ const Wallet: React.FC = () => {
               );
             })
           ) : (
-            <div className="text-center py-8 bg-gray-50 rounded-xl">
+            <div className="text-center py-8">
               <p className="text-gray-500">No transaction history yet.</p>
-              <p className="text-sm text-gray-400 mt-2">Your transactions will appear here.</p>
+              <p className="text-sm text-gray-400 mt-2">Your ride and drive transactions will appear here.</p>
             </div>
           )}
         </div>

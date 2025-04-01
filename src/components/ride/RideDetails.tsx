@@ -1,23 +1,23 @@
 
 import React, { useState } from 'react';
 import { useRide } from '@/lib/context/RideContext';
-import { MapPin, Clock, User, Phone, MessageSquare } from 'lucide-react';
+import { useAuth } from '@/lib/context/AuthContext';
+import { User, Phone, MapPin, Clock, Navigation, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 
-const RideDetails = () => {
-  const { currentRide, rideTimer, isDriverMode } = useRide();
+const RideDetails: React.FC = () => {
+  const { currentRide, isDriverMode, rideTimer, walletBalance } = useRide();
+  const { user } = useAuth();
   const { toast } = useToast();
-  const [showContactOptions, setShowContactOptions] = useState(false);
+  const [showContactModal, setShowContactModal] = useState(false);
 
-  if (!currentRide) {
-    return null;
-  }
+  if (!currentRide) return null;
 
   const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
   };
 
   const handleCall = () => {
@@ -26,104 +26,134 @@ const RideDetails = () => {
       description: `Connecting you to the ${isDriverMode ? 'passenger' : 'driver'}`,
       duration: 3000
     });
-    setShowContactOptions(false);
+    setShowContactModal(false);
   };
-
+  
   const handleMessage = () => {
     toast({
       title: "Message sent",
       description: `Your message has been sent to the ${isDriverMode ? 'passenger' : 'driver'}`,
       duration: 3000
     });
-    setShowContactOptions(false);
+    setShowContactModal(false);
   };
 
   return (
-    <div className="bg-white -mt-6 rounded-t-3xl p-6 relative z-10">
-      <div className="flex justify-between items-center mb-4">
-        <div>
-          <h2 className="text-2xl font-bold">
-            {currentRide.status === 'in_progress' ? 'In Ride' : 'Ride Confirmed'}
-          </h2>
-          <p className="text-gray-500">
-            {currentRide.distance} km • ~{currentRide.duration} min
-          </p>
+    <div className="bg-white rounded-t-3xl -mt-6 relative z-10 p-6">
+      <div className="mb-4">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-xl font-bold">
+            {currentRide.status === 'in_progress' ? 'Ride in Progress' : 'Ride Details'}
+          </h3>
+          {currentRide.status === 'in_progress' && (
+            <div className="text-2xl font-bold">{formatTime(rideTimer)}</div>
+          )}
         </div>
-        {currentRide.status === 'in_progress' && (
-          <div className="bg-gray-100 px-3 py-1 rounded-full">
-            <p className="font-medium">{formatTime(rideTimer)}</p>
+        
+        <div className="flex items-center mb-4">
+          <div className="h-10 w-10 rounded-full mr-3 overflow-hidden">
+            {isDriverMode ? (
+              <img 
+                src={user?.avatar || '/lovable-uploads/498e0bf1-4c8a-4cad-8ee2-6f43fdccc511.png'} 
+                alt="Passenger" 
+                className="h-full w-full object-cover" 
+              />
+            ) : (
+              <img 
+                src={currentRide.driver?.avatar || '/lovable-uploads/498e0bf1-4c8a-4cad-8ee2-6f43fdccc511.png'} 
+                alt={currentRide.driver?.name || 'Driver'} 
+                className="h-full w-full object-cover" 
+              />
+            )}
           </div>
-        )}
-      </div>
-
-      <div className="flex items-center mb-6">
-        <div className="w-16 h-16 rounded-lg bg-gray-100 mr-4 flex items-center justify-center overflow-hidden">
-          <img 
-            src={currentRide.rideOption.name === 'Bike' 
-              ? '/lovable-uploads/debf7624-f989-4b17-a657-b4eb13735f8b.png' 
-              : '/lovable-uploads/413bd9ac-22fa-4c69-aa6c-991edcf8f3ff.png'} 
-            alt={currentRide.rideOption.name} 
-            className="h-12 object-contain" 
-          />
+          <div>
+            <p className="font-medium">
+              {isDriverMode ? user?.name || 'Passenger' : currentRide.driver?.name || 'Driver'}
+            </p>
+            {!isDriverMode && currentRide.driver?.licensePlate && (
+              <p className="text-gray-500 text-sm">{currentRide.driver.licensePlate}</p>
+            )}
+          </div>
+          <div className="ml-auto">
+            {!isDriverMode && currentRide.driver?.rating && (
+              <div className="bg-gray-100 px-3 py-1 rounded-full flex items-center">
+                <User size={16} className="mr-1" />
+                <span>{currentRide.driver.rating}</span>
+              </div>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="ml-2 h-9 text-blue-500 border-blue-200"
+              onClick={() => setShowContactModal(true)}
+            >
+              Contact
+            </Button>
+          </div>
         </div>
-        <div>
-          <p className="font-medium">{currentRide.rideOption.name}</p>
-          <p className="text-gray-500">{currentRide.rideOption.currency} {currentRide.price}</p>
-          {currentRide.paymentMethod && (
-            <p className="text-xs text-gray-500">Payment: {currentRide.paymentMethod === 'wallet' ? 'Wallet' : 'Cash'}</p>
+
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center">
+            <div className="w-12 h-12 mr-3 flex items-center justify-center">
+              <img 
+                src={currentRide.rideOption.image}
+                alt={currentRide.rideOption.name} 
+                className="h-10 w-10 object-contain" 
+              />
+            </div>
+            <span className="font-medium">{currentRide.rideOption.name}</span>
+          </div>
+          <div className="text-right">
+            <p className="text-sm text-gray-500">Wallet Balance</p>
+            <p className="font-bold">RS {walletBalance.toFixed(0)}</p>
+          </div>
+        </div>
+        
+        <div className="space-y-4 mb-6">
+          <div className="flex">
+            <div className="min-w-[24px] flex justify-center mr-3">
+              <div className="w-3 h-3 rounded-full bg-green-500 mt-1"></div>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Pickup</p>
+              <p className="font-medium">{currentRide.pickup.name}</p>
+            </div>
+          </div>
+          <div className="flex">
+            <div className="min-w-[24px] flex justify-center mr-3">
+              <div className="w-3 h-3 rounded-full bg-red-500 mt-1"></div>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Dropoff</p>
+              <p className="font-medium">{currentRide.dropoff.name}</p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="bg-gray-50 p-4 rounded-xl">
+          <div className="flex justify-between mb-3">
+            <span className="text-gray-600">Fare:</span>
+            <span className="font-bold">{currentRide.price} {currentRide.currency}</span>
+          </div>
+          <div className="flex justify-between mb-3">
+            <span className="text-gray-600">Distance:</span>
+            <span>{currentRide.distance} km</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-600">Est. Duration:</span>
+            <span>{currentRide.duration} min</span>
+          </div>
+          {isDriverMode && (
+            <div className="flex justify-between mt-3 pt-3 border-t border-gray-200">
+              <span className="text-gray-600">Your Earnings:</span>
+              <span className="font-bold text-green-600">~{Math.round(currentRide.price * 0.8)} {currentRide.currency}</span>
+            </div>
           )}
         </div>
       </div>
 
-      <div className="bg-gray-50 p-4 rounded-xl mb-6">
-        <div className="flex mb-3">
-          <MapPin className="text-gray-500 mr-3 mt-1 flex-shrink-0" size={20} />
-          <div>
-            <p className="text-sm text-gray-500">Pickup</p>
-            <p>{currentRide.pickup.name}</p>
-          </div>
-        </div>
-        <div className="flex">
-          <MapPin className="text-gray-500 mr-3 mt-1 flex-shrink-0" size={20} />
-          <div>
-            <p className="text-sm text-gray-500">Dropoff</p>
-            <p>{currentRide.dropoff.name}</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="border border-gray-200 rounded-xl p-4 mb-6">
-        <div className="flex items-center">
-          <div className="w-12 h-12 rounded-full overflow-hidden mr-3">
-            <img
-              src={isDriverMode 
-                ? '/lovable-uploads/498e0bf1-4c8a-4cad-8ee2-6f43fdccc511.png' 
-                : currentRide.driver?.avatar || '/lovable-uploads/498e0bf1-4c8a-4cad-8ee2-6f43fdccc511.png'}
-              alt={isDriverMode ? 'Passenger' : 'Driver'}
-              className="w-full h-full object-cover"
-            />
-          </div>
-          <div className="flex-1">
-            <p className="font-medium">
-              {isDriverMode ? 'Passenger' : `${currentRide.driver?.name || 'Your Driver'}`}
-            </p>
-            {!isDriverMode && currentRide.driver?.rating && (
-              <p className="text-sm text-gray-500">
-                ★ {currentRide.driver.rating} • {currentRide.driver.licensePlate}
-              </p>
-            )}
-          </div>
-          <Button
-            variant="outline"
-            className="border-gray-300"
-            onClick={() => setShowContactOptions(true)}
-          >
-            Contact
-          </Button>
-        </div>
-      </div>
-
-      {showContactOptions && (
+      {/* Contact Modal */}
+      {showContactModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl p-6 w-full max-w-md">
             <h3 className="text-xl font-medium mb-4">
@@ -151,7 +181,7 @@ const RideDetails = () => {
             <Button 
               variant="outline" 
               className="w-full mt-4"
-              onClick={() => setShowContactOptions(false)}
+              onClick={() => setShowContactModal(false)}
             >
               Cancel
             </Button>
