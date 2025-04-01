@@ -40,11 +40,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const { toast } = useToast();
 
   useEffect(() => {
+    // Set up auth state listener first
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, currentSession) => {
         setSession(currentSession);
         
         if (currentSession?.user) {
+          // Use setTimeout to prevent Supabase deadlocks
           setTimeout(() => {
             fetchUserProfile(currentSession.user.id);
           }, 0);
@@ -54,6 +56,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     );
 
+    // Then check for existing session
     supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
       setSession(currentSession);
       
@@ -172,6 +175,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signup = async (name: string, email: string, password: string, referralCode?: string) => {
     setIsLoading(true);
     try {
+      console.log("Signing up user:", { name, email, referralCode });
+      
       // Generate a unique referral code
       const userReferralCode = `zerodrive-${Math.random().toString(36).substring(2, 8)}`;
       
@@ -183,73 +188,88 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       if (signUpError) throw signUpError;
       
-      if (data.user) {
-        // Step 2: Create a profile for the new user
-        const newProfile: ProfileInsert = {
-          id: data.user.id,
-          name,
-          email,
-          referral_code: userReferralCode,
-          avatar: '/lovable-uploads/avatar.png'
-        };
-        
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .insert(newProfile);
-        
-        if (profileError) {
-          console.error('Error creating profile:', profileError);
-          throw profileError;
-        }
-        
-        // Step 3: Process referral code if provided
-        if (referralCode && referralCode.trim() !== '') {
-          try {
-            // Find the referrer using the provided referral code
-            const { data: referrerData, error: referrerError } = await supabase
-              .from('profiles')
-              .select('id')
-              .eq('referral_code', referralCode)
-              .maybeSingle();
-            
-            if (referrerError) {
-              console.error('Error finding referrer:', referrerError);
-            }
-            
-            if (referrerData) {
-              // Create a referral record
-              const referralData: ReferralInsert = {
-                referrer_id: referrerData.id,
-                referred_id: data.user.id,
-                status: 'pending'
-              };
-              
-              const { error: referralError } = await supabase
-                .from('referrals')
-                .insert(referralData);
-              
-              if (referralError) {
-                console.error('Error saving referral:', referralError);
-              } else {
-                toast({
-                  title: "Referral Applied",
-                  description: "Your account has been created with a referral.",
-                  duration: 3000
-                });
-              }
-            }
-          } catch (error) {
-            console.error('Error processing referral:', error);
-            // Don't fail signup if referral processing fails
-          }
-        }
-        
-        toast({
-          title: "Account Created",
-          description: "Your account has been created successfully. Please verify your email if required.",
-          duration: 5000
-        });
+      if (!data.user) {
+        throw new Error("Failed to create user account");
       }
+      
+      console.log("User created successfully:", data.user.id);
+      
+      // Step 2: Create a profile for the new user (don't include metadata because it causes issues)
+      const newProfile: ProfileInsert = {
+        id: data.user.id,
+        name,
+        email,
+        referral_code: userReferralCode,
+        avatar: '/lovable-uploads/avatar.png'
+      };
+      
+      console.log("Creating user profile:", newProfile);
+      
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .insert(newProfile);
+      
+      if (profileError) {
+        console.error('Error creating profile:', profileError);
+        throw profileError;
+      }
+      
+      console.log("Profile created successfully");
+      
+      // Step 3: Process referral code if provided and not empty
+      if (referralCode && referralCode.trim() !== '') {
+        try {
+          console.log("Processing referral code:", referralCode);
+          
+          // Find the referrer using the provided referral code
+          const { data: referrerData, error: referrerError } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('referral_code', referralCode)
+            .maybeSingle();
+          
+          if (referrerError) {
+            console.error('Error finding referrer:', referrerError);
+          }
+          
+          if (referrerData) {
+            console.log("Referrer found:", referrerData.id);
+            
+            // Create a referral record
+            const referralData: ReferralInsert = {
+              referrer_id: referrerData.id,
+              referred_id: data.user.id,
+              status: 'pending'
+            };
+            
+            const { error: referralError } = await supabase
+              .from('referrals')
+              .insert(referralData);
+            
+            if (referralError) {
+              console.error('Error saving referral:', referralError);
+            } else {
+              console.log("Referral record created successfully");
+              toast({
+                title: "Referral Applied",
+                description: "Your account has been created with a referral.",
+                duration: 3000
+              });
+            }
+          } else {
+            console.log("No referrer found with code:", referralCode);
+          }
+        } catch (error) {
+          console.error('Error processing referral:', error);
+          // Don't fail signup if referral processing fails
+        }
+      }
+      
+      toast({
+        title: "Account Created",
+        description: "Your account has been created successfully. Please verify your email if required.",
+        duration: 5000
+      });
     } catch (error: any) {
       console.error('Signup failed:', error);
       toast({

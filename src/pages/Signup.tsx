@@ -24,24 +24,42 @@ const Signup: React.FC = () => {
     
     try {
       // Form validation
+      if (!name.trim()) {
+        setErrorMessage("Name is required");
+        setIsLoading(false);
+        return;
+      }
+      
+      if (!email.trim()) {
+        setErrorMessage("Email is required");
+        setIsLoading(false);
+        return;
+      }
+      
       if (password.length < 6) {
         setErrorMessage("Password must be at least 6 characters long");
+        setIsLoading(false);
         return;
       }
       
       if (!email.includes('@') || !email.includes('.')) {
         setErrorMessage("Please enter a valid email address");
+        setIsLoading(false);
         return;
       }
       
       // Only pass referral code if it's not empty
-      const refCode = referralCode.trim() !== '' ? referralCode : undefined;
+      const refCode = referralCode.trim() !== '' ? referralCode.trim() : undefined;
+      
+      console.log("Submitting signup with:", { name, email, referralCode: refCode });
       
       await signup(name, email, password, refCode);
+      
       toast({
         title: "Signup successful",
         description: "Your account has been created successfully.",
       });
+      
       navigate('/');
     } catch (error: any) {
       console.error('Signup error:', error);
