@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User } from '../types';
 import { useToast } from '@/hooks/use-toast';
@@ -25,7 +24,7 @@ const defaultUser: User = {
   id: '1',
   name: 'John Smith',
   email: 'john@example.com',
-  avatar: '/lovable-uploads/498e0bf1-4c8a-4cad-8ee2-6f43fdccc511.png',
+  avatar: '/lovable-uploads/af7e95e3-de50-49f4-a7bf-34f40ed69687.png',
   isLoggedIn: false,
   referralCode: 'zerodrive-1',
   referralEarnings: 0
@@ -40,13 +39,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const { toast } = useToast();
 
   useEffect(() => {
-    // Set up the auth state listener first
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, currentSession) => {
         setSession(currentSession);
         
         if (currentSession?.user) {
-          // Use setTimeout to avoid potential deadlocks
           setTimeout(() => {
             fetchUserProfile(currentSession.user.id);
           }, 0);
@@ -56,7 +53,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     );
 
-    // Then check for existing session
     supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
       setSession(currentSession);
       
@@ -86,6 +82,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const supabaseUser = session?.user || null;
         if (supabaseUser) {
           const mappedUser = mapSupabaseProfileToUser(data as ProfileFromSupabase, supabaseUser);
+          if (!mappedUser.avatar) {
+            mappedUser.avatar = '/lovable-uploads/af7e95e3-de50-49f4-a7bf-34f40ed69687.png';
+          }
           setUser(mappedUser);
         }
       } else {
@@ -103,7 +102,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(true);
     
     try {
-      // Transform updates to match Supabase schema
       const supabaseUpdates: Partial<ProfileFromSupabase> = {
         name: updates.name,
         email: updates.email,
@@ -114,7 +112,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         referral_code: updates.referralCode
       };
       
-      // Filter out undefined values
       const filteredUpdates = Object.entries(supabaseUpdates)
         .filter(([_, value]) => value !== undefined)
         .reduce((obj, [key, value]) => ({ ...obj, [key]: value }), {});
@@ -174,10 +171,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signup = async (name: string, email: string, password: string, referralCode?: string) => {
     setIsLoading(true);
     try {
-      // Generate unique referral code for new user
       const userReferralCode = `zerodrive-${Math.random().toString(36).substring(2, 8)}`;
       
-      // Sign up the user with Supabase Auth
       const { error: signUpError, data } = await supabase.auth.signUp({
         email,
         password,
@@ -191,14 +186,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       if (signUpError) throw signUpError;
       
-      // Create a profile for the user
       if (data.user) {
-        // Define the profile with all required fields
         const newProfile: ProfileInsert = {
           id: data.user.id,
           name,
           email,
-          referral_code: userReferralCode
+          referral_code: userReferralCode,
+          avatar: '/lovable-uploads/af7e95e3-de50-49f4-a7bf-34f40ed69687.png'
         };
         
         const { error: profileError } = await supabase
@@ -207,23 +201,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         
         if (profileError) throw profileError;
         
-        // Process referral if code was provided
         if (referralCode) {
-          // Define the referral with all required fields
           const referralData: ReferralInsert = {
-            referrer_id: null, // Will be updated after finding the referrer
+            referrer_id: null,
             referred_id: data.user.id,
             status: 'pending'
           };
           
-          const { error: referralError } = await supabase
-            .from('referrals')
-            .insert(referralData);
-          
-          if (referralError) {
-            console.error('Error saving referral:', referralError);
-          } else {
-            // Find referrer by code and update the referral
+          try {
             const { data: referrerData } = await supabase
               .from('profiles')
               .select('id')
@@ -231,23 +216,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               .single();
             
             if (referrerData) {
-              // Update the referral with the correct referrer_id
-              await supabase
-                .from('referrals')
-                .update({ referrer_id: referrerData.id })
-                .eq('referred_id', data.user.id);
+              referralData.referrer_id = referrerData.id;
               
-              toast({
-                title: "Referral Applied",
-                description: "Your account has been created with a referral.",
-                duration: 3000
-              });
+              const { error: referralError } = await supabase
+                .from('referrals')
+                .insert(referralData);
+              
+              if (referralError) {
+                console.error('Error saving referral:', referralError);
+              } else {
+                toast({
+                  title: "Referral Applied",
+                  description: "Your account has been created with a referral.",
+                  duration: 3000
+                });
+              }
             }
+          } catch (error) {
+            console.error('Error processing referral:', error);
           }
         }
       }
       
-      // User will be set by the onAuthStateChange listener
+      toast({
+        title: "Account Created",
+        description: "Your account has been created successfully. Please check your email to verify your account.",
+        duration: 5000
+      });
     } catch (error: any) {
       console.error('Signup failed:', error);
       toast({

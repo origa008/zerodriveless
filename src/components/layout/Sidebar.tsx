@@ -15,6 +15,8 @@ import {
 import { useAuth } from '@/lib/context/AuthContext';
 import { Button } from '@/components/ui/button';
 
+const DEFAULT_AVATAR = '/lovable-uploads/af7e95e3-de50-49f4-a7bf-34f40ed69687.png';
+
 type SidebarItem = {
   icon: React.ElementType;
   label: string;
@@ -73,7 +75,7 @@ const Sidebar: React.FC = () => {
             <div className="flex items-center mb-8">
               <div className="w-12 h-12 rounded-full overflow-hidden mr-4">
                 <img 
-                  src={user.avatar || '/lovable-uploads/498e0bf1-4c8a-4cad-8ee2-6f43fdccc511.png'} 
+                  src={user.avatar || DEFAULT_AVATAR} 
                   alt={user.name} 
                   className="w-full h-full object-cover"
                 />

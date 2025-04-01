@@ -7,8 +7,10 @@ import { useNavigate } from 'react-router-dom';
 import BottomNavigation from '@/components/layout/BottomNavigation';
 import { useToast } from '@/hooks/use-toast';
 
+const DEFAULT_AVATAR = '/lovable-uploads/af7e95e3-de50-49f4-a7bf-34f40ed69687.png';
+
 const Profile: React.FC = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, updateUserProfile } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
@@ -20,6 +22,18 @@ const Profile: React.FC = () => {
     phone: user?.phone || '',
     address: user?.address || 'Lahore, Pakistan',
   });
+
+  // Update form data when user changes
+  useEffect(() => {
+    if (user) {
+      setFormData({
+        name: user.name || '',
+        email: user.email || '',
+        phone: user.phone || '',
+        address: user.address || 'Lahore, Pakistan',
+      });
+    }
+  }, [user]);
 
   // Check for phone number on component load
   useEffect(() => {
@@ -44,7 +58,7 @@ const Profile: React.FC = () => {
     return phone.length === 11 && /^\d+$/.test(phone);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!validatePhoneNumber(formData.phone)) {
@@ -67,17 +81,29 @@ const Profile: React.FC = () => {
       return;
     }
     
-    // In a real app, you would update the user data here
-    setIsEditing(false);
-    
-    toast({
-      title: "Profile updated",
-      description: "Your profile has been successfully updated",
-      duration: 3000
-    });
-    
-    // Just for demo purposes, we'll console log the updated data
-    console.log('Updated profile:', formData);
+    try {
+      await updateUserProfile({
+        name: formData.name,
+        phone: formData.phone,
+        address: formData.address
+      });
+      
+      setIsEditing(false);
+      
+      toast({
+        title: "Profile updated",
+        description: "Your profile has been successfully updated",
+        duration: 3000
+      });
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      toast({
+        title: "Update failed",
+        description: "There was a problem updating your profile",
+        variant: "destructive",
+        duration: 3000
+      });
+    }
   };
 
   if (!user) {
@@ -99,7 +125,7 @@ const Profile: React.FC = () => {
         <div className="flex items-center">
           <div className="w-20 h-20 rounded-full overflow-hidden mr-4">
             <img 
-              src={user.avatar || '/lovable-uploads/498e0bf1-4c8a-4cad-8ee2-6f43fdccc511.png'} 
+              src={user.avatar || DEFAULT_AVATAR} 
               alt={user.name} 
               className="w-full h-full object-cover"
             />

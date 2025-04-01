@@ -21,8 +21,22 @@ export type ProfileFromSupabase = {
 };
 
 // Define the insert types explicitly to match Supabase's requirements
-export type ProfileInsert = Tables['profiles']['Insert'];
-export type ReferralInsert = Tables['referrals']['Insert'];
+export type ProfileInsert = {
+  id: string;
+  name: string;
+  email: string;
+  avatar?: string;
+  phone?: string;
+  address?: string;
+  is_verified_driver?: boolean;
+  referral_code?: string;
+};
+
+export type ReferralInsert = {
+  referrer_id: string | null;
+  referred_id: string;
+  status: string;
+};
 
 // Convert a Supabase profile to our application User type
 export const mapSupabaseProfileToUser = (
@@ -34,7 +48,7 @@ export const mapSupabaseProfileToUser = (
     name: profile.name,
     email: profile.email,
     phone: profile.phone,
-    avatar: profile.avatar,
+    avatar: profile.avatar || '/lovable-uploads/af7e95e3-de50-49f4-a7bf-34f40ed69687.png',
     isLoggedIn: true,
     address: profile.address,
     isVerifiedDriver: profile.is_verified_driver,
