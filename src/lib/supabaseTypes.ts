@@ -33,7 +33,7 @@ export type ProfileInsert = {
 };
 
 export type ReferralInsert = {
-  referrer_id: string | null;
+  referrer_id: string;
   referred_id: string;
   status: string;
 };
@@ -48,7 +48,7 @@ export const mapSupabaseProfileToUser = (
     name: profile.name,
     email: profile.email,
     phone: profile.phone,
-    avatar: profile.avatar || '/lovable-uploads/af7e95e3-de50-49f4-a7bf-34f40ed69687.png',
+    avatar: profile.avatar || '/lovable-uploads/default_avatar.png',
     isLoggedIn: true,
     address: profile.address,
     isVerifiedDriver: profile.is_verified_driver,

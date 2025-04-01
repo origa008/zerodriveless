@@ -14,8 +14,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/lib/context/AuthContext';
 import { Button } from '@/components/ui/button';
-
-const DEFAULT_AVATAR = '/lovable-uploads/af7e95e3-de50-49f4-a7bf-34f40ed69687.png';
+import ProfileAvatar from '@/components/shared/ProfileAvatar';
 
 type SidebarItem = {
   icon: React.ElementType;
@@ -73,13 +72,7 @@ const Sidebar: React.FC = () => {
 
           {user && (
             <div className="flex items-center mb-8">
-              <div className="w-12 h-12 rounded-full overflow-hidden mr-4">
-                <img 
-                  src={user.avatar || DEFAULT_AVATAR} 
-                  alt={user.name} 
-                  className="w-full h-full object-cover"
-                />
-              </div>
+              <ProfileAvatar user={user} size="md" className="mr-4" />
               <div>
                 <p className="font-medium">{user.name}</p>
                 <p className="text-sm text-gray-500">{user.email}</p>

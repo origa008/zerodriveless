@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User } from '../types';
 import { useToast } from '@/hooks/use-toast';
@@ -24,7 +25,7 @@ const defaultUser: User = {
   id: '1',
   name: 'John Smith',
   email: 'john@example.com',
-  avatar: '/lovable-uploads/af7e95e3-de50-49f4-a7bf-34f40ed69687.png',
+  avatar: '/lovable-uploads/default_avatar.png',
   isLoggedIn: false,
   referralCode: 'zerodrive-1',
   referralEarnings: 0
@@ -83,7 +84,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (supabaseUser) {
           const mappedUser = mapSupabaseProfileToUser(data as ProfileFromSupabase, supabaseUser);
           if (!mappedUser.avatar) {
-            mappedUser.avatar = '/lovable-uploads/af7e95e3-de50-49f4-a7bf-34f40ed69687.png';
+            mappedUser.avatar = '/lovable-uploads/default_avatar.png';
           }
           setUser(mappedUser);
         }
@@ -171,8 +172,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signup = async (name: string, email: string, password: string, referralCode?: string) => {
     setIsLoading(true);
     try {
+      // Generate a unique referral code
       const userReferralCode = `zerodrive-${Math.random().toString(36).substring(2, 8)}`;
       
+      // Step 1: Sign up the user with Supabase Auth
       const { error: signUpError, data } = await supabase.auth.signUp({
         email,
         password,
@@ -187,36 +190,45 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (signUpError) throw signUpError;
       
       if (data.user) {
+        // Step 2: Create a profile for the new user
         const newProfile: ProfileInsert = {
           id: data.user.id,
           name,
           email,
           referral_code: userReferralCode,
-          avatar: '/lovable-uploads/af7e95e3-de50-49f4-a7bf-34f40ed69687.png'
+          avatar: '/lovable-uploads/default_avatar.png'
         };
         
         const { error: profileError } = await supabase
           .from('profiles')
           .insert(newProfile);
         
-        if (profileError) throw profileError;
+        if (profileError) {
+          console.error('Error creating profile:', profileError);
+          throw profileError;
+        }
         
+        // Step 3: Process referral code if provided
         if (referralCode) {
-          const referralData: ReferralInsert = {
-            referrer_id: null,
-            referred_id: data.user.id,
-            status: 'pending'
-          };
-          
           try {
-            const { data: referrerData } = await supabase
+            // Find the referrer using the provided referral code
+            const { data: referrerData, error: referrerError } = await supabase
               .from('profiles')
               .select('id')
               .eq('referral_code', referralCode)
-              .single();
+              .maybeSingle();
+            
+            if (referrerError) {
+              console.error('Error finding referrer:', referrerError);
+            }
             
             if (referrerData) {
-              referralData.referrer_id = referrerData.id;
+              // Create a referral record
+              const referralData: ReferralInsert = {
+                referrer_id: referrerData.id,
+                referred_id: data.user.id,
+                status: 'pending'
+              };
               
               const { error: referralError } = await supabase
                 .from('referrals')
@@ -236,13 +248,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             console.error('Error processing referral:', error);
           }
         }
+        
+        toast({
+          title: "Account Created",
+          description: "Your account has been created successfully. Please verify your email if required.",
+          duration: 5000
+        });
       }
-      
-      toast({
-        title: "Account Created",
-        description: "Your account has been created successfully. Please check your email to verify your account.",
-        duration: 5000
-      });
     } catch (error: any) {
       console.error('Signup failed:', error);
       toast({
