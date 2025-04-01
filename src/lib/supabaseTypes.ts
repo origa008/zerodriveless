@@ -1,6 +1,12 @@
 
 import { User as SupabaseUser } from '@supabase/supabase-js';
 import { User } from './types';
+import { Database } from '@/integrations/supabase/types';
+
+// Define the types we need from the auto-generated database types
+export type Tables = Database['public']['Tables'];
+export type ProfileRecord = Tables['profiles']['Row'];
+export type ReferralRecord = Tables['referrals']['Row'];
 
 // Map from Supabase database types to our application types
 export type ProfileFromSupabase = {

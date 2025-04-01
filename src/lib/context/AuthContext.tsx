@@ -3,7 +3,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User } from '../types';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { mapSupabaseProfileToUser, ProfileFromSupabase } from '../supabaseTypes';
+import { mapSupabaseProfileToUser, ProfileFromSupabase, Tables } from '../supabaseTypes';
 import { Session } from '@supabase/supabase-js';
 
 type AuthContextType = {
@@ -187,26 +187,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       // Create a profile for the user
       if (data.user) {
+        const newProfile: Partial<Tables['profiles']['Insert']> = {
+          id: data.user.id,
+          name,
+          email,
+          referral_code: userReferralCode
+        };
+        
         const { error: profileError } = await supabase
           .from('profiles')
-          .insert({
-            id: data.user.id,
-            name,
-            email,
-            referral_code: userReferralCode
-          });
+          .insert(newProfile);
         
         if (profileError) throw profileError;
         
         // Process referral if code was provided
         if (referralCode) {
+          const referralData: Partial<Tables['referrals']['Insert']> = {
+            referrer_id: null, // Will be updated after finding the referrer
+            referred_id: data.user.id,
+            status: 'pending'
+          };
+          
           const { error: referralError } = await supabase
             .from('referrals')
-            .insert({
-              referrer_id: null, // Will be updated after finding the referrer
-              referred_id: data.user.id,
-              status: 'pending'
-            });
+            .insert(referralData);
           
           if (referralError) {
             console.error('Error saving referral:', referralError);
@@ -219,9 +223,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               .single();
             
             if (referrerData) {
+              const updateData: Partial<Tables['referrals']['Update']> = {
+                referrer_id: referrerData.id
+              };
+              
               await supabase
                 .from('referrals')
-                .update({ referrer_id: referrerData.id })
+                .update(updateData)
                 .eq('referred_id', data.user.id);
               
               toast({
