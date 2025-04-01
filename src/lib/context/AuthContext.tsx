@@ -3,7 +3,13 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User } from '../types';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { mapSupabaseProfileToUser, ProfileFromSupabase, Tables } from '../supabaseTypes';
+import { 
+  mapSupabaseProfileToUser, 
+  ProfileFromSupabase, 
+  ProfileInsert,
+  ReferralInsert,
+  Tables 
+} from '../supabaseTypes';
 import { Session } from '@supabase/supabase-js';
 
 type AuthContextType = {
@@ -187,7 +193,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       // Create a profile for the user
       if (data.user) {
-        const newProfile: Partial<Tables['profiles']['Insert']> = {
+        // Define the profile with all required fields
+        const newProfile: ProfileInsert = {
           id: data.user.id,
           name,
           email,
@@ -202,7 +209,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         
         // Process referral if code was provided
         if (referralCode) {
-          const referralData: Partial<Tables['referrals']['Insert']> = {
+          // Define the referral with all required fields
+          const referralData: ReferralInsert = {
             referrer_id: null, // Will be updated after finding the referrer
             referred_id: data.user.id,
             status: 'pending'
@@ -223,13 +231,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               .single();
             
             if (referrerData) {
-              const updateData: Partial<Tables['referrals']['Update']> = {
-                referrer_id: referrerData.id
-              };
-              
+              // Update the referral with the correct referrer_id
               await supabase
                 .from('referrals')
-                .update(updateData)
+                .update({ referrer_id: referrerData.id })
                 .eq('referred_id', data.user.id);
               
               toast({

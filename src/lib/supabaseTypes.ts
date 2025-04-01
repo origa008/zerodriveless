@@ -20,6 +20,10 @@ export type ProfileFromSupabase = {
   referral_code?: string;
 };
 
+// Define the insert types explicitly to match Supabase's requirements
+export type ProfileInsert = Tables['profiles']['Insert'];
+export type ReferralInsert = Tables['referrals']['Insert'];
+
 // Convert a Supabase profile to our application User type
 export const mapSupabaseProfileToUser = (
   profile: ProfileFromSupabase,
