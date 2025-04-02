@@ -7,28 +7,17 @@ import {
   mapSupabaseProfileToUser, 
   ProfileFromSupabase, 
   ProfileInsert,
-  ReferralInsert,
-  Tables 
+  ReferralInsert
 } from '../supabaseTypes';
 import { Session } from '@supabase/supabase-js';
 
 type AuthContextType = {
   user: User | null;
   login: (email: string, password: string) => Promise<void>;
-  signup: (name: string, email: string, password: string, referralCode?: string) => Promise<void>;
+  signup: (name: string, email: string, password: string, referralCode?: string | null) => Promise<void>;
   logout: () => void;
   isLoading: boolean;
   updateUserProfile: (updates: Partial<User>) => Promise<void>;
-};
-
-const defaultUser: User = {
-  id: '1',
-  name: 'John Smith',
-  email: 'john@example.com',
-  avatar: '/lovable-uploads/default_avatar.png',
-  isLoggedIn: false,
-  referralCode: 'zerodrive-1',
-  referralEarnings: 0
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -43,6 +32,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Set up auth state listener first
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, currentSession) => {
+        console.log("Auth state changed:", event);
         setSession(currentSession);
         
         if (currentSession?.user) {
@@ -58,6 +48,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Then check for existing session
     supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+      console.log("Existing session check:", currentSession ? "Found" : "None");
       setSession(currentSession);
       
       if (currentSession?.user) {
@@ -172,10 +163,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const signup = async (name: string, email: string, password: string, referralCode?: string) => {
+  const signup = async (name: string, email: string, password: string, referralCode?: string | null) => {
     setIsLoading(true);
     try {
-      console.log("Signing up user:", { name, email, referralCode });
+      console.log("Signing up user:", { name, email, referralCode: referralCode || 'none' });
       
       // Generate a unique referral code
       const userReferralCode = `zerodrive-${Math.random().toString(36).substring(2, 8)}`;
@@ -194,7 +185,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       console.log("User created successfully:", data.user.id);
       
-      // Step 2: Create a profile for the new user (don't include metadata because it causes issues)
+      // Step 2: Create a profile for the new user
       const newProfile: ProfileInsert = {
         id: data.user.id,
         name,
@@ -216,7 +207,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       console.log("Profile created successfully");
       
-      // Step 3: Process referral code if provided and not empty
+      // Step 3: Process referral code if provided
       if (referralCode && referralCode.trim() !== '') {
         try {
           console.log("Processing referral code:", referralCode);

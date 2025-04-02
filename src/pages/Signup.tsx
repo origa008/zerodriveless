@@ -48,12 +48,10 @@ const Signup: React.FC = () => {
         return;
       }
       
-      // Only pass referral code if it's not empty
-      const refCode = referralCode.trim() !== '' ? referralCode.trim() : undefined;
+      console.log("Submitting signup with:", { name, email, referralCode: referralCode || 'none' });
       
-      console.log("Submitting signup with:", { name, email, referralCode: refCode });
-      
-      await signup(name, email, password, refCode);
+      // Pass referral code only if it exists and is not empty
+      await signup(name, email, password, referralCode.trim() || null);
       
       toast({
         title: "Signup successful",
