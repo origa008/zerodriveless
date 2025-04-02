@@ -21,6 +21,7 @@ export const searchPlaces = async (query: string): Promise<Location[]> => {
       return data.predictions.map((prediction: any) => ({
         name: prediction.structured_formatting?.main_text || prediction.description,
         address: prediction.description,
+        coordinates: DEFAULT_COORDINATES, // Default coordinates until we get the real ones
         placeId: prediction.place_id,
       }));
     }
@@ -46,11 +47,11 @@ export const getPlaceDetails = async (placeId: string): Promise<Location | null>
       return {
         name: result.name,
         address: result.formatted_address,
-        placeId: result.place_id,
         coordinates: [
           result.geometry.location.lng,
           result.geometry.location.lat
         ],
+        placeId: result.place_id,
       };
     }
     

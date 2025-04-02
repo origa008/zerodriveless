@@ -1,10 +1,10 @@
-
 // src/lib/types.ts
 
 export interface Location {
   name: string;
   address: string;
   coordinates: [number, number]; // [longitude, latitude]
+  placeId?: string; // Add placeId property
 }
 
 export interface RideOption {

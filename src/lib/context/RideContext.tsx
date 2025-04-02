@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Ride, Location, RideOption, Driver, PaymentMethod } from '../types';
 import { calculateDistance } from '../utils/mapsApi';
@@ -244,17 +243,17 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Transform the data to match the Ride type
         const transformedRides = data.map(ride => ({
           id: ride.id,
-          pickup: ride.pickup_location,
-          dropoff: ride.dropoff_location,
+          pickup: ride.pickup_location as unknown as Location,
+          dropoff: ride.dropoff_location as unknown as Location,
           rideOption: ride.ride_option,
-          status: ride.status,
+          status: ride.status as RideStatus,
           price: ride.price,
           currency: ride.currency,
           distance: ride.distance,
           duration: ride.duration,
           startTime: ride.start_time,
           endTime: ride.end_time,
-          paymentMethod: ride.payment_method,
+          paymentMethod: ride.payment_method as PaymentMethod,
           passenger: ride.passenger,
           driver: ride.driver,
         }));
