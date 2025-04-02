@@ -1,11 +1,10 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Bike, Car } from 'lucide-react';
 import BottomNavigation from '@/components/layout/BottomNavigation';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/context/AuthContext';
-import { Ride } from '@/lib/types';
+import { Ride, Location } from '@/lib/types';
 import { format } from 'date-fns';
 
 const History: React.FC = () => {
@@ -39,15 +38,21 @@ const History: React.FC = () => {
         
         if (error) throw error;
         
-        const formattedHistory = data.map(ride => ({
-          id: ride.id,
-          type: ride.passenger_id === user.id ? 'ride' : 'drive',
-          date: format(new Date(ride.created_at), 'yyyy-MM-dd HH:mm'),
-          from: ride.pickup_location.name || 'Unknown location',
-          to: ride.dropoff_location.name || 'Unknown location',
-          price: ride.price,
-          status: ride.status
-        }));
+        const formattedHistory = data.map(ride => {
+          // Safely handle location data
+          const pickupLocation = ride.pickup_location as unknown as Location;
+          const dropoffLocation = ride.dropoff_location as unknown as Location;
+          
+          return {
+            id: ride.id,
+            type: ride.passenger_id === user.id ? 'ride' : 'drive',
+            date: format(new Date(ride.created_at), 'yyyy-MM-dd HH:mm'),
+            from: pickupLocation && typeof pickupLocation === 'object' ? pickupLocation.name || 'Unknown location' : 'Unknown location',
+            to: dropoffLocation && typeof dropoffLocation === 'object' ? dropoffLocation.name || 'Unknown location' : 'Unknown location',
+            price: ride.price,
+            status: ride.status
+          };
+        });
         
         setHistory(formattedHistory);
       } catch (error) {

@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Ride, Location, RideOption, Driver, PaymentMethod, RideStatus } from '../types';
+import { Ride, Location, RideOption, Driver, PaymentMethod, RideStatus, Passenger } from '../types';
 import { calculateDistance } from '../utils/mapsApi';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from './AuthContext';
@@ -19,6 +19,28 @@ const defaultDropoffLocation: Location = {
   address: "",
   coordinates: [74.3587, 31.5204] // Default to Lahore
 };
+
+// Available ride options
+const rideOptions: RideOption[] = [
+  {
+    id: "bike",
+    name: "Bike",
+    image: "/lovable-uploads/cfd3fd57-c24d-402a-9e79-91bdb781be21.png",
+    price: 150,
+    currency: "RS",
+    duration: 15,
+    capacity: 1
+  },
+  {
+    id: "auto",
+    name: "Auto",
+    image: "/lovable-uploads/28c00f11-f954-45d1-94a5-4c5604aa633c.png",
+    price: 250,
+    currency: "RS",
+    duration: 20,
+    capacity: 3
+  }
+];
 
 // Context type
 type RideContextType = {
@@ -47,6 +69,27 @@ type RideContextType = {
   fetchRideHistory: () => Promise<void>;
   availableRides: Ride[];
   acceptRide: (rideId: string) => Promise<void>;
+  // Additional properties needed for components
+  pendingRideRequests: Ride[];
+  calculateBaseFare: (distance: number, vehicleType: string) => number;
+  acceptRideRequest: (rideId: string) => void;
+  setCurrentRide: (ride: Ride) => void;
+  startRide: () => void;
+  cancelRide: () => void;
+  rideTimer: number;
+  isRideTimerActive: boolean;
+  availableRideOptions: RideOption[];
+  findRides: () => void;
+  confirmRide: (paymentMethod: string) => void;
+  isSearchingRides: boolean;
+  userBid: number | null;
+  setUserBid: (bid: number) => void;
+  isWaitingForDriverAcceptance: boolean;
+  setWaitingForDriverAcceptance: (waiting: boolean) => void;
+  driverAcceptanceTimer: number;
+  resetDriverAcceptanceTimer: () => void;
+  isPanelOpen: boolean;
+  setPanelOpen: (open: boolean) => void;
 };
 
 // Create context
@@ -71,6 +114,15 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [isRideInProgress, setIsRideInProgress] = useState<boolean>(false);
   const [availableRides, setAvailableRides] = useState<Ride[]>([]);
+  const [rideTimer, setRideTimer] = useState<number>(0);
+  const [isRideTimerActive, setIsRideTimerActive] = useState<boolean>(false);
+  const [availableRideOptions, setAvailableRideOptions] = useState<RideOption[]>(rideOptions);
+  const [isSearchingRides, setIsSearchingRides] = useState<boolean>(false);
+  const [userBid, setUserBid] = useState<number | null>(null);
+  const [isWaitingForDriverAcceptance, setWaitingForDriverAcceptance] = useState<boolean>(false);
+  const [driverAcceptanceTimer, setDriverAcceptanceTimer] = useState<number>(60);
+  const [isPanelOpen, setPanelOpen] = useState<boolean>(false);
+  const [pendingRideRequests, setPendingRideRequests] = useState<Ride[]>([]);
 
   // Calculate distance and duration between pickup and dropoff locations
   const calculateRide = async (): Promise<boolean> => {
@@ -101,6 +153,13 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Calculate base fare based on distance and vehicle type
+  const calculateBaseFare = (distance: number, vehicleType: string): number => {
+    const baseRate = vehicleType.toLowerCase() === 'bike' ? 15 : 30;
+    const perKmRate = vehicleType.toLowerCase() === 'bike' ? 8 : 15;
+    return Math.round(baseRate + (distance * perKmRate));
+  };
+
   // Request a ride
   const requestRide = async () => {
     if (!selectedRideOption || !user) {
@@ -115,7 +174,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsSearchingRide(true);
 
     try {
-      // Create ride in Supabase
+      // Use proper field names for Supabase table
       const { data: rideData, error: rideError } = await supabase
         .from('rides')
         .insert({
@@ -223,7 +282,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }, 5000);
       
-      // Clean up interval on unmount
+      // Clean up interval when component unmounts
       return () => clearInterval(interval);
       
     } catch (error) {
@@ -351,8 +410,8 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
           start_time,
           end_time,
           payment_method,
-          passenger:passenger_id(id, name, avatar, phone),
-          driver:driver_id(id, name, avatar, phone)
+          passenger_id,
+          driver_id
         `)
         .or(`passenger_id.eq.${user.id},driver_id.eq.${user.id}`)
         .order('created_at', { ascending: false });
@@ -362,22 +421,34 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       
       // Transform the data to match the Ride type
-      const transformedRides = data.map(ride => ({
-        id: ride.id,
-        pickup: ride.pickup_location as unknown as Location,
-        dropoff: ride.dropoff_location as unknown as Location,
-        rideOption: ride.ride_option as unknown as RideOption,
-        status: ride.status as RideStatus,
-        price: ride.price,
-        currency: ride.currency,
-        distance: ride.distance,
-        duration: ride.duration,
-        startTime: ride.start_time ? new Date(ride.start_time) : undefined,
-        endTime: ride.end_time ? new Date(ride.end_time) : undefined,
-        paymentMethod: ride.payment_method as PaymentMethod,
-        passenger: ride.passenger,
-        driver: ride.driver,
-      }));
+      const transformedRides = data.map(ride => {
+        // Create basic ride object with safe defaults
+        const transformedRide: Ride = {
+          id: ride.id,
+          pickup: ride.pickup_location as unknown as Location,
+          dropoff: ride.dropoff_location as unknown as Location,
+          rideOption: ride.ride_option as unknown as RideOption,
+          status: ride.status as RideStatus,
+          price: ride.price,
+          currency: ride.currency,
+          distance: ride.distance,
+          duration: ride.duration,
+          startTime: ride.start_time ? new Date(ride.start_time) : undefined,
+          endTime: ride.end_time ? new Date(ride.end_time) : undefined,
+          paymentMethod: ride.payment_method as PaymentMethod,
+          // Add default empty passenger and driver objects to prevent errors
+          passenger: {
+            id: ride.passenger_id || '',
+            name: 'Unknown Passenger'
+          },
+          driver: ride.driver_id ? {
+            id: ride.driver_id,
+            name: 'Unknown Driver'
+          } : undefined
+        };
+        
+        return transformedRide;
+      });
       
       setRideHistory(transformedRides);
     } catch (error) {
@@ -455,7 +526,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
             currency,
             distance,
             duration,
-            passenger:passenger_id(id, name, avatar, phone)
+            passenger_id
           `)
           .eq('status', 'searching')
           .is('driver_id', null);
@@ -464,21 +535,28 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
           throw error;
         }
         
-        // Transform to Ride objects
-        const availableRidesData = data.map(ride => ({
-          id: ride.id,
-          pickup: ride.pickup_location as unknown as Location,
-          dropoff: ride.dropoff_location as unknown as Location,
-          rideOption: ride.ride_option as unknown as RideOption,
-          status: 'searching' as RideStatus,
-          price: ride.price,
-          currency: ride.currency,
-          distance: ride.distance,
-          duration: ride.duration,
-          passenger: ride.passenger
-        }));
+        // Transform to Ride objects with proper typing
+        const availableRidesData = data.map(ride => {
+          const rideData: Ride = {
+            id: ride.id,
+            pickup: ride.pickup_location as unknown as Location,
+            dropoff: ride.dropoff_location as unknown as Location,
+            rideOption: ride.ride_option as unknown as RideOption,
+            status: 'searching',
+            price: ride.price,
+            currency: ride.currency,
+            distance: ride.distance,
+            duration: ride.duration,
+            passenger: {
+              id: ride.passenger_id,
+              name: 'Passenger' // Default name
+            }
+          };
+          return rideData;
+        });
         
         setAvailableRides(availableRidesData);
+        setPendingRideRequests(availableRidesData);
       } catch (error) {
         console.error('Error fetching available rides:', error);
       }
@@ -494,7 +572,9 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
         event: '*',
         schema: 'public',
         table: 'rides'
-      }, fetchAvailableRides)
+      }, () => {
+        fetchAvailableRides();
+      })
       .subscribe();
     
     return () => {
@@ -550,7 +630,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
           duration,
           start_time,
           payment_method,
-          passenger:passenger_id(id, name, avatar, phone)
+          passenger_id
         `)
         .eq('id', rideId)
         .single();
@@ -572,7 +652,10 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
         duration: rideData.duration,
         startTime: rideData.start_time ? new Date(rideData.start_time) : undefined,
         paymentMethod: rideData.payment_method as PaymentMethod,
-        passenger: rideData.passenger
+        passenger: {
+          id: rideData.passenger_id,
+          name: 'Passenger' // Default name
+        }
       };
       
       setCurrentRide(acceptedRide);
@@ -586,6 +669,72 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
         variant: "destructive"
       });
     }
+  };
+
+  // Additional functions needed by components
+  const acceptRideRequest = (rideId: string) => {
+    acceptRide(rideId);
+  };
+
+  const startRide = () => {
+    if (!currentRide) return;
+    setIsRideTimerActive(true);
+    
+    // Start ride timer
+    const timerInterval = setInterval(() => {
+      setRideTimer(prev => prev + 1);
+    }, 1000);
+    
+    // Clean up timer on component unmount
+    return () => clearInterval(timerInterval);
+  };
+
+  const cancelRide = () => {
+    cancelRideSearch();
+  };
+
+  const findRides = () => {
+    setIsSearchingRides(true);
+    calculateRide().then(success => {
+      if (success) {
+        setPanelOpen(true);
+        setIsSearchingRides(false);
+      } else {
+        setIsSearchingRides(false);
+        toast({
+          title: "Error",
+          description: "Could not calculate ride. Please try again.",
+          variant: "destructive"
+        });
+      }
+    });
+  };
+
+  const confirmRide = (paymentMethod: string) => {
+    if (!selectedRideOption || !userBid) return;
+    
+    // Create a modified ride option with the user's bid as the price
+    const modifiedRideOption: RideOption = {
+      ...selectedRideOption,
+      price: userBid
+    };
+    
+    setSelectedRideOption(modifiedRideOption);
+    requestRide();
+  };
+
+  const resetDriverAcceptanceTimer = () => {
+    setDriverAcceptanceTimer(60);
+    const interval = setInterval(() => {
+      setDriverAcceptanceTimer(prev => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          setWaitingForDriverAcceptance(false);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
   };
 
   // Effect to load wallet balance and ride history on mount
@@ -622,7 +771,28 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fetchWalletBalance,
     fetchRideHistory,
     availableRides,
-    acceptRide
+    acceptRide,
+    // Additional properties
+    pendingRideRequests,
+    calculateBaseFare,
+    acceptRideRequest,
+    setCurrentRide,
+    startRide,
+    cancelRide,
+    rideTimer,
+    isRideTimerActive,
+    availableRideOptions,
+    findRides,
+    confirmRide,
+    isSearchingRides,
+    userBid,
+    setUserBid,
+    isWaitingForDriverAcceptance,
+    setWaitingForDriverAcceptance,
+    driverAcceptanceTimer,
+    resetDriverAcceptanceTimer,
+    isPanelOpen,
+    setPanelOpen
   };
 
   return <RideContext.Provider value={value}>{children}</RideContext.Provider>;
