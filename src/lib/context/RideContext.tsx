@@ -125,6 +125,12 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isPanelOpen, setPanelOpen] = useState<boolean>(false);
   const [pendingRideRequests, setPendingRideRequests] = useState<Ride[]>([]);
 
+  // This function allows components to navigate programmatically
+  const navigateToPage = (path: string) => {
+    // Using window.location for navigation
+    window.location.href = path;
+  };
+
   // Calculate distance and duration between pickup and dropoff locations
   const calculateRide = async (): Promise<boolean> => {
     if (
@@ -161,12 +167,6 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return Math.round(baseRate + (distance * perKmRate));
   };
 
-  // This function allows components to navigate programmatically
-  const navigateToPage = (path: string) => {
-    // Instead of direct navigation, we're now using window.location
-    window.location.href = path;
-  };
-
   // Request a ride
   const requestRide = async () => {
     if (!selectedRideOption || !user) {
@@ -181,7 +181,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsSearchingRide(true);
 
     try {
-      // Fix: Use a single object for the insert operation
+      // Fix: Insert as a single object with all properties directly
       const { data: rideData, error: rideError } = await supabase
         .from('rides')
         .insert({
@@ -300,6 +300,9 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
       pollRideStatus();
       
       // Cleanup function will be managed by component unmounts through useEffect
+      return () => {
+        if (interval) clearInterval(interval);
+      };
     } catch (error) {
       console.error('Error requesting ride:', error);
       setIsSearchingRide(false);
@@ -654,6 +657,17 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw rideError;
       }
       
+      // Fetch passenger details
+      const { data: passengerData, error: passengerError } = await supabase
+        .from('profiles')
+        .select('id, name, avatar, phone')
+        .eq('id', rideData.passenger_id)
+        .single();
+        
+      if (passengerError) {
+        console.error('Error fetching passenger details:', passengerError);
+      }
+      
       // Set current ride
       const acceptedRide: Ride = {
         id: rideData.id,
@@ -667,9 +681,14 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
         duration: rideData.duration,
         startTime: rideData.start_time ? new Date(rideData.start_time) : undefined,
         paymentMethod: rideData.payment_method as PaymentMethod,
-        passenger: {
+        passenger: passengerData ? {
+          id: passengerData.id,
+          name: passengerData.name,
+          avatar: passengerData.avatar,
+          phone: passengerData.phone
+        } : {
           id: rideData.passenger_id,
-          name: 'Passenger' // Default name
+          name: 'Passenger'
         }
       };
       
@@ -750,6 +769,9 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return prev - 1;
       });
     }, 1000);
+    
+    // Return a cleanup function
+    return () => clearInterval(interval);
   };
 
   // Effect to load wallet balance and ride history on mount

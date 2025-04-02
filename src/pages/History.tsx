@@ -43,31 +43,49 @@ const History: React.FC = () => {
           let pickupName = 'Unknown location';
           let dropoffName = 'Unknown location';
           
-          // Handle pickup location
+          // Handle pickup location - safely extract name with type checking
           if (ride.pickup_location) {
-            if (typeof ride.pickup_location === 'object' && ride.pickup_location.name) {
-              pickupName = ride.pickup_location.name;
-            } else if (typeof ride.pickup_location === 'string') {
-              try {
-                const parsed = JSON.parse(ride.pickup_location);
-                pickupName = parsed.name || 'Unknown location';
-              } catch (e) {
-                // If parsing fails, keep the default
+            try {
+              // If it's already an object with name property
+              if (typeof ride.pickup_location === 'object' && 
+                  ride.pickup_location !== null &&
+                  'name' in ride.pickup_location && 
+                  typeof ride.pickup_location.name === 'string') {
+                pickupName = ride.pickup_location.name;
               }
+              // If it's a string that needs to be parsed
+              else if (typeof ride.pickup_location === 'string') {
+                const parsed = JSON.parse(ride.pickup_location);
+                if (parsed && typeof parsed === 'object' && 'name' in parsed) {
+                  pickupName = parsed.name || 'Unknown location';
+                }
+              }
+            } catch (e) {
+              // If parsing fails, keep the default
+              console.error("Error parsing pickup location:", e);
             }
           }
           
-          // Handle dropoff location
+          // Handle dropoff location - safely extract name with type checking
           if (ride.dropoff_location) {
-            if (typeof ride.dropoff_location === 'object' && ride.dropoff_location.name) {
-              dropoffName = ride.dropoff_location.name;
-            } else if (typeof ride.dropoff_location === 'string') {
-              try {
-                const parsed = JSON.parse(ride.dropoff_location);
-                dropoffName = parsed.name || 'Unknown location';
-              } catch (e) {
-                // If parsing fails, keep the default
+            try {
+              // If it's already an object with name property
+              if (typeof ride.dropoff_location === 'object' && 
+                  ride.dropoff_location !== null &&
+                  'name' in ride.dropoff_location && 
+                  typeof ride.dropoff_location.name === 'string') {
+                dropoffName = ride.dropoff_location.name;
               }
+              // If it's a string that needs to be parsed
+              else if (typeof ride.dropoff_location === 'string') {
+                const parsed = JSON.parse(ride.dropoff_location);
+                if (parsed && typeof parsed === 'object' && 'name' in parsed) {
+                  dropoffName = parsed.name || 'Unknown location';
+                }
+              }
+            } catch (e) {
+              // If parsing fails, keep the default
+              console.error("Error parsing dropoff location:", e);
             }
           }
           
