@@ -185,27 +185,48 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       console.log("User created successfully:", data.user.id);
       
-      // Step 2: Create a profile for the new user
-      const newProfile: ProfileInsert = {
-        id: data.user.id,
-        name,
-        email,
-        referral_code: userReferralCode,
-        avatar: '/lovable-uploads/avatar.png'
-      };
-      
-      console.log("Creating user profile:", newProfile);
-      
-      const { error: profileError } = await supabase
+      // Check if a profile already exists for this user (important for sign-in with duplicate email)
+      const { data: existingProfile, error: profileCheckError } = await supabase
         .from('profiles')
-        .insert(newProfile);
-      
-      if (profileError) {
-        console.error('Error creating profile:', profileError);
-        throw profileError;
+        .select('id')
+        .eq('id', data.user.id)
+        .maybeSingle();
+        
+      if (profileCheckError) {
+        console.error('Error checking existing profile:', profileCheckError);
       }
       
-      console.log("Profile created successfully");
+      // Only create a profile if one doesn't already exist
+      if (!existingProfile) {
+        // Step 2: Create a profile for the new user
+        const newProfile: ProfileInsert = {
+          id: data.user.id,
+          name,
+          email,
+          referral_code: userReferralCode,
+          avatar: '/lovable-uploads/avatar.png'
+        };
+        
+        console.log("Creating user profile:", newProfile);
+        
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert(newProfile);
+        
+        if (profileError) {
+          console.error('Error creating profile:', profileError);
+          // Continue even if profile creation fails, as user auth account was created
+          if (profileError.code === '23505') { // duplicate key error
+            console.log('Profile already exists, skipping creation');
+          } else {
+            throw profileError;
+          }
+        } else {
+          console.log("Profile created successfully");
+        }
+      } else {
+        console.log("Profile already exists, skipping creation");
+      }
       
       // Step 3: Process referral code if provided
       if (referralCode && referralCode.trim() !== '') {
