@@ -2,7 +2,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Ride, Location, RideOption, Driver, PaymentMethod, RideStatus, Passenger } from '../types';
 import { calculateDistance } from '../utils/mapsApi';
-import { useNavigate } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -11,13 +10,15 @@ import { useToast } from '@/hooks/use-toast';
 const defaultPickupLocation: Location = {
   name: "Current Location",
   address: "Using GPS",
-  coordinates: [74.3587, 31.5204] // Default to Lahore
+  coordinates: [74.3587, 31.5204], // Default to Lahore
+  placeId: ""
 };
 
 const defaultDropoffLocation: Location = {
   name: "",
   address: "",
-  coordinates: [74.3587, 31.5204] // Default to Lahore
+  coordinates: [74.3587, 31.5204], // Default to Lahore
+  placeId: ""
 };
 
 // Available ride options
@@ -90,6 +91,7 @@ type RideContextType = {
   resetDriverAcceptanceTimer: () => void;
   isPanelOpen: boolean;
   setPanelOpen: (open: boolean) => void;
+  navigateToPage: (path: string) => void;
 };
 
 // Create context
@@ -97,7 +99,6 @@ const RideContext = createContext<RideContextType | undefined>(undefined);
 
 // Provider component
 export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const navigate = useNavigate();
   const { user, session } = useAuth();
   const { toast } = useToast();
   
@@ -160,6 +161,13 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return Math.round(baseRate + (distance * perKmRate));
   };
 
+  // This function allows components to navigate programmatically
+  const navigateToPage = (path: string) => {
+    // Instead of direct navigation, we're now using window.location
+    // Only use this for essential navigations
+    window.location.href = path;
+  };
+
   // Request a ride
   const requestRide = async () => {
     if (!selectedRideOption || !user) {
@@ -189,16 +197,19 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
           status: 'searching',
           payment_method: 'cash'
         })
-        .select()
-        .single();
+        .select();
       
       if (rideError) {
         throw rideError;
       }
       
+      if (!rideData || rideData.length === 0) {
+        throw new Error("No ride data returned after insert");
+      }
+      
       // Create ride object
       const newRide: Ride = {
-        id: rideData.id,
+        id: rideData[0].id,
         pickup: pickupLocation,
         dropoff: dropoffLocation,
         rideOption: selectedRideOption,
@@ -231,7 +242,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
             end_time,
             payment_method
           `)
-          .eq('id', rideData.id)
+          .eq('id', rideData[0].id)
           .single();
         
         if (error) {
@@ -278,12 +289,14 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
           
           setCurrentRide(updatedRide);
           setIsRideInProgress(true);
-          navigate('/ride-progress');
+          navigateToPage('/ride-progress');
         }
       }, 5000);
       
-      // Clean up interval when component unmounts
-      return () => clearInterval(interval);
+      // Return a cleanup function that clears the interval
+      return () => {
+        clearInterval(interval);
+      };
       
     } catch (error) {
       console.error('Error requesting ride:', error);
@@ -373,7 +386,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       
       setIsRideInProgress(false);
-      navigate('/ride-completed');
+      navigateToPage('/ride-completed');
     } catch (error) {
       console.error('Error completing ride:', error);
       toast({
@@ -387,7 +400,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Skip feedback
   const skipFeedback = () => {
     setCurrentRide(null);
-    navigate('/');
+    navigateToPage('/');
   };
 
   // Fetch ride history for the user
@@ -660,7 +673,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       setCurrentRide(acceptedRide);
       setIsRideInProgress(true);
-      navigate('/ride-progress');
+      navigateToPage('/ride-progress');
     } catch (error) {
       console.error('Error accepting ride:', error);
       toast({
@@ -685,7 +698,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setRideTimer(prev => prev + 1);
     }, 1000);
     
-    // Clean up timer on component unmount
+    // Return cleanup function
     return () => clearInterval(timerInterval);
   };
 
@@ -792,7 +805,8 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     driverAcceptanceTimer,
     resetDriverAcceptanceTimer,
     isPanelOpen,
-    setPanelOpen
+    setPanelOpen,
+    navigateToPage
   };
 
   return <RideContext.Provider value={value}>{children}</RideContext.Provider>;

@@ -1,14 +1,15 @@
+
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Bike, Car } from 'lucide-react';
 import BottomNavigation from '@/components/layout/BottomNavigation';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/context/AuthContext';
+import { useRide } from '@/lib/context/RideContext';
 import { Ride, Location } from '@/lib/types';
 import { format } from 'date-fns';
 
 const History: React.FC = () => {
-  const navigate = useNavigate();
+  const { navigateToPage } = useRide();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'all' | 'rides' | 'drives'>('all');
   const [history, setHistory] = useState<any[]>([]);
@@ -76,7 +77,7 @@ const History: React.FC = () => {
     <div className="min-h-screen bg-white pb-20">
       <div className="bg-black text-white p-6">
         <button 
-          onClick={() => navigate('/')}
+          onClick={() => navigateToPage('/')}
           className="mb-4 flex items-center text-white"
         >
           <ArrowLeft size={20} className="mr-2" />

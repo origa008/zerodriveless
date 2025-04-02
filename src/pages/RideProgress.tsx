@@ -1,18 +1,17 @@
 
 import React, { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useRide } from '@/lib/context/RideContext';
 import RideMap from '@/components/map/RideMap';
 import RideDetails from '@/components/ride/RideDetails';
 
 const RideProgress: React.FC = () => {
-  const navigate = useNavigate();
   const {
     currentRide,
     startRide,
     completeRide,
-    cancelRide
+    cancelRide,
+    navigateToPage
   } = useRide();
 
   useEffect(() => {
@@ -25,18 +24,18 @@ const RideProgress: React.FC = () => {
   useEffect(() => {
     // If ride is completed, navigate to ride-completed
     if (currentRide && currentRide.status === 'completed') {
-      navigate('/ride-completed');
+      navigateToPage('/ride-completed');
     }
-  }, [currentRide, navigate]);
+  }, [currentRide, navigateToPage]);
 
   if (!currentRide) {
-    navigate('/');
+    navigateToPage('/');
     return null;
   }
 
   const handleCancel = () => {
     cancelRide();
-    navigate('/');
+    navigateToPage('/');
   };
 
   const handleComplete = () => {
