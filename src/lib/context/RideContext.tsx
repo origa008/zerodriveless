@@ -3,6 +3,8 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Ride, Location, RideOption, Driver, PaymentMethod } from '../types';
 import { calculateDistance } from '../utils/mapsApi';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from './AuthContext';
 
 type RideContextType = {
   currentRide: Ride | null;
@@ -15,10 +17,10 @@ type RideContextType = {
   selectedRideOption: RideOption | null;
   setSelectedRideOption: (option: RideOption | null) => void;
   findRides: () => void;
-  confirmRide: (paymentMethod?: PaymentMethod) => void;
-  startRide: () => void;
-  completeRide: () => void;
-  cancelRide: () => void;
+  confirmRide: (paymentMethod?: PaymentMethod) => Promise<void>;
+  startRide: () => Promise<void>;
+  completeRide: () => Promise<void>;
+  cancelRide: () => Promise<void>;
   rideTimer: number;
   isRideTimerActive: boolean;
   isPanelOpen: boolean;
@@ -40,11 +42,13 @@ type RideContextType = {
   driverAcceptanceTimer: number;
   resetDriverAcceptanceTimer: () => void;
   walletBalance: number;
-  updateWalletBalance: (amount: number) => void;
+  updateWalletBalance: (amount: number) => Promise<void>;
+  fetchWalletBalance: () => Promise<void>;
   pendingRideRequests: Ride[];
   addRideRequest: (ride: Ride) => void;
   removeRideRequest: (rideId: string) => void;
   acceptRideRequest: (rideId: string) => void;
+  fetchRideHistory: () => Promise<void>;
 };
 
 const defaultRideOptions: RideOption[] = [
@@ -87,6 +91,7 @@ const RideContext = createContext<RideContextType | undefined>(undefined);
 
 export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { toast } = useToast();
+  const { user, session } = useAuth();
   const [currentRide, setCurrentRide] = useState<Ride | null>(null);
   const [pickupLocation, setPickupLocation] = useState<Location | null>(null);
   const [dropoffLocation, setDropoffLocation] = useState<Location | null>(null);
@@ -118,23 +123,148 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  // Update wallet balance
-  const updateWalletBalance = (amount: number) => {
-    setWalletBalance(prevBalance => {
-      const newBalance = prevBalance + amount;
-      // Store in local storage for persistence
-      localStorage.setItem('walletBalance', newBalance.toString());
-      return newBalance;
-    });
+  // Fetch wallet balance
+  const fetchWalletBalance = async () => {
+    if (!session?.user?.id) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('wallets')
+        .select('balance')
+        .eq('user_id', session.user.id)
+        .single();
+      
+      if (error) {
+        console.error('Error fetching wallet balance:', error);
+        return;
+      }
+      
+      setWalletBalance(data?.balance || 0);
+    } catch (error) {
+      console.error('Exception fetching wallet balance:', error);
+    }
   };
 
-  // Initialize wallet balance from localStorage if available
-  useEffect(() => {
-    const storedBalance = localStorage.getItem('walletBalance');
-    if (storedBalance) {
-      setWalletBalance(parseFloat(storedBalance));
+  // Update wallet balance
+  const updateWalletBalance = async (amount: number) => {
+    if (!session?.user?.id) {
+      toast({
+        title: "Authentication required",
+        description: "Please log in to manage your wallet",
+        variant: "destructive"
+      });
+      return;
     }
-  }, []);
+    
+    try {
+      // Create transaction record
+      const transactionType = amount > 0 ? 'deposit' : 'withdrawal';
+      
+      const { data: transactionData, error: transactionError } = await supabase
+        .from('transactions')
+        .insert({
+          user_id: session.user.id,
+          amount: Math.abs(amount),
+          type: transactionType,
+          status: 'completed',
+          description: `${transactionType} of RS ${Math.abs(amount)}`
+        })
+        .select();
+      
+      if (transactionError) {
+        throw transactionError;
+      }
+      
+      // Update wallet balance
+      if (amount > 0) {
+        // Add to wallet
+        await supabase.rpc('add_to_wallet', {
+          user_id: session.user.id,
+          amount: amount
+        });
+      } else {
+        // Deduct from wallet
+        const success = await supabase.rpc('deduct_from_wallet', {
+          user_id: session.user.id,
+          amount: Math.abs(amount)
+        });
+        
+        if (!success) {
+          throw new Error('Insufficient balance');
+        }
+      }
+      
+      // Update local state
+      await fetchWalletBalance();
+      
+      toast({
+        title: amount > 0 ? "Money added" : "Withdrawal successful",
+        description: `RS ${Math.abs(amount)} has been ${amount > 0 ? 'added to' : 'withdrawn from'} your wallet.`,
+        duration: 3000
+      });
+    } catch (error: any) {
+      console.error('Wallet update failed:', error);
+      toast({
+        title: "Transaction failed",
+        description: error.message || "Failed to update wallet balance",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Initialize wallet balance when user logs in
+  useEffect(() => {
+    if (session?.user) {
+      fetchWalletBalance();
+      fetchRideHistory();
+    }
+  }, [session?.user]);
+
+  // Fetch ride history from Supabase
+  const fetchRideHistory = async () => {
+    if (!session?.user?.id) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('rides')
+        .select(`
+          *,
+          passenger:passenger_id(id, name, avatar, phone),
+          driver:driver_id(id, name, avatar, phone)
+        `)
+        .or(`passenger_id.eq.${session.user.id},driver_id.eq.${session.user.id}`)
+        .order('created_at', { ascending: false });
+      
+      if (error) {
+        console.error('Error fetching ride history:', error);
+        return;
+      }
+      
+      if (data) {
+        // Transform the data to match the Ride type
+        const transformedRides = data.map(ride => ({
+          id: ride.id,
+          pickup: ride.pickup_location,
+          dropoff: ride.dropoff_location,
+          rideOption: ride.ride_option,
+          status: ride.status,
+          price: ride.price,
+          currency: ride.currency,
+          distance: ride.distance,
+          duration: ride.duration,
+          startTime: ride.start_time,
+          endTime: ride.end_time,
+          paymentMethod: ride.payment_method,
+          passenger: ride.passenger,
+          driver: ride.driver,
+        }));
+        
+        setRideHistory(transformedRides);
+      }
+    } catch (error) {
+      console.error('Exception fetching ride history:', error);
+    }
+  };
 
   // Add a new ride request
   const addRideRequest = (ride: Ride) => {
@@ -299,128 +429,257 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, 1500);
   };
 
-  const confirmRide = (paymentMethod: PaymentMethod = 'cash') => {
-    if (!pickupLocation || !dropoffLocation || !selectedRideOption) {
-      console.error('Pickup, dropoff, and ride option are required');
+  const confirmRide = async (paymentMethod: PaymentMethod = 'cash') => {
+    if (!pickupLocation || !dropoffLocation || !selectedRideOption || !session?.user?.id) {
+      console.error('Pickup, dropoff, ride option, and user are required');
+      toast({
+        title: "Error confirming ride",
+        description: "Please try again or log in if you're not logged in",
+        variant: "destructive"
+      });
       return;
     }
 
     // Use user bid if available, otherwise use the selected ride option price
     const finalPrice = userBid || selectedRideOption.price;
 
-    const newRide: Ride = {
-      id: Math.random().toString(36).substr(2, 9),
-      pickup: pickupLocation,
-      dropoff: dropoffLocation,
-      rideOption: {
-        ...selectedRideOption,
-        price: finalPrice
-      },
-      driver: defaultDriver,
-      status: 'confirmed',
-      price: finalPrice,
-      currency: selectedRideOption.currency,
-      distance: estimatedDistance || 4.8,
-      duration: estimatedDuration || 15,
-      paymentMethod: paymentMethod
-    };
+    // Create ride record in database
+    try {
+      const { data: newRideData, error: newRideError } = await supabase
+        .from('rides')
+        .insert({
+          passenger_id: session.user.id,
+          pickup_location: pickupLocation,
+          dropoff_location: dropoffLocation,
+          ride_option: selectedRideOption,
+          price: finalPrice,
+          currency: selectedRideOption.currency,
+          distance: estimatedDistance || 4.8,
+          duration: estimatedDuration || 15,
+          payment_method: paymentMethod,
+          status: 'confirmed'
+        })
+        .select()
+        .single();
+      
+      if (newRideError) {
+        throw newRideError;
+      }
+      
+      // Format the new ride data for the frontend
+      const newRide: Ride = {
+        id: newRideData.id,
+        pickup: pickupLocation,
+        dropoff: dropoffLocation,
+        rideOption: {
+          ...selectedRideOption,
+          price: finalPrice
+        },
+        status: 'confirmed',
+        price: finalPrice,
+        currency: selectedRideOption.currency,
+        distance: estimatedDistance || 4.8,
+        duration: estimatedDuration || 15,
+        paymentMethod: paymentMethod,
+        passenger: {
+          id: session.user.id,
+          name: user?.name || 'Passenger',
+          avatar: user?.avatar || '',
+          phone: user?.phone || ''
+        }
+      };
 
-    // Add ride to pending ride requests for drivers to see
-    if (!isDriverMode) {
-      addRideRequest(newRide);
-    }
+      // Add ride to pending ride requests for drivers to see
+      if (!isDriverMode) {
+        addRideRequest(newRide);
+      }
 
-    setCurrentRide(newRide);
-    setPanelOpen(false);
-    setWaitingForDriverAcceptance(false);
-    resetDriverAcceptanceTimer();
+      setCurrentRide(newRide);
+      setPanelOpen(false);
+      setWaitingForDriverAcceptance(false);
+      resetDriverAcceptanceTimer();
 
-    toast({
-      title: "Ride confirmed",
-      description: "Your ride has been confirmed and is waiting for a driver.",
-      duration: 3000
-    });
-  };
-
-  const startRide = () => {
-    if (!currentRide) return;
-    
-    const updatedRide: Ride = {
-      ...currentRide,
-      status: 'in_progress',
-      startTime: new Date()
-    };
-    
-    setCurrentRide(updatedRide);
-    setRideTimer(0);
-    setIsRideTimerActive(true);
-  };
-
-  const completeRide = () => {
-    if (!currentRide) return;
-    
-    const updatedRide: Ride = {
-      ...currentRide,
-      status: 'completed',
-      endTime: new Date()
-    };
-    
-    setCurrentRide(updatedRide);
-    setIsRideTimerActive(false);
-    
-    // Add to ride history
-    addToHistory(updatedRide);
-
-    // Update wallet balance only if payment method is wallet
-    if (isDriverMode) {
-      // Driver earns the fare regardless of payment method
-      updateWalletBalance(updatedRide.price);
       toast({
-        title: "Ride completed",
-        description: `You earned RS ${updatedRide.price} for this ride.`,
+        title: "Ride confirmed",
+        description: "Your ride has been confirmed and is waiting for a driver.",
         duration: 3000
       });
-    } else if (updatedRide.paymentMethod === 'wallet') {
-      // Passenger pays the fare only if payment method is wallet
-      updateWalletBalance(-updatedRide.price);
+      
+      // Refresh ride history
+      fetchRideHistory();
+      
+    } catch (error: any) {
+      console.error('Error confirming ride:', error);
       toast({
-        title: "Ride completed",
-        description: `RS ${updatedRide.price} has been deducted from your wallet.`,
-        duration: 3000
-      });
-    } else {
-      toast({
-        title: "Ride completed",
-        description: `Please pay RS ${updatedRide.price} in cash to your driver.`,
-        duration: 3000
+        title: "Error confirming ride",
+        description: error.message || "Failed to confirm your ride",
+        variant: "destructive"
       });
     }
   };
 
-  const cancelRide = () => {
+  const startRide = async () => {
+    if (!currentRide || !session?.user?.id) return;
+    
+    try {
+      const { error } = await supabase
+        .from('rides')
+        .update({
+          status: 'in_progress',
+          start_time: new Date().toISOString(),
+          driver_id: isDriverMode ? session.user.id : currentRide.driver?.id
+        })
+        .eq('id', currentRide.id);
+      
+      if (error) {
+        throw error;
+      }
+      
+      const updatedRide: Ride = {
+        ...currentRide,
+        status: 'in_progress',
+        startTime: new Date()
+      };
+      
+      setCurrentRide(updatedRide);
+      setRideTimer(0);
+      setIsRideTimerActive(true);
+      
+      toast({
+        title: "Ride started",
+        description: "Your ride is now in progress.",
+        duration: 3000
+      });
+      
+      // Refresh ride history
+      fetchRideHistory();
+      
+    } catch (error: any) {
+      console.error('Error starting ride:', error);
+      toast({
+        title: "Error starting ride",
+        description: error.message || "Failed to start your ride",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const completeRide = async () => {
+    if (!currentRide || !session?.user?.id) return;
+    
+    try {
+      const { error } = await supabase
+        .from('rides')
+        .update({
+          status: 'completed',
+          end_time: new Date().toISOString()
+        })
+        .eq('id', currentRide.id);
+      
+      if (error) {
+        throw error;
+      }
+      
+      const updatedRide: Ride = {
+        ...currentRide,
+        status: 'completed',
+        endTime: new Date()
+      };
+      
+      setCurrentRide(updatedRide);
+      setIsRideTimerActive(false);
+      
+      // Add to ride history
+      addToHistory(updatedRide);
+
+      // Handle payment
+      if (isDriverMode) {
+        // Driver earns the fare
+        await updateWalletBalance(updatedRide.price);
+        
+        toast({
+          title: "Ride completed",
+          description: `You earned RS ${updatedRide.price} for this ride.`,
+          duration: 3000
+        });
+      } else if (updatedRide.paymentMethod === 'wallet') {
+        // Passenger pays from wallet
+        await updateWalletBalance(-updatedRide.price);
+        
+        toast({
+          title: "Ride completed",
+          description: `RS ${updatedRide.price} has been deducted from your wallet.`,
+          duration: 3000
+        });
+      } else {
+        toast({
+          title: "Ride completed",
+          description: `Please pay RS ${updatedRide.price} in cash to your driver.`,
+          duration: 3000
+        });
+      }
+      
+      // Refresh ride history
+      fetchRideHistory();
+      
+    } catch (error: any) {
+      console.error('Error completing ride:', error);
+      toast({
+        title: "Error completing ride",
+        description: error.message || "Failed to complete your ride",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const cancelRide = async () => {
     if (!currentRide) return;
     
-    const updatedRide: Ride = {
-      ...currentRide,
-      status: 'cancelled'
-    };
-    
-    setCurrentRide(updatedRide);
-    setIsRideTimerActive(false);
-    
-    // Add to ride history
-    addToHistory(updatedRide);
+    try {
+      const { error } = await supabase
+        .from('rides')
+        .update({
+          status: 'cancelled'
+        })
+        .eq('id', currentRide.id);
+      
+      if (error) {
+        throw error;
+      }
+      
+      const updatedRide: Ride = {
+        ...currentRide,
+        status: 'cancelled'
+      };
+      
+      setCurrentRide(updatedRide);
+      setIsRideTimerActive(false);
+      
+      // Add to ride history
+      addToHistory(updatedRide);
 
-    // If this was a passenger cancellation, remove from pending ride requests
-    if (!isDriverMode) {
-      removeRideRequest(currentRide.id);
+      // If this was a passenger cancellation, remove from pending ride requests
+      if (!isDriverMode) {
+        removeRideRequest(currentRide.id);
+      }
+
+      toast({
+        title: "Ride cancelled",
+        description: "Your ride has been cancelled.",
+        duration: 3000
+      });
+      
+      // Refresh ride history
+      fetchRideHistory();
+      
+    } catch (error: any) {
+      console.error('Error cancelling ride:', error);
+      toast({
+        title: "Error cancelling ride",
+        description: error.message || "Failed to cancel your ride",
+        variant: "destructive"
+      });
     }
-
-    toast({
-      title: "Ride cancelled",
-      description: "Your ride has been cancelled.",
-      duration: 3000
-    });
   };
 
   const contextValue: RideContextType = {
@@ -460,10 +719,12 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     resetDriverAcceptanceTimer,
     walletBalance,
     updateWalletBalance,
+    fetchWalletBalance,
     pendingRideRequests,
     addRideRequest,
     removeRideRequest,
-    acceptRideRequest
+    acceptRideRequest,
+    fetchRideHistory
   };
 
   return (

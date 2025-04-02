@@ -1,25 +1,13 @@
 
-export type User = {
-  id: string;
-  name: string;
-  email: string;
-  phone?: string;
-  avatar?: string;
-  isLoggedIn: boolean;
-  address?: string;
-  isVerifiedDriver?: boolean;
-  referralCode?: string;
-  referralEarnings?: number;
-};
+// src/lib/types.ts
 
-export type Location = {
+export interface Location {
   name: string;
   address: string;
-  placeId?: string;
-  coordinates?: [number, number]; // [longitude, latitude]
-};
+  coordinates: [number, number]; // [longitude, latitude]
+}
 
-export type RideOption = {
+export interface RideOption {
   id: string;
   name: string;
   image: string;
@@ -27,25 +15,49 @@ export type RideOption = {
   currency: string;
   duration: number;
   capacity: number;
-};
+}
 
-export type Driver = {
+export interface User {
   id: string;
   name: string;
-  rating: number;
-  licensePlate: string;
-  avatar: string;
-};
+  email: string;
+  avatar?: string;
+  isLoggedIn: boolean;
+  phone?: string;
+  address?: string;
+  isVerifiedDriver?: boolean;
+  referralCode?: string;
+  referralEarnings?: number;
+}
 
-export type PaymentMethod = 'cash' | 'wallet';
+export interface Driver {
+  id: string;
+  name: string;
+  avatar?: string;
+  rating?: number;
+  licensePlate?: string;
+  phone?: string;
+}
 
-export type Ride = {
+export interface Passenger {
+  id: string;
+  name: string;
+  avatar?: string;
+  rating?: number;
+  phone?: string;
+}
+
+export type RideStatus = 'searching' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
+export type PaymentMethod = 'cash' | 'card' | 'wallet';
+
+export interface Ride {
   id: string;
   pickup: Location;
   dropoff: Location;
   rideOption: RideOption;
   driver?: Driver;
-  status: "searching" | "confirmed" | "in_progress" | "completed" | "cancelled";
+  passenger?: Passenger;
+  status: RideStatus;
   price: number;
   currency: string;
   distance: number;
@@ -53,39 +65,85 @@ export type Ride = {
   startTime?: Date;
   endTime?: Date;
   paymentMethod?: PaymentMethod;
-};
+}
 
-export type DriverDocument = {
+export interface DriverDocument {
   fullName: string;
   phoneNumber: string;
   cnicNumber: string;
-  cnicFrontPhoto?: File;
-  cnicBackPhoto?: File;
-  driverLicenseFrontPhoto?: File;
-  driverLicenseBackPhoto?: File;
+  cnicFrontPhoto?: File | string;
+  cnicBackPhoto?: File | string;
+  driverLicenseNumber?: string;
+  driverLicenseFrontPhoto?: File | string;
+  driverLicenseBackPhoto?: File | string;
   vehicleRegistrationNumber: string;
-  vehicleRegistrationPhoto?: File;
-  vehiclePhoto?: File;
-  selfieWithCNIC?: File;
-  selfiePhoto?: File;
-};
+  vehicleRegistrationPhoto?: File | string;
+  vehiclePhoto?: File | string;
+  vehicleType?: string;
+  vehicleModel?: string;
+  vehicleColor?: string;
+  selfieWithCNIC?: File | string;
+  selfiePhoto?: File | string;
+}
 
-export type Post = {
+export interface RideParams {
+  pickupLocation: Location;
+  dropoffLocation: Location;
+  rideOption: RideOption;
+  distance: number;
+  duration: number;
+}
+
+export interface Post {
   id: string;
-  author: {
-    name: string;
-    avatar?: string;
-    time: string;
-  };
   content: string;
-  likes?: number;
-  comments?: number;
-};
+  author: User;
+  likes: number;
+  comments: number;
+  createdAt: Date;
+}
 
-export type ReferralInfo = {
-  code: string;
-  totalInvited: number;
-  pending: number;
-  completed: number;
-  earned: number;
-};
+export interface Comment {
+  id: string;
+  content: string;
+  author: User;
+  postId: string;
+  createdAt: Date;
+}
+
+export interface Rating {
+  id: string;
+  rideId: string;
+  rater: User;
+  rated: User;
+  rating: number;
+  comment?: string;
+  createdAt: Date;
+}
+
+export interface Transaction {
+  id: string;
+  userId: string;
+  amount: number;
+  type: 'deposit' | 'withdrawal' | 'ride_payment' | 'ride_earning' | 'refund' | 'referral';
+  status: 'pending' | 'completed' | 'failed';
+  description?: string;
+  rideId?: string;
+  paymentMethod?: string;
+  bankDetails?: any;
+  createdAt: Date;
+}
+
+export interface BankAccount {
+  bankName: string;
+  accountNumber: string;
+  accountTitle: string;
+}
+
+export interface WithdrawalRequest {
+  amount: number;
+  bankAccount: BankAccount;
+  status: 'pending' | 'completed' | 'rejected';
+  requestDate: Date;
+  completionDate?: Date;
+}

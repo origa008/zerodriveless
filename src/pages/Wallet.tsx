@@ -8,20 +8,69 @@ import WithdrawForm, { WithdrawFormData } from '@/components/wallet/WithdrawForm
 import { useToast } from '@/hooks/use-toast';
 import { useRide } from '@/lib/context/RideContext';
 import { useAuth } from '@/lib/context/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
 
 const Wallet: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { walletBalance, updateWalletBalance, rideHistory } = useRide();
-  const { user } = useAuth();
+  const { walletBalance, updateWalletBalance, fetchWalletBalance, rideHistory, fetchRideHistory } = useRide();
+  const { user, session } = useAuth();
   const [showWithdrawForm, setShowWithdrawForm] = useState(false);
   const [showAddMoneyForm, setShowAddMoneyForm] = useState(false);
   const [addAmount, setAddAmount] = useState('');
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [referralEarnings, setReferralEarnings] = useState(0);
 
-  // Referral earnings (in a real app, this would come from an API)
-  const referralEarnings = user?.referralEarnings || 50;
+  // Fetch transactions
+  useEffect(() => {
+    const fetchTransactions = async () => {
+      if (!session?.user?.id) return;
+      
+      setIsLoading(true);
+      
+      try {
+        const { data, error } = await supabase
+          .from('transactions')
+          .select('*')
+          .eq('user_id', session.user.id)
+          .order('created_at', { ascending: false });
+        
+        if (error) {
+          throw error;
+        }
+        
+        setTransactions(data || []);
+        
+        // Fetch referral earnings
+        const { data: referralData, error: referralError } = await supabase
+          .from('transactions')
+          .select('amount')
+          .eq('user_id', session.user.id)
+          .eq('type', 'referral')
+          .eq('status', 'completed');
+        
+        if (referralError) {
+          throw referralError;
+        }
+        
+        if (referralData) {
+          const totalEarnings = referralData.reduce((sum, tx) => sum + tx.amount, 0);
+          setReferralEarnings(totalEarnings);
+        }
+      } catch (error) {
+        console.error('Error fetching transactions:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    fetchTransactions();
+    fetchWalletBalance();
+    fetchRideHistory();
+  }, [session?.user?.id]);
 
-  const handleWithdraw = (data: WithdrawFormData) => {
+  const handleWithdraw = async (data: WithdrawFormData) => {
     if (Number(data.amount) > walletBalance) {
       toast({
         title: "Insufficient Balance",
@@ -31,16 +80,48 @@ const Wallet: React.FC = () => {
       return;
     }
 
-    updateWalletBalance(-Number(data.amount));
-    setShowWithdrawForm(false);
-    toast({
-      title: "Withdrawal Request Submitted",
-      description: `RS ${data.amount} will be transferred to your account within 24-48 hours.`,
-      duration: 5000
-    });
+    try {
+      // Create withdrawal transaction
+      const { error } = await supabase
+        .from('transactions')
+        .insert({
+          user_id: session?.user?.id,
+          amount: Number(data.amount),
+          type: 'withdrawal',
+          status: 'completed',
+          description: `Withdrawal to ${data.bankName} account`,
+          bank_details: {
+            bank_name: data.bankName,
+            account_number: data.accountNumber,
+            account_title: data.accountTitle,
+            phone: data.phone
+          }
+        });
+      
+      if (error) {
+        throw error;
+      }
+      
+      // Deduct from wallet
+      await updateWalletBalance(-Number(data.amount));
+      setShowWithdrawForm(false);
+      
+      toast({
+        title: "Withdrawal Request Submitted",
+        description: `RS ${data.amount} will be transferred to your account within 24-48 hours.`,
+        duration: 5000
+      });
+    } catch (error: any) {
+      console.error('Error processing withdrawal:', error);
+      toast({
+        title: "Withdrawal Failed",
+        description: error.message || "Failed to process your withdrawal. Please try again.",
+        variant: "destructive"
+      });
+    }
   };
 
-  const handleAddMoney = () => {
+  const handleAddMoney = async () => {
     const amount = Number(addAmount);
     if (isNaN(amount) || amount <= 0) {
       toast({
@@ -51,14 +132,42 @@ const Wallet: React.FC = () => {
       return;
     }
 
-    updateWalletBalance(amount);
-    setShowAddMoneyForm(false);
-    setAddAmount('');
-    toast({
-      title: "Money Added Successfully",
-      description: `RS ${amount} has been added to your wallet.`,
-      duration: 3000
+    try {
+      await updateWalletBalance(amount);
+      setShowAddMoneyForm(false);
+      setAddAmount('');
+    } catch (error) {
+      console.error('Error adding money:', error);
+    }
+  };
+
+  const formatTransactionDate = (dateString: string) => {
+    return new Date(dateString).toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: 'numeric',
+      hour12: true
     });
+  };
+
+  const getTransactionDescription = (tx: any) => {
+    switch (tx.type) {
+      case 'deposit':
+        return 'Added Money to Wallet';
+      case 'withdrawal':
+        return 'Withdrew from Wallet';
+      case 'ride_payment':
+        return 'Ride Payment';
+      case 'ride_earning':
+        return 'Ride Earning';
+      case 'refund':
+        return 'Refund';
+      case 'referral':
+        return 'Referral Bonus';
+      default:
+        return tx.description || 'Transaction';
+    }
   };
 
   return (
@@ -114,42 +223,40 @@ const Wallet: React.FC = () => {
         
         <h2 className="mb-4 text-2xl font-bold">Transaction History</h2>
         
-        <div className="space-y-4 bg-transparent my-[20px]">
-          {rideHistory.length > 0 ? (
-            rideHistory.map((ride, index) => {
-              const isDriverEarning = ride.driver?.id === '1'; // If driver ID matches the user's ID
-              const amount = isDriverEarning ? ride.price : -ride.price;
-              const formattedDate = ride.endTime ? new Date(ride.endTime).toLocaleString('en-US', {
-                month: 'short',
-                day: 'numeric',
-                hour: 'numeric',
-                minute: 'numeric',
-                hour12: true
-              }) : 'Unknown date';
-
-              return (
-                <div key={ride.id || index} className="border-b border-gray-100 pb-4">
-                  <div className="flex justify-between py-[15px]">
-                    <div>
-                      <h3 className="font-medium text-gray-500">
-                        {isDriverEarning ? 'Drive To ' : 'Ride To '}{ride.dropoff.name}
-                      </h3>
-                      <p className="text-gray-500 text-sm">{formattedDate}</p>
+        {isLoading ? (
+          <div className="text-center py-8">
+            <p className="text-gray-500">Loading transactions...</p>
+          </div>
+        ) : (
+          <div className="space-y-4 bg-transparent my-[20px]">
+            {transactions.length > 0 ? (
+              transactions.map((tx) => {
+                const isPositive = ['deposit', 'ride_earning', 'refund', 'referral'].includes(tx.type);
+                
+                return (
+                  <div key={tx.id} className="border-b border-gray-100 pb-4">
+                    <div className="flex justify-between py-[15px]">
+                      <div>
+                        <h3 className="font-medium text-gray-500">
+                          {getTransactionDescription(tx)}
+                        </h3>
+                        <p className="text-gray-500 text-sm">{formatTransactionDate(tx.created_at)}</p>
+                      </div>
+                      <p className={`font-medium ${isPositive ? 'text-green-600' : ''}`}>
+                        {isPositive ? '+' : '-'}RS {Math.abs(tx.amount)}
+                      </p>
                     </div>
-                    <p className={`font-medium ${amount > 0 ? 'text-green-600' : ''}`}>
-                      {amount > 0 ? '+' : ''}{ride.currency} {Math.abs(amount)}
-                    </p>
                   </div>
-                </div>
-              );
-            })
-          ) : (
-            <div className="text-center py-8">
-              <p className="text-gray-500">No transaction history yet.</p>
-              <p className="text-sm text-gray-400 mt-2">Your ride and drive transactions will appear here.</p>
-            </div>
-          )}
-        </div>
+                );
+              })
+            ) : (
+              <div className="text-center py-8">
+                <p className="text-gray-500">No transaction history yet.</p>
+                <p className="text-sm text-gray-400 mt-2">Your ride and drive transactions will appear here.</p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
       
       {/* Add Money Modal */}

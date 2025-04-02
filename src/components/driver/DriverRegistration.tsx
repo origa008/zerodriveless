@@ -4,6 +4,9 @@ import { Button } from '@/components/ui/button';
 import { Camera, Upload, ArrowLeft, Check } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { DriverDocument } from '@/lib/types';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/lib/context/AuthContext';
+import { v4 as uuidv4 } from 'uuid';
 
 type DriverRegistrationProps = {
   onClose: () => void;
@@ -12,15 +15,17 @@ type DriverRegistrationProps = {
 
 const DriverRegistration: React.FC<DriverRegistrationProps> = ({ onClose, onSubmit }) => {
   const { toast } = useToast();
+  const { user, session } = useAuth();
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState<DriverDocument>({
-    fullName: '',
-    phoneNumber: '',
+    fullName: user?.name || '',
+    phoneNumber: user?.phone || '',
     cnicNumber: '',
     vehicleRegistrationNumber: '',
   });
-
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [fileNames, setFileNames] = useState<Record<string, string>>({});
+  const [fileUrls, setFileUrls] = useState<Record<string, string>>({});
   
   const totalSteps = 5;
   
@@ -29,11 +34,177 @@ const DriverRegistration: React.FC<DriverRegistrationProps> = ({ onClose, onSubm
     setFormData(prev => ({ ...prev, [name]: value }));
   };
   
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, fieldName: keyof DriverDocument) => {
+  const uploadFile = async (file: File, path: string): Promise<string | null> => {
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${uuidv4()}.${fileExt}`;
+      const filePath = `${path}/${fileName}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from('driver-documents')
+        .upload(filePath, file);
+      
+      if (uploadError) {
+        throw uploadError;
+      }
+      
+      const { data } = supabase.storage
+        .from('driver-documents')
+        .getPublicUrl(filePath);
+      
+      return data.publicUrl;
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      return null;
+    }
+  };
+  
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, fieldName: keyof DriverDocument) => {
     const file = e.target.files?.[0];
-    if (file) {
-      setFormData(prev => ({ ...prev, [fieldName]: file }));
-      setFileNames(prev => ({ ...prev, [fieldName]: file.name }));
+    if (!file) return;
+    
+    // Store file in formData temporarily
+    setFormData(prev => ({ ...prev, [fieldName]: file }));
+    setFileNames(prev => ({ ...prev, [fieldName]: file.name }));
+  };
+  
+  const submitDriverApplication = async () => {
+    if (!session?.user?.id) {
+      toast({
+        title: "Authentication required",
+        description: "Please log in to submit your application",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    setIsSubmitting(true);
+    
+    try {
+      // Create storage bucket if it doesn't exist
+      try {
+        const { data: bucketData, error: bucketError } = await supabase.storage.createBucket('driver-documents', {
+          public: false,
+        });
+        
+        if (bucketError && !bucketError.message.includes('already exists')) {
+          throw bucketError;
+        }
+      } catch (error) {
+        console.log('Bucket already exists or error creating bucket:', error);
+      }
+      
+      // Upload all files
+      const uploadPromises = [];
+      const fileFieldPromises: [keyof DriverDocument, Promise<string | null>][] = [];
+      
+      // Process files for upload
+      if (formData.cnicFrontPhoto instanceof File) {
+        const promise = uploadFile(formData.cnicFrontPhoto, 'cnic');
+        fileFieldPromises.push(['cnicFrontPhoto', promise]);
+        uploadPromises.push(promise);
+      }
+      
+      if (formData.cnicBackPhoto instanceof File) {
+        const promise = uploadFile(formData.cnicBackPhoto, 'cnic');
+        fileFieldPromises.push(['cnicBackPhoto', promise]);
+        uploadPromises.push(promise);
+      }
+      
+      if (formData.driverLicenseFrontPhoto instanceof File) {
+        const promise = uploadFile(formData.driverLicenseFrontPhoto, 'license');
+        fileFieldPromises.push(['driverLicenseFrontPhoto', promise]);
+        uploadPromises.push(promise);
+      }
+      
+      if (formData.driverLicenseBackPhoto instanceof File) {
+        const promise = uploadFile(formData.driverLicenseBackPhoto, 'license');
+        fileFieldPromises.push(['driverLicenseBackPhoto', promise]);
+        uploadPromises.push(promise);
+      }
+      
+      if (formData.vehiclePhoto instanceof File) {
+        const promise = uploadFile(formData.vehiclePhoto, 'vehicle');
+        fileFieldPromises.push(['vehiclePhoto', promise]);
+        uploadPromises.push(promise);
+      }
+      
+      if (formData.vehicleRegistrationPhoto instanceof File) {
+        const promise = uploadFile(formData.vehicleRegistrationPhoto, 'vehicle');
+        fileFieldPromises.push(['vehicleRegistrationPhoto', promise]);
+        uploadPromises.push(promise);
+      }
+      
+      if (formData.selfieWithCNIC instanceof File) {
+        const promise = uploadFile(formData.selfieWithCNIC, 'selfie');
+        fileFieldPromises.push(['selfieWithCNIC', promise]);
+        uploadPromises.push(promise);
+      }
+      
+      if (formData.selfiePhoto instanceof File) {
+        const promise = uploadFile(formData.selfiePhoto, 'selfie');
+        fileFieldPromises.push(['selfiePhoto', promise]);
+        uploadPromises.push(promise);
+      }
+      
+      // Wait for all uploads to complete
+      await Promise.all(uploadPromises);
+      
+      // Collect file URLs
+      const fileUrlsObj: Record<string, string> = {};
+      for (const [field, promise] of fileFieldPromises) {
+        const url = await promise;
+        if (url) fileUrlsObj[field] = url;
+      }
+      
+      // Create driver application in database
+      const { error: driverError } = await supabase
+        .from('driver_details')
+        .insert({
+          user_id: session.user.id,
+          full_name: formData.fullName,
+          cnic_number: formData.cnicNumber,
+          vehicle_registration_number: formData.vehicleRegistrationNumber,
+          vehicle_type: formData.vehicleType || 'Bike',
+          vehicle_color: formData.vehicleColor,
+          vehicle_model: formData.vehicleModel,
+          driver_license_number: formData.driverLicenseNumber,
+          cnic_front_url: fileUrlsObj.cnicFrontPhoto,
+          cnic_back_url: fileUrlsObj.cnicBackPhoto,
+          license_front_url: fileUrlsObj.driverLicenseFrontPhoto,
+          license_back_url: fileUrlsObj.driverLicenseBackPhoto,
+          vehicle_photo_url: fileUrlsObj.vehiclePhoto,
+          vehicle_registration_url: fileUrlsObj.vehicleRegistrationPhoto,
+          selfie_with_cnic_url: fileUrlsObj.selfieWithCNIC,
+          selfie_photo_url: fileUrlsObj.selfiePhoto,
+          status: 'pending'
+        });
+      
+      if (driverError) {
+        throw driverError;
+      }
+      
+      // Call the onSubmit callback
+      onSubmit({
+        ...formData,
+        ...fileUrlsObj
+      });
+      
+      toast({
+        title: "Application submitted!",
+        description: "We'll review your documents and get back to you within 3-5 business days.",
+        duration: 5000
+      });
+      
+    } catch (error: any) {
+      console.error('Error submitting driver application:', error);
+      toast({
+        title: "Submission failed",
+        description: error.message || "Failed to submit your application. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSubmitting(false);
     }
   };
   
@@ -101,8 +272,8 @@ const DriverRegistration: React.FC<DriverRegistrationProps> = ({ onClose, onSubm
     if (step < totalSteps) {
       setStep(step + 1);
     } else {
-      // Submit form
-      onSubmit(formData);
+      // Submit application
+      submitDriverApplication();
     }
   };
   
