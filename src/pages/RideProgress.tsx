@@ -26,11 +26,15 @@ const RideProgress: React.FC = () => {
     if (currentRide && currentRide.status === 'completed') {
       navigateToPage('/ride-completed');
     }
+    
+    // If there's no current ride, redirect to home
+    if (!currentRide) {
+      navigateToPage('/');
+    }
   }, [currentRide, navigateToPage]);
 
   if (!currentRide) {
-    navigateToPage('/');
-    return null;
+    return null; // We'll redirect in the useEffect above
   }
 
   const handleCancel = () => {

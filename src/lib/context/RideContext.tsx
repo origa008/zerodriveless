@@ -164,7 +164,6 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // This function allows components to navigate programmatically
   const navigateToPage = (path: string) => {
     // Instead of direct navigation, we're now using window.location
-    // Only use this for essential navigations
     window.location.href = path;
   };
 
@@ -182,7 +181,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsSearchingRide(true);
 
     try {
-      // Use proper field names for Supabase table
+      // Fix: Use a single object for the insert operation
       const { data: rideData, error: rideError } = await supabase
         .from('rides')
         .insert({
@@ -224,80 +223,83 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setCurrentRide(newRide);
       
       // Start polling for ride status changes
-      const interval = setInterval(async () => {
-        const { data, error } = await supabase
-          .from('rides')
-          .select(`
-            id,
-            status,
-            driver_id,
-            pickup_location,
-            dropoff_location,
-            ride_option,
-            price,
-            currency,
-            distance,
-            duration,
-            start_time,
-            end_time,
-            payment_method
-          `)
-          .eq('id', rideData[0].id)
-          .single();
-        
-        if (error) {
-          console.error('Error polling ride status:', error);
-          return;
-        }
-        
-        if (data.status === 'confirmed') {
-          setIsSearchingRide(false);
-          clearInterval(interval);
-          
-          // Get driver details
-          const { data: driverData, error: driverError } = await supabase
-            .from('profiles')
-            .select('id, name, avatar, phone')
-            .eq('id', data.driver_id)
+      let interval: number;
+      
+      const pollRideStatus = () => {
+        interval = window.setInterval(async () => {
+          const { data, error } = await supabase
+            .from('rides')
+            .select(`
+              id,
+              status,
+              driver_id,
+              pickup_location,
+              dropoff_location,
+              ride_option,
+              price,
+              currency,
+              distance,
+              duration,
+              start_time,
+              end_time,
+              payment_method
+            `)
+            .eq('id', rideData[0].id)
             .single();
           
-          if (driverError) {
-            console.error('Error fetching driver details:', driverError);
+          if (error) {
+            console.error('Error polling ride status:', error);
+            return;
           }
           
-          // Update current ride with driver details
-          const updatedRide: Ride = {
-            id: data.id,
-            pickup: data.pickup_location as unknown as Location,
-            dropoff: data.dropoff_location as unknown as Location,
-            rideOption: data.ride_option as unknown as RideOption,
-            driver: driverData ? {
-              id: driverData.id,
-              name: driverData.name,
-              avatar: driverData.avatar,
-              phone: driverData.phone
-            } : undefined,
-            status: data.status as RideStatus,
-            price: data.price,
-            currency: data.currency,
-            distance: data.distance,
-            duration: data.duration,
-            startTime: data.start_time ? new Date(data.start_time) : undefined,
-            endTime: data.end_time ? new Date(data.end_time) : undefined,
-            paymentMethod: data.payment_method as PaymentMethod
-          };
-          
-          setCurrentRide(updatedRide);
-          setIsRideInProgress(true);
-          navigateToPage('/ride-progress');
-        }
-      }, 5000);
-      
-      // Return a cleanup function that clears the interval
-      return () => {
-        clearInterval(interval);
+          if (data.status === 'confirmed') {
+            setIsSearchingRide(false);
+            clearInterval(interval);
+            
+            // Get driver details
+            const { data: driverData, error: driverError } = await supabase
+              .from('profiles')
+              .select('id, name, avatar, phone')
+              .eq('id', data.driver_id)
+              .single();
+            
+            if (driverError) {
+              console.error('Error fetching driver details:', driverError);
+            }
+            
+            // Update current ride with driver details
+            const updatedRide: Ride = {
+              id: data.id,
+              pickup: data.pickup_location as unknown as Location,
+              dropoff: data.dropoff_location as unknown as Location,
+              rideOption: data.ride_option as unknown as RideOption,
+              driver: driverData ? {
+                id: driverData.id,
+                name: driverData.name,
+                avatar: driverData.avatar,
+                phone: driverData.phone
+              } : undefined,
+              status: data.status as RideStatus,
+              price: data.price,
+              currency: data.currency,
+              distance: data.distance,
+              duration: data.duration,
+              startTime: data.start_time ? new Date(data.start_time) : undefined,
+              endTime: data.end_time ? new Date(data.end_time) : undefined,
+              paymentMethod: data.payment_method as PaymentMethod
+            };
+            
+            setCurrentRide(updatedRide);
+            setIsRideInProgress(true);
+            navigateToPage('/ride-progress');
+          }
+        }, 5000);
       };
       
+      // Start polling
+      pollRideStatus();
+      
+      // Cleanup function will be managed by component unmounts through useEffect
     } catch (error) {
       console.error('Error requesting ride:', error);
       setIsSearchingRide(false);
@@ -434,7 +436,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       
       // Transform the data to match the Ride type
-      const transformedRides = data.map(ride => {
+      const transformedRides: Ride[] = data.map(ride => {
         // Create basic ride object with safe defaults
         const transformedRide: Ride = {
           id: ride.id,
@@ -449,7 +451,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
           startTime: ride.start_time ? new Date(ride.start_time) : undefined,
           endTime: ride.end_time ? new Date(ride.end_time) : undefined,
           paymentMethod: ride.payment_method as PaymentMethod,
-          // Add default empty passenger and driver objects to prevent errors
+          // Add default passenger and driver objects to prevent errors
           passenger: {
             id: ride.passenger_id || '',
             name: 'Unknown Passenger'
@@ -549,7 +551,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         
         // Transform to Ride objects with proper typing
-        const availableRidesData = data.map(ride => {
+        const availableRidesData: Ride[] = data.map(ride => {
           const rideData: Ride = {
             id: ride.id,
             pickup: ride.pickup_location as unknown as Location,

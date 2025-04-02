@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Bike, Car } from 'lucide-react';
 import BottomNavigation from '@/components/layout/BottomNavigation';
@@ -40,16 +39,44 @@ const History: React.FC = () => {
         if (error) throw error;
         
         const formattedHistory = data.map(ride => {
-          // Safely handle location data
-          const pickupLocation = ride.pickup_location as unknown as Location;
-          const dropoffLocation = ride.dropoff_location as unknown as Location;
+          // Safely handle location data - make sure to handle both object and string formats
+          let pickupName = 'Unknown location';
+          let dropoffName = 'Unknown location';
+          
+          // Handle pickup location
+          if (ride.pickup_location) {
+            if (typeof ride.pickup_location === 'object' && ride.pickup_location.name) {
+              pickupName = ride.pickup_location.name;
+            } else if (typeof ride.pickup_location === 'string') {
+              try {
+                const parsed = JSON.parse(ride.pickup_location);
+                pickupName = parsed.name || 'Unknown location';
+              } catch (e) {
+                // If parsing fails, keep the default
+              }
+            }
+          }
+          
+          // Handle dropoff location
+          if (ride.dropoff_location) {
+            if (typeof ride.dropoff_location === 'object' && ride.dropoff_location.name) {
+              dropoffName = ride.dropoff_location.name;
+            } else if (typeof ride.dropoff_location === 'string') {
+              try {
+                const parsed = JSON.parse(ride.dropoff_location);
+                dropoffName = parsed.name || 'Unknown location';
+              } catch (e) {
+                // If parsing fails, keep the default
+              }
+            }
+          }
           
           return {
             id: ride.id,
             type: ride.passenger_id === user.id ? 'ride' : 'drive',
             date: format(new Date(ride.created_at), 'yyyy-MM-dd HH:mm'),
-            from: pickupLocation && typeof pickupLocation === 'object' ? pickupLocation.name || 'Unknown location' : 'Unknown location',
-            to: dropoffLocation && typeof dropoffLocation === 'object' ? dropoffLocation.name || 'Unknown location' : 'Unknown location',
+            from: pickupName,
+            to: dropoffName,
             price: ride.price,
             status: ride.status
           };
