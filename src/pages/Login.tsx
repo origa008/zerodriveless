@@ -75,9 +75,13 @@ const Login: React.FC = () => {
         </div>
         
         <div className="text-right mb-6">
-          <a href="#" className="text-zerodrive-purple hover:underline">
+          <button 
+            type="button"
+            onClick={() => navigate('/reset-password')}
+            className="text-zerodrive-purple hover:underline"
+          >
             Forgot password?
-          </a>
+          </button>
         </div>
         
         <Button 

@@ -12,6 +12,7 @@ import Index from "./pages/Index";
 import Welcome from "./pages/Welcome";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
+import ResetPassword from "./pages/ResetPassword";
 import RideProgress from "./pages/RideProgress";
 import RideCompleted from "./pages/RideCompleted";
 import Community from "./pages/Community";
@@ -40,6 +41,7 @@ const App = () => (
               <Route path="/welcome" element={<Welcome />} />
               <Route path="/login" element={<Login />} />
               <Route path="/signup" element={<Signup />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/ride-progress" element={<RideProgress />} />
               <Route path="/ride-completed" element={<RideCompleted />} />
               <Route path="/community" element={<Community />} />

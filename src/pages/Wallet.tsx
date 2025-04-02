@@ -133,11 +133,39 @@ const Wallet: React.FC = () => {
     }
 
     try {
+      // Create deposit transaction
+      const { error } = await supabase
+        .from('transactions')
+        .insert({
+          user_id: session?.user?.id,
+          amount: amount,
+          type: 'deposit',
+          status: 'completed',
+          description: 'Added Money to Wallet',
+          payment_method: 'card'
+        });
+      
+      if (error) {
+        throw error;
+      }
+      
+      // Add to wallet
       await updateWalletBalance(amount);
       setShowAddMoneyForm(false);
       setAddAmount('');
-    } catch (error) {
+      
+      toast({
+        title: "Money Added",
+        description: `RS ${amount} has been added to your wallet.`,
+        duration: 3000
+      });
+    } catch (error: any) {
       console.error('Error adding money:', error);
+      toast({
+        title: "Transaction Failed",
+        description: error.message || "Failed to add money to your wallet. Please try again.",
+        variant: "destructive"
+      });
     }
   };
 
