@@ -281,17 +281,17 @@ export const fetchUserRides = async (userId: string): Promise<Ride[]> => {
     // Transform the data to match the Ride type
     return data.map((ride) => ({
       id: ride.id,
-      pickup: ride.pickup_location,
-      dropoff: ride.dropoff_location,
-      rideOption: ride.ride_option,
+      pickup: ride.pickup_location as Location,
+      dropoff: ride.dropoff_location as Location,
+      rideOption: ride.ride_option as RideOption,
       driver: ride.driver_id ? {
         id: ride.driver_id,
-        name: ride.driver_name || 'Driver',
-        rating: ride.driver_rating || 4.5,
-        licensePlate: ride.vehicle_plate || '',
-        avatar: ride.driver_avatar || '/lovable-uploads/498e0bf1-4c8a-4cad-8ee2-6f43fdccc511.png'
+        name: 'Driver',
+        rating: 4.5,
+        licensePlate: 'Unknown',
+        avatar: '/lovable-uploads/498e0bf1-4c8a-4cad-8ee2-6f43fdccc511.png'
       } : undefined,
-      status: ride.status,
+      status: ride.status as 'searching' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled',
       price: ride.price,
       currency: ride.currency || 'RS',
       distance: ride.distance,
