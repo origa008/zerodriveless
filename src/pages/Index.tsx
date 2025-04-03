@@ -14,7 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 const Index: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { user, isLoading } = useAuth();
+  const { user, loading } = useAuth();
   const { isDriverMode, setDriverMode } = useRide();
   const [isDriverOnline, setIsDriverOnline] = useState(false);
   const [showDriverRegistrationPrompt, setShowDriverRegistrationPrompt] = useState(false);
@@ -44,12 +44,12 @@ const Index: React.FC = () => {
   
   // Redirect to Welcome for unauthenticated users
   useEffect(() => {
-    if (!isLoading && !user?.isLoggedIn) {
+    if (!loading && !user?.isLoggedIn) {
       navigate('/welcome');
     }
-  }, [user, isLoading, navigate]);
+  }, [user, loading, navigate]);
   
-  if (isLoading) {
+  if (loading) {
     return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
   }
   

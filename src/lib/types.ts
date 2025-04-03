@@ -68,6 +68,7 @@ export type DriverDocument = {
   vehiclePhoto?: File;
   selfieWithCNIC?: File;
   selfiePhoto?: File;
+  vehicleType?: string;
 };
 
 export type Post = {

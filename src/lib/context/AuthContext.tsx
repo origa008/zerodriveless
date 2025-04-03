@@ -88,7 +88,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setUser(mapProfileToUser(profile));
           toast({
             title: "Login successful",
-            description: `Welcome back, ${profile.name}!`,
+            description: `Welcome back, ${profile.name || 'User'}!`,
             duration: 3000,
           });
           navigate('/');
@@ -199,14 +199,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setLoading(true);
       
+      // Extract only the fields we want to update
+      const profileUpdates: any = {};
+      if (updates.name) profileUpdates.name = updates.name;
+      if (updates.phone) profileUpdates.phone = updates.phone;
+      if (updates.avatar) profileUpdates.avatar = updates.avatar;
+      if (updates.address) profileUpdates.address = updates.address;
+      
       const { error } = await supabase
         .from('profiles')
-        .update({
-          name: updates.name,
-          phone: updates.phone,
-          avatar: updates.avatar,
-          address: updates.address,
-        })
+        .update(profileUpdates)
         .eq('id', user.id);
 
       if (error) {
