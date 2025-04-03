@@ -1,16 +1,8 @@
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Ride, Location, RideOption, Driver, PaymentMethod } from '../types';
 import { calculateDistance } from '../utils/mapsApi';
 import { useToast } from '@/hooks/use-toast';
-import { useAuth } from './AuthContext';
-import { 
-  fetchWalletBalance, 
-  updateWalletBalance as updateSupabaseWalletBalance,
-  createRide as createSupabaseRide,
-  fetchUserRides,
-  updateRideStatus,
-  createTransaction
-} from '../utils/supabaseUtils';
 
 type RideContextType = {
   currentRide: Ride | null;
@@ -84,6 +76,7 @@ const defaultDriver: Driver = {
   avatar: '/lovable-uploads/498e0bf1-4c8a-4cad-8ee2-6f43fdccc511.png'
 };
 
+// Default location for Lahore, Pakistan
 const defaultLocation: Location = {
   name: 'Lahore, Pakistan',
   address: 'Lahore, Punjab, Pakistan',
@@ -94,7 +87,6 @@ const RideContext = createContext<RideContextType | undefined>(undefined);
 
 export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { toast } = useToast();
-  const { user } = useAuth();
   const [currentRide, setCurrentRide] = useState<Ride | null>(null);
   const [pickupLocation, setPickupLocation] = useState<Location | null>(null);
   const [dropoffLocation, setDropoffLocation] = useState<Location | null>(null);
@@ -119,69 +111,42 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const availableRideOptions = availableRideOptionsWithPricing;
 
+  // Initialize with default location for Lahore
   useEffect(() => {
     if (!pickupLocation) {
       setPickupLocation(defaultLocation);
     }
   }, []);
 
-  useEffect(() => {
-    if (user) {
-      const loadWalletBalance = async () => {
-        const balance = await fetchWalletBalance(user.id);
-        setWalletBalance(balance);
-      };
-      
-      loadWalletBalance();
-    }
-  }, [user]);
-
-  useEffect(() => {
-    if (user) {
-      const loadRideHistory = async () => {
-        const rides = await fetchUserRides(user.id);
-        setRideHistory(rides);
-      };
-      
-      loadRideHistory();
-    }
-  }, [user, isDriverMode]);
-
-  const updateWalletBalance = async (amount: number) => {
-    if (user) {
-      const success = await updateSupabaseWalletBalance(user.id, amount);
-      
-      if (success) {
-        setWalletBalance(prevBalance => {
-          const newBalance = prevBalance + amount;
-          return newBalance;
-        });
-        
-        const transactionType = amount > 0 ? 'deposit' : 'withdrawal';
-        await createTransaction({
-          userId: user.id,
-          amount: Math.abs(amount),
-          type: transactionType,
-          status: 'completed',
-          description: amount > 0 ? 'Wallet deposit' : 'Wallet withdrawal',
-          paymentMethod: 'wallet'
-        });
-        
-        return true;
-      }
-      return false;
-    }
-    return false;
+  // Update wallet balance
+  const updateWalletBalance = (amount: number) => {
+    setWalletBalance(prevBalance => {
+      const newBalance = prevBalance + amount;
+      // Store in local storage for persistence
+      localStorage.setItem('walletBalance', newBalance.toString());
+      return newBalance;
+    });
   };
 
+  // Initialize wallet balance from localStorage if available
+  useEffect(() => {
+    const storedBalance = localStorage.getItem('walletBalance');
+    if (storedBalance) {
+      setWalletBalance(parseFloat(storedBalance));
+    }
+  }, []);
+
+  // Add a new ride request
   const addRideRequest = (ride: Ride) => {
     setPendingRideRequests(prev => [...prev, ride]);
   };
 
+  // Remove a ride request
   const removeRideRequest = (rideId: string) => {
     setPendingRideRequests(prev => prev.filter(ride => ride.id !== rideId));
   };
 
+  // Accept a ride request
   const acceptRideRequest = (rideId: string) => {
     const acceptedRide = pendingRideRequests.find(ride => ride.id === rideId);
     if (acceptedRide) {
@@ -190,6 +155,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Calculate base fare based on vehicle type and distance
   const calculateBaseFare = (distance: number, vehicleType: string): number => {
     const baseRate = vehicleType === 'Bike' ? 10 : 17; // RS per km
     const driverProfit = 1.25; // 25% profit for driver
@@ -204,6 +170,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Start driver acceptance countdown
   useEffect(() => {
     if (isWaitingForDriverAcceptance && driverAcceptanceTimer > 0) {
       const interval = setInterval(() => {
@@ -227,26 +194,34 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [isWaitingForDriverAcceptance, driverAcceptanceTimer, toast]);
 
+  // Calculate fare multiplier based on time of day, traffic, demand
   const updateFareMultiplier = () => {
+    // Check current hour to determine peak time
     const hour = new Date().getHours();
     let timeMultiplier = 1;
     
+    // Peak hours: 7-10 AM and 5-8 PM
     if ((hour >= 7 && hour <= 10) || (hour >= 17 && hour <= 20)) {
       timeMultiplier = 1.2;
     }
     
-    const day = new Date().getDay();
+    // Weekend multiplier (Friday and Saturday nights)
+    const day = new Date().getDay(); // 0-6, 5 is Friday, 6 is Saturday
     const isWeekend = (day === 5 && hour >= 20) || (day === 6 && hour >= 18);
     const weekendMultiplier = isWeekend ? 1.15 : 1;
     
+    // Random demand factor (1.0 - 1.25)
     const demandMultiplier = 1 + (Math.random() * 0.25);
     
+    // Combine all factors
     const newMultiplier = timeMultiplier * weekendMultiplier * demandMultiplier;
     
+    // Round to 2 decimal places
     setFareMultiplier(parseFloat(newMultiplier.toFixed(2)));
   };
 
   useEffect(() => {
+    // Update fare multiplier when component mounts and every 10 minutes
     updateFareMultiplier();
     const intervalId = setInterval(updateFareMultiplier, 10 * 60 * 1000);
     
@@ -270,7 +245,9 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setEstimatedDistance(parseFloat(result.distance.toFixed(1)));
           setEstimatedDuration(result.duration);
           
+          // Apply new fare calculation based on vehicle type
           const updatedOptions = defaultRideOptions.map(option => {
+            // Calculate base fare based on vehicle type (Bike or Auto)
             const baseFare = calculateBaseFare(result.distance, option.name);
             
             return {
@@ -322,69 +299,51 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, 1500);
   };
 
-  const confirmRide = async (paymentMethod: PaymentMethod = 'cash') => {
-    if (!pickupLocation || !dropoffLocation || !selectedRideOption || !user) {
-      console.error('Pickup, dropoff, ride option and user are required');
+  const confirmRide = (paymentMethod: PaymentMethod = 'cash') => {
+    if (!pickupLocation || !dropoffLocation || !selectedRideOption) {
+      console.error('Pickup, dropoff, and ride option are required');
       return;
     }
 
+    // Use user bid if available, otherwise use the selected ride option price
     const finalPrice = userBid || selectedRideOption.price;
 
-    const newRide = {
-      passenger_id: user.id,
-      pickup_location: pickupLocation,
-      dropoff_location: dropoffLocation,
-      ride_option: {
+    const newRide: Ride = {
+      id: Math.random().toString(36).substr(2, 9),
+      pickup: pickupLocation,
+      dropoff: dropoffLocation,
+      rideOption: {
         ...selectedRideOption,
         price: finalPrice
       },
+      driver: defaultDriver,
+      status: 'confirmed',
       price: finalPrice,
       currency: selectedRideOption.currency,
       distance: estimatedDistance || 4.8,
       duration: estimatedDuration || 15,
-      payment_method: paymentMethod,
-      status: 'confirmed' as const
+      paymentMethod: paymentMethod
     };
 
+    // Add ride to pending ride requests for drivers to see
     if (!isDriverMode) {
-      const createdRide = await createSupabaseRide(newRide);
-      
-      if (createdRide) {
-        setCurrentRide(createdRide);
-        setPanelOpen(false);
-        setWaitingForDriverAcceptance(false);
-        resetDriverAcceptanceTimer();
-
-        toast({
-          title: "Ride confirmed",
-          description: "Your ride has been confirmed and is waiting for a driver.",
-          duration: 3000
-        });
-        
-        if (paymentMethod === 'wallet') {
-          await createTransaction({
-            userId: user.id,
-            amount: finalPrice,
-            type: 'fare',
-            status: 'pending',
-            description: `Ride to ${dropoffLocation.name}`,
-            paymentMethod: 'wallet',
-            rideId: createdRide.id
-          });
-        }
-      } else {
-        toast({
-          title: "Error",
-          description: "There was an error confirming your ride. Please try again.",
-          variant: "destructive",
-          duration: 3000
-        });
-      }
+      addRideRequest(newRide);
     }
+
+    setCurrentRide(newRide);
+    setPanelOpen(false);
+    setWaitingForDriverAcceptance(false);
+    resetDriverAcceptanceTimer();
+
+    toast({
+      title: "Ride confirmed",
+      description: "Your ride has been confirmed and is waiting for a driver.",
+      duration: 3000
+    });
   };
 
-  const startRide = async () => {
-    if (!currentRide || !user) return;
+  const startRide = () => {
+    if (!currentRide) return;
     
     const updatedRide: Ride = {
       ...currentRide,
@@ -392,24 +351,13 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
       startTime: new Date()
     };
     
-    const success = await updateRideStatus(currentRide.id, 'in_progress');
-    
-    if (success) {
-      setCurrentRide(updatedRide);
-      setRideTimer(0);
-      setIsRideTimerActive(true);
-    } else {
-      toast({
-        title: "Error",
-        description: "There was an error starting the ride. Please try again.",
-        variant: "destructive",
-        duration: 3000
-      });
-    }
+    setCurrentRide(updatedRide);
+    setRideTimer(0);
+    setIsRideTimerActive(true);
   };
 
-  const completeRide = async () => {
-    if (!currentRide || !user) return;
+  const completeRide = () => {
+    if (!currentRide) return;
     
     const updatedRide: Ride = {
       ...currentRide,
@@ -417,58 +365,62 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
       endTime: new Date()
     };
     
-    const success = await updateRideStatus(currentRide.id, 'completed');
+    setCurrentRide(updatedRide);
+    setIsRideTimerActive(false);
     
-    if (success) {
-      setCurrentRide(updatedRide);
-      setIsRideTimerActive(false);
-      
-      addToHistory(updatedRide);
+    // Add to ride history
+    addToHistory(updatedRide);
 
+    // Update wallet balance only if payment method is wallet
+    if (isDriverMode) {
+      // Driver earns the fare regardless of payment method
+      updateWalletBalance(updatedRide.price);
       toast({
         title: "Ride completed",
-        description: "Your ride has been completed successfully.",
+        description: `You earned RS ${updatedRide.price} for this ride.`,
+        duration: 3000
+      });
+    } else if (updatedRide.paymentMethod === 'wallet') {
+      // Passenger pays the fare only if payment method is wallet
+      updateWalletBalance(-updatedRide.price);
+      toast({
+        title: "Ride completed",
+        description: `RS ${updatedRide.price} has been deducted from your wallet.`,
         duration: 3000
       });
     } else {
       toast({
-        title: "Error",
-        description: "There was an error completing the ride. Please try again.",
-        variant: "destructive",
+        title: "Ride completed",
+        description: `Please pay RS ${updatedRide.price} in cash to your driver.`,
         duration: 3000
       });
     }
   };
 
-  const cancelRide = async () => {
-    if (!currentRide || !user) return;
+  const cancelRide = () => {
+    if (!currentRide) return;
     
     const updatedRide: Ride = {
       ...currentRide,
       status: 'cancelled'
     };
     
-    const success = await updateRideStatus(currentRide.id, 'cancelled');
+    setCurrentRide(updatedRide);
+    setIsRideTimerActive(false);
     
-    if (success) {
-      setCurrentRide(updatedRide);
-      setIsRideTimerActive(false);
-      
-      addToHistory(updatedRide);
+    // Add to ride history
+    addToHistory(updatedRide);
 
-      toast({
-        title: "Ride cancelled",
-        description: "Your ride has been cancelled.",
-        duration: 3000
-      });
-    } else {
-      toast({
-        title: "Error",
-        description: "There was an error cancelling the ride. Please try again.",
-        variant: "destructive",
-        duration: 3000
-      });
+    // If this was a passenger cancellation, remove from pending ride requests
+    if (!isDriverMode) {
+      removeRideRequest(currentRide.id);
     }
+
+    toast({
+      title: "Ride cancelled",
+      description: "Your ride has been cancelled.",
+      duration: 3000
+    });
   };
 
   const contextValue: RideContextType = {

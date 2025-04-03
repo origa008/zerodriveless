@@ -68,7 +68,6 @@ export type DriverDocument = {
   vehiclePhoto?: File;
   selfieWithCNIC?: File;
   selfiePhoto?: File;
-  vehicleType?: string;
 };
 
 export type Post = {
@@ -89,63 +88,4 @@ export type ReferralInfo = {
   pending: number;
   completed: number;
   earned: number;
-};
-
-export type ChatMessage = {
-  id: string;
-  rideId: string;
-  senderId: string;
-  receiverId: string;
-  message: string;
-  isRead: boolean;
-  createdAt: Date;
-};
-
-export type Profile = {
-  id: string;
-  name: string;
-  email: string;
-  phone?: string;
-  avatar?: string;
-  address?: string;
-  isVerifiedDriver: boolean;
-  referralCode?: string;
-  createdAt: Date;
-};
-
-export type Wallet = {
-  id: string;
-  userId: string;
-  balance: number;
-  lastUpdated: Date;
-};
-
-export type Transaction = {
-  id: string;
-  userId: string;
-  amount: number;
-  type: 'deposit' | 'withdrawal' | 'fare' | 'referral';
-  status: 'pending' | 'completed' | 'failed';
-  description?: string;
-  paymentMethod?: string;
-  rideId?: string;
-  bankDetails?: any;
-  createdAt: Date;
-};
-
-export type DriverDetail = {
-  id: string;
-  userId: string;
-  fullName: string;
-  cnicNumber: string;
-  driverLicenseNumber?: string;
-  vehicleType: string;
-  vehicleModel?: string;
-  vehicleColor?: string;
-  vehicleRegistrationNumber: string;
-  status: 'pending' | 'approved' | 'rejected';
-  hasSufficientDeposit: boolean;
-  depositAmountRequired: number;
-  approvalDate?: Date;
-  createdAt: Date;
 };
