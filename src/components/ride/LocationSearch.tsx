@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { MapPin } from 'lucide-react';
 import { searchPlaces, getPlaceDetails } from '@/lib/utils/mapsApi';
@@ -50,6 +51,7 @@ const LocationSearch: React.FC<LocationSearchProps> = ({
   }, [inputValue, readOnly]);
 
   useEffect(() => {
+    // Handle clicks outside search results
     const handleClickOutside = (event: MouseEvent) => {
       if (
         resultsRef.current && 
@@ -76,6 +78,7 @@ const LocationSearch: React.FC<LocationSearchProps> = ({
     onChange(location.name);
     
     if (location.placeId && !location.coordinates) {
+      // Get details including coordinates
       const details = await getPlaceDetails(location.placeId);
       if (details) {
         onSelect(details);

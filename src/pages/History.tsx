@@ -1,117 +1,63 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Bike, Car } from 'lucide-react';
 import BottomNavigation from '@/components/layout/BottomNavigation';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/lib/context/AuthContext';
-import { useRide } from '@/lib/context/RideContext';
-import { Ride, Location } from '@/lib/types';
-import { format } from 'date-fns';
+
+type HistoryItem = {
+  id: string;
+  type: 'ride' | 'drive';
+  date: string;
+  from: string;
+  to: string;
+  price: number;
+  status: 'completed' | 'cancelled';
+};
+
+const mockHistory: HistoryItem[] = [
+  {
+    id: 'hist1',
+    type: 'ride',
+    date: '2023-10-15 14:30',
+    from: 'Gulberg III',
+    to: 'Johar Town',
+    price: 120,
+    status: 'completed'
+  },
+  {
+    id: 'hist2',
+    type: 'drive',
+    date: '2023-10-14 10:15',
+    from: 'DHA Phase 5',
+    to: 'Bahria Town',
+    price: 220,
+    status: 'completed'
+  },
+  {
+    id: 'hist3',
+    type: 'ride',
+    date: '2023-10-12 18:45',
+    from: 'Model Town',
+    to: 'Liberty Market',
+    price: 95,
+    status: 'completed'
+  },
+  {
+    id: 'hist4',
+    type: 'drive',
+    date: '2023-10-10 09:20',
+    from: 'Allama Iqbal Town',
+    to: 'Fortress Stadium',
+    price: 185,
+    status: 'cancelled'
+  }
+];
 
 const History: React.FC = () => {
-  const { navigateToPage } = useRide();
-  const { user } = useAuth();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'all' | 'rides' | 'drives'>('all');
-  const [history, setHistory] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   
-  useEffect(() => {
-    if (!user?.id) return;
-    
-    const fetchRideHistory = async () => {
-      setIsLoading(true);
-      try {
-        // Fetch rides where user is either passenger or driver
-        const { data, error } = await supabase
-          .from('rides')
-          .select(`
-            id,
-            passenger_id,
-            driver_id,
-            pickup_location,
-            dropoff_location,
-            price,
-            status,
-            created_at
-          `)
-          .or(`passenger_id.eq.${user.id},driver_id.eq.${user.id}`)
-          .order('created_at', { ascending: false });
-        
-        if (error) throw error;
-        
-        const formattedHistory = data.map(ride => {
-          // Safely handle location data - make sure to handle both object and string formats
-          let pickupName = 'Unknown location';
-          let dropoffName = 'Unknown location';
-          
-          // Handle pickup location - safely extract name with type checking
-          if (ride.pickup_location) {
-            try {
-              // If it's already an object with name property
-              if (typeof ride.pickup_location === 'object' && 
-                  ride.pickup_location !== null &&
-                  'name' in ride.pickup_location && 
-                  typeof ride.pickup_location.name === 'string') {
-                pickupName = ride.pickup_location.name;
-              }
-              // If it's a string that needs to be parsed
-              else if (typeof ride.pickup_location === 'string') {
-                const parsed = JSON.parse(ride.pickup_location);
-                if (parsed && typeof parsed === 'object' && 'name' in parsed) {
-                  pickupName = parsed.name || 'Unknown location';
-                }
-              }
-            } catch (e) {
-              // If parsing fails, keep the default
-              console.error("Error parsing pickup location:", e);
-            }
-          }
-          
-          // Handle dropoff location - safely extract name with type checking
-          if (ride.dropoff_location) {
-            try {
-              // If it's already an object with name property
-              if (typeof ride.dropoff_location === 'object' && 
-                  ride.dropoff_location !== null &&
-                  'name' in ride.dropoff_location && 
-                  typeof ride.dropoff_location.name === 'string') {
-                dropoffName = ride.dropoff_location.name;
-              }
-              // If it's a string that needs to be parsed
-              else if (typeof ride.dropoff_location === 'string') {
-                const parsed = JSON.parse(ride.dropoff_location);
-                if (parsed && typeof parsed === 'object' && 'name' in parsed) {
-                  dropoffName = parsed.name || 'Unknown location';
-                }
-              }
-            } catch (e) {
-              // If parsing fails, keep the default
-              console.error("Error parsing dropoff location:", e);
-            }
-          }
-          
-          return {
-            id: ride.id,
-            type: ride.passenger_id === user.id ? 'ride' : 'drive',
-            date: format(new Date(ride.created_at), 'yyyy-MM-dd HH:mm'),
-            from: pickupName,
-            to: dropoffName,
-            price: ride.price,
-            status: ride.status
-          };
-        });
-        
-        setHistory(formattedHistory);
-      } catch (error) {
-        console.error('Error fetching ride history:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    
-    fetchRideHistory();
-  }, [user?.id, activeTab]);
-  
-  const filteredHistory = history.filter(item => {
+  const filteredHistory = mockHistory.filter(item => {
     if (activeTab === 'all') return true;
     if (activeTab === 'rides') return item.type === 'ride';
     if (activeTab === 'drives') return item.type === 'drive';
@@ -122,7 +68,7 @@ const History: React.FC = () => {
     <div className="min-h-screen bg-white pb-20">
       <div className="bg-black text-white p-6">
         <button 
-          onClick={() => navigateToPage('/')}
+          onClick={() => navigate('/')}
           className="mb-4 flex items-center text-white"
         >
           <ArrowLeft size={20} className="mr-2" />
@@ -156,11 +102,7 @@ const History: React.FC = () => {
         </div>
         
         <div className="space-y-4">
-          {isLoading ? (
-            <div className="flex justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black"></div>
-            </div>
-          ) : filteredHistory.length === 0 ? (
+          {filteredHistory.length === 0 ? (
             <p className="text-center text-gray-500 py-6">No history found</p>
           ) : (
             filteredHistory.map((item) => (
@@ -183,9 +125,7 @@ const History: React.FC = () => {
                 
                 <div className="flex justify-between items-center">
                   <span className={`text-sm px-2 py-1 rounded ${
-                    item.status === 'completed' ? 'bg-green-100 text-green-800' : 
-                    item.status === 'cancelled' ? 'bg-red-100 text-red-800' :
-                    'bg-yellow-100 text-yellow-800'
+                    item.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
                   }`}>
                     {item.status}
                   </span>

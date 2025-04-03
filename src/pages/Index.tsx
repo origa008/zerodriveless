@@ -12,15 +12,9 @@ import PassengerPanel from '@/components/ride/PassengerPanel';
 import { useToast } from '@/hooks/use-toast';
 
 const Index: React.FC = () => {
-  console.log("Rendering Index component");
   const navigate = useNavigate();
   const { toast } = useToast();
-  
-  // Log before accessing useAuth to debug context issues
-  console.log("About to access useAuth in Index component");
   const { user, isLoading } = useAuth();
-  console.log("useAuth accessed successfully", { user, isLoading });
-  
   const { isDriverMode, setDriverMode } = useRide();
   const [isDriverOnline, setIsDriverOnline] = useState(false);
   const [showDriverRegistrationPrompt, setShowDriverRegistrationPrompt] = useState(false);
@@ -50,9 +44,7 @@ const Index: React.FC = () => {
   
   // Redirect to Welcome for unauthenticated users
   useEffect(() => {
-    console.log("Index auth check effect running", { user, isLoading });
     if (!isLoading && !user?.isLoggedIn) {
-      console.log("Redirecting to welcome page - user not logged in");
       navigate('/welcome');
     }
   }, [user, isLoading, navigate]);

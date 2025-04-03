@@ -6,15 +6,13 @@ import { User, Mail, Phone, MapPin, Shield, ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import BottomNavigation from '@/components/layout/BottomNavigation';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
 
 const Profile: React.FC = () => {
-  const { user, logout, updateUserProfile, session } = useAuth();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [driverMode, setDriverMode] = useState(false);
-  const [isDriverVerified, setIsDriverVerified] = useState(false);
   
   const [formData, setFormData] = useState({
     name: user?.name || '',
@@ -22,31 +20,6 @@ const Profile: React.FC = () => {
     phone: user?.phone || '',
     address: user?.address || 'Lahore, Pakistan',
   });
-  
-  // Fetch driver verification status
-  useEffect(() => {
-    const fetchDriverStatus = async () => {
-      if (!session?.user?.id) return;
-      
-      try {
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('is_verified_driver')
-          .eq('id', session.user.id)
-          .single();
-        
-        if (error) {
-          throw error;
-        }
-        
-        setIsDriverVerified(data?.is_verified_driver || false);
-      } catch (error) {
-        console.error('Error fetching driver status:', error);
-      }
-    };
-    
-    fetchDriverStatus();
-  }, [session?.user?.id]);
 
   // Check for phone number on component load
   useEffect(() => {
@@ -71,7 +44,7 @@ const Profile: React.FC = () => {
     return phone.length === 11 && /^\d+$/.test(phone);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!validatePhoneNumber(formData.phone)) {
@@ -94,23 +67,17 @@ const Profile: React.FC = () => {
       return;
     }
     
-    try {
-      await updateUserProfile({
-        name: formData.name,
-        phone: formData.phone,
-        address: formData.address
-      });
-      
-      setIsEditing(false);
-    } catch (error: any) {
-      console.error('Error updating profile:', error);
-      toast({
-        title: "Update failed",
-        description: error.message || "Failed to update profile",
-        variant: "destructive",
-        duration: 3000
-      });
-    }
+    // In a real app, you would update the user data here
+    setIsEditing(false);
+    
+    toast({
+      title: "Profile updated",
+      description: "Your profile has been successfully updated",
+      duration: 3000
+    });
+    
+    // Just for demo purposes, we'll console log the updated data
+    console.log('Updated profile:', formData);
   };
 
   if (!user) {
@@ -172,10 +139,8 @@ const Profile: React.FC = () => {
                     value={formData.email}
                     onChange={handleChange}
                     className="flex-1 outline-none"
-                    disabled
                   />
                 </div>
-                <p className="text-xs text-gray-500 mt-1">Email cannot be changed</p>
               </div>
               
               <div>
@@ -274,22 +239,18 @@ const Profile: React.FC = () => {
                 <Shield size={18} className="text-gray-500 mr-3" />
                 <div>
                   <p className="font-medium">Driver Status</p>
-                  {isDriverVerified ? (
-                    <p className="text-green-600 text-sm">Verified Driver</p>
-                  ) : (
-                    <p className="text-sm text-gray-500">Not registered as a driver</p>
-                  )}
+                  <p className="text-sm text-gray-500">Toggle to enable driver mode</p>
                 </div>
               </div>
-              {!isDriverVerified && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => navigate('/official-driver')}
-                >
-                  Register
-                </Button>
-              )}
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  checked={driverMode}
+                  onChange={() => setDriverMode(!driverMode)}
+                  className="sr-only peer" 
+                />
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-black"></div>
+              </label>
             </div>
             
             <div className="space-y-3">

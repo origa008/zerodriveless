@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/lib/context/AuthContext";
 import { RideProvider } from "@/lib/context/RideContext";
 
@@ -12,7 +12,6 @@ import Index from "./pages/Index";
 import Welcome from "./pages/Welcome";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
-import ResetPassword from "./pages/ResetPassword";
 import RideProgress from "./pages/RideProgress";
 import RideCompleted from "./pages/RideCompleted";
 import Community from "./pages/Community";
@@ -30,18 +29,17 @@ const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <AuthProvider>
-      <TooltipProvider>
-        <BrowserRouter>
-          <RideProvider>
-            <Toaster />
-            <Sonner />
+    <TooltipProvider>
+      <AuthProvider>
+        <RideProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
             <Routes>
               <Route path="/" element={<Index />} />
               <Route path="/welcome" element={<Welcome />} />
               <Route path="/login" element={<Login />} />
               <Route path="/signup" element={<Signup />} />
-              <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/ride-progress" element={<RideProgress />} />
               <Route path="/ride-completed" element={<RideCompleted />} />
               <Route path="/community" element={<Community />} />
@@ -55,10 +53,10 @@ const App = () => (
               <Route path="/official-driver" element={<OfficialDriver />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
-          </RideProvider>
-        </BrowserRouter>
-      </TooltipProvider>
-    </AuthProvider>
+          </BrowserRouter>
+        </RideProvider>
+      </AuthProvider>
+    </TooltipProvider>
   </QueryClientProvider>
 );
 
