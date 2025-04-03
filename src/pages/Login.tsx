@@ -1,69 +1,119 @@
+
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
+import { useAuth } from '@/lib/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { useAuth } from '@/lib/context/AuthContext';
-import { toast } from '@/components/ui/use-toast';
+import { Label } from '@/components/ui/label';
+import { ArrowLeft } from 'lucide-react';
+
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+  const { login, loading } = useAuth();
   const navigate = useNavigate();
-  const {
-    login
-  } = useAuth();
-  const handleLogin = async (e: React.FormEvent) => {
+
+  const validateForm = () => {
+    const newErrors: { email?: string; password?: string } = {};
+    let isValid = true;
+
+    if (!email) {
+      newErrors.email = 'Email is required';
+      isValid = false;
+    } else if (!/\S+@\S+\.\S+/.test(email)) {
+      newErrors.email = 'Email is invalid';
+      isValid = false;
+    }
+
+    if (!password) {
+      newErrors.password = 'Password is required';
+      isValid = false;
+    } else if (password.length < 6) {
+      newErrors.password = 'Password must be at least 6 characters';
+      isValid = false;
+    }
+
+    setErrors(newErrors);
+    return isValid;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
-    try {
+    
+    if (validateForm()) {
       await login(email, password);
-      navigate('/');
-    } catch (error) {
-      toast({
-        title: "Login failed",
-        description: "Please check your credentials and try again.",
-        variant: "destructive"
-      });
-    } finally {
-      setIsLoading(false);
     }
   };
-  return <div className="min-h-screen bg-white p-6 flex flex-col">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold">LOGIN ACCOUNT</h1>
-        
-      </div>
-      
-      <form onSubmit={handleLogin} className="flex-1 flex flex-col">
-        <div className="mb-6">
-          <label className="block text-gray-700 text-lg mb-2">Email</label>
-          <Input type="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder="your@email.com" className="w-full p-4 text-lg rounded-xl py-[30px]" />
+
+  return (
+    <div className="min-h-screen bg-white p-6">
+      <button 
+        onClick={() => navigate('/welcome')}
+        className="mb-8 flex items-center text-gray-600"
+      >
+        <ArrowLeft size={20} className="mr-2" />
+        Back
+      </button>
+
+      <div className="max-w-md mx-auto mt-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold mb-2">Log In</h1>
+          <p className="text-gray-600">Welcome back! Log in to your account</p>
         </div>
-        
-        <div className="mb-6">
-          <label className="block text-gray-700 text-lg mb-2">Password</label>
-          <Input type="password" value={password} onChange={e => setPassword(e.target.value)} required placeholder="••••••••" className="w-full p-4 text-lg rounded-xl py-[30px]" />
-        </div>
-        
-        <div className="text-right mb-6">
-          <a href="#" className="text-zerodrive-purple hover:underline">
-            Forgot password?
-          </a>
-        </div>
-        
-        <Button type="submit" disabled={isLoading} className="w-full bg-black text-white hover:bg-gray-800 text-xl rounded-xl py-[30px]">
-          {isLoading ? 'Logging in...' : 'Login'}
-        </Button>
-        
-        <div className="mt-auto text-center pt-8 py-0">
+
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="space-y-2">
+            <Label htmlFor="email">Email</Label>
+            <Input
+              id="email"
+              type="email"
+              placeholder="your.email@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className={errors.email ? 'border-red-500' : ''}
+            />
+            {errors.email && <p className="text-red-500 text-sm">{errors.email}</p>}
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="password">Password</Label>
+              <Link to="/forgot-password" className="text-sm text-black">
+                Forgot password?
+              </Link>
+            </div>
+            <Input
+              id="password"
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className={errors.password ? 'border-red-500' : ''}
+            />
+            {errors.password && <p className="text-red-500 text-sm">{errors.password}</p>}
+          </div>
+
+          <Button
+            type="submit"
+            className="w-full bg-black hover:bg-gray-800 text-white py-6 text-lg"
+            disabled={loading}
+          >
+            {loading ? 'Logging in...' : 'Log In'}
+          </Button>
+        </form>
+
+        <div className="mt-8 text-center">
           <p className="text-gray-600">
             Don't have an account?{' '}
-            <button type="button" onClick={() => navigate('/signup')} className="text-zerodrive-purple hover:underline">
+            <Link to="/signup" className="text-black font-medium">
               Sign up
-            </button>
+            </Link>
           </p>
         </div>
-      </form>
-    </div>;
+      </div>
+    </div>
+  );
 };
+
 export default Login;

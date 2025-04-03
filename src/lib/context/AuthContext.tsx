@@ -1,123 +1,253 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { User } from '../types';
+import { supabase } from '@/integrations/supabase/client';
+import { fetchUserProfile, mapProfileToUser } from '../utils/supabaseUtils';
 import { useToast } from '@/hooks/use-toast';
 
-type AuthContextType = {
+interface AuthContextProps {
   user: User | null;
+  loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  signup: (name: string, email: string, password: string, referralCode?: string) => Promise<void>;
-  logout: () => void;
-  isLoading: boolean;
-  updateUserProfile: (updates: Partial<User>) => void;
-};
+  signup: (email: string, password: string, name: string, referralCode?: string) => Promise<void>;
+  logout: () => Promise<void>;
+  updateUserProfile: (updates: Partial<User>) => Promise<void>;
+}
 
-const defaultUser: User = {
-  id: '1',
-  name: 'John Smith',
-  email: 'john@example.com',
-  avatar: '/lovable-uploads/498e0bf1-4c8a-4cad-8ee2-6f43fdccc511.png',
-  isLoggedIn: false,
-  referralCode: 'zerodrive-1',
-  referralEarnings: 0
-};
-
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AuthContext = createContext<AuthContextProps | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState<boolean>(true);
+  const navigate = useNavigate();
   const { toast } = useToast();
 
+  // Initial auth check
   useEffect(() => {
-    // Check if user is logged in from localStorage
-    const storedUser = localStorage.getItem('zerodrive_user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    }
-    setIsLoading(false);
-  }, []);
-
-  const updateUserProfile = (updates: Partial<User>) => {
-    if (!user) return;
-    
-    const updatedUser = { ...user, ...updates };
-    setUser(updatedUser);
-    localStorage.setItem('zerodrive_user', JSON.stringify(updatedUser));
-    
-    toast({
-      title: "Profile Updated",
-      description: "Your profile information has been updated successfully.",
-      duration: 3000
-    });
-  };
-
-  const login = async (email: string, password: string) => {
-    setIsLoading(true);
-    try {
-      // Mock login - in real app this would call an API
-      // For demo purposes we just set the user
-      const loggedInUser = { ...defaultUser, isLoggedIn: true };
-      setUser(loggedInUser);
-      localStorage.setItem('zerodrive_user', JSON.stringify(loggedInUser));
-    } catch (error) {
-      console.error('Login failed:', error);
-      throw error;
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const signup = async (name: string, email: string, password: string, referralCode?: string) => {
-    setIsLoading(true);
-    try {
-      // Generate unique referral code for new user
-      const userReferralCode = `zerodrive-${Math.random().toString(36).substring(2, 8)}`;
-      
-      // Mock signup - in real app this would call an API
-      const newUser = { 
-        ...defaultUser, 
-        name, 
-        email,
-        isLoggedIn: true,
-        referralCode: userReferralCode,
-        referralEarnings: 0
-      };
-      
-      setUser(newUser);
-      localStorage.setItem('zerodrive_user', JSON.stringify(newUser));
-      
-      // In a real app, would process the referral here
-      if (referralCode) {
-        console.log(`User signed up with referral code: ${referralCode}`);
-        toast({
-          title: "Referral Applied",
-          description: "Your account has been created with a referral.",
-          duration: 3000
-        });
+    const checkUser = async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        
+        if (data.session?.user) {
+          const profile = await fetchUserProfile(data.session.user.id);
+          
+          if (profile) {
+            setUser(mapProfileToUser(profile));
+          }
+        }
+      } catch (error) {
+        console.error('Auth check error:', error);
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error('Signup failed:', error);
-      throw error;
+    };
+
+    checkUser();
+
+    // Set up auth state change listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (event === 'SIGNED_IN' && session) {
+          const profile = await fetchUserProfile(session.user.id);
+          
+          if (profile) {
+            setUser(mapProfileToUser(profile));
+          }
+          
+          navigate('/');
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null);
+          navigate('/welcome');
+        }
+      }
+    );
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [navigate]);
+
+  // Login with email and password
+  const login = async (email: string, password: string) => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (data.user) {
+        const profile = await fetchUserProfile(data.user.id);
+        
+        if (profile) {
+          setUser(mapProfileToUser(profile));
+          toast({
+            title: "Login successful",
+            description: `Welcome back, ${profile.name}!`,
+            duration: 3000,
+          });
+          navigate('/');
+        }
+      }
+    } catch (error: any) {
+      toast({
+        title: "Login failed",
+        description: error.message || "Invalid email or password",
+        variant: "destructive",
+        duration: 5000,
+      });
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('zerodrive_user');
+  // Signup with email, password, and name
+  const signup = async (email: string, password: string, name: string, referralCode?: string) => {
+    try {
+      setLoading(true);
+      
+      // Create user in Supabase Auth
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            name,
+          },
+        },
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      // If there's a referral code, create referral
+      if (referralCode && data.user) {
+        try {
+          await supabase.rpc('create_referral', {
+            referrer_code: referralCode,
+            referred_id: data.user.id
+          });
+        } catch (refError) {
+          console.error('Failed to create referral:', refError);
+          // We don't throw here because the user was still created successfully
+        }
+      }
+
+      toast({
+        title: "Account created",
+        description: "Your account has been created successfully. You can now log in.",
+        duration: 5000,
+      });
+      
+      // The user profile is created automatically via database trigger
+      
+      // After signup, do login
+      if (data.user) {
+        const profile = await fetchUserProfile(data.user.id);
+        
+        if (profile) {
+          setUser(mapProfileToUser(profile));
+          navigate('/');
+        }
+      }
+    } catch (error: any) {
+      toast({
+        title: "Signup failed",
+        description: error.message || "An error occurred during signup",
+        variant: "destructive",
+        duration: 5000,
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Logout
+  const logout = async () => {
+    try {
+      setLoading(true);
+      await supabase.auth.signOut();
+      setUser(null);
+      navigate('/welcome');
+      toast({
+        title: "Logged out",
+        description: "You have been logged out successfully",
+        duration: 3000,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Logout failed",
+        description: error.message || "An error occurred during logout",
+        variant: "destructive",
+        duration: 5000,
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Update user profile
+  const updateUserProfile = async (updates: Partial<User>) => {
+    if (!user) return;
+
+    try {
+      setLoading(true);
+      
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          name: updates.name,
+          phone: updates.phone,
+          avatar: updates.avatar,
+          address: updates.address,
+        })
+        .eq('id', user.id);
+
+      if (error) {
+        throw error;
+      }
+
+      // Get updated profile
+      const profile = await fetchUserProfile(user.id);
+      
+      if (profile) {
+        setUser(mapProfileToUser(profile));
+      }
+
+      toast({
+        title: "Profile updated",
+        description: "Your profile has been updated successfully",
+        duration: 3000,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Profile update failed",
+        description: error.message || "An error occurred while updating your profile",
+        variant: "destructive",
+        duration: 5000,
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <AuthContext.Provider value={{ 
-      user, 
-      login, 
-      signup, 
-      logout, 
-      isLoading,
-      updateUserProfile
-    }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        login,
+        signup,
+        logout,
+        updateUserProfile,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
