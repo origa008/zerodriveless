@@ -1,198 +1,164 @@
 
 import { supabase } from "@/integrations/supabase/client";
-import { Location, Ride, Driver, RideOption, PaymentMethod } from "@/lib/types";
+import { Ride, Location, RideOption, Driver } from '@/lib/types';
 import { Database } from "@/integrations/supabase/types";
 
 type RideRow = Database['public']['Tables']['rides']['Row'];
-type ProfileRow = Database['public']['Tables']['profiles']['Row'];
 
 /**
- * Fetches ride history for a user (both as passenger and driver)
+ * Gets passenger ride history
  */
-export const fetchUserRideHistory = async (userId: string): Promise<{ rides: Ride[]; error: string | null }> => {
+export const getPassengerRideHistory = async (userId: string): Promise<{ rides: Ride[]; error: string | null }> => {
   try {
-    // Fetch rides where user is a passenger
-    const { data: passengerRides, error: passengerError } = await supabase
+    const { data, error } = await supabase
       .from('rides')
-      .select(`
-        *,
-        driver:driver_id (
-          id,
-          name,
-          avatar
-        )
-      `)
+      .select('*')
       .eq('passenger_id', userId)
       .order('created_at', { ascending: false });
     
-    if (passengerError) throw passengerError;
+    if (error) throw error;
     
-    // Fetch rides where user is a driver
-    const { data: driverRides, error: driverError } = await supabase
-      .from('rides')
-      .select(`
-        *,
-        passenger:passenger_id (
-          id,
-          name,
-          avatar
-        )
-      `)
-      .eq('driver_id', userId)
-      .order('created_at', { ascending: false });
+    if (!data || data.length === 0) {
+      return { rides: [], error: null };
+    }
     
-    if (driverError) throw driverError;
-    
-    // Combine and format rides
-    const allRides = [...(passengerRides || []), ...(driverRides || [])];
-    
-    // Sort by created_at date
-    allRides.sort((a, b) => {
-      const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
-      const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
-      return dateB - dateA;
+    // Convert database records to Ride objects
+    const rides: Ride[] = data.map(ride => {
+      // Sort rides by most recent first
+      return mapDatabaseRideToRideObject(ride);
     });
     
-    // Map Supabase data to our Ride type
-    const formattedRides: Ride[] = allRides.map(ride => {
-      // Parse pickup location from JSON
-      const pickup: Location = typeof ride.pickup_location === 'string'
-        ? JSON.parse(ride.pickup_location as string)
-        : ride.pickup_location as unknown as Location;
-      
-      // Parse dropoff location from JSON
-      const dropoff: Location = typeof ride.dropoff_location === 'string'
-        ? JSON.parse(ride.dropoff_location as string)
-        : ride.dropoff_location as unknown as Location;
-      
-      // Parse ride option from JSON
-      const rideOption: RideOption = typeof ride.ride_option === 'string'
-        ? JSON.parse(ride.ride_option as string)
-        : ride.ride_option as unknown as RideOption;
-      
-      // Create driver object if driver info exists
-      let driver: Driver | undefined;
-      if ('driver' in ride && ride.driver) {
-        const driverData = ride.driver as unknown as { id: string; name: string; avatar: string | null };
-        driver = {
-          id: driverData.id,
-          name: driverData.name,
-          rating: 4.8, // Default rating if not available
-          licensePlate: "Unknown", // Default value if not available
-          avatar: driverData.avatar || "",
-        };
-      }
-      
-      // Parse dates
-      const startTime = ride.start_time ? new Date(ride.start_time) : undefined;
-      const endTime = ride.end_time ? new Date(ride.end_time) : undefined;
-      
-      // Create Ride object
-      return {
-        id: ride.id,
-        pickup,
-        dropoff,
-        rideOption,
-        driver,
-        status: ride.status as Ride['status'],
-        price: ride.price,
-        currency: ride.currency,
-        distance: ride.distance,
-        duration: ride.duration,
-        startTime,
-        endTime,
-        paymentMethod: ride.payment_method as PaymentMethod,
-      };
-    });
-    
-    return { rides: formattedRides, error: null };
+    return { rides, error: null };
   } catch (error: any) {
-    console.error("History fetch error:", error.message);
+    console.error("Get passenger ride history error:", error.message);
     return { rides: [], error: error.message };
   }
 };
 
 /**
- * Fetches detailed information for a specific ride
+ * Gets driver ride history
  */
-export const fetchRideDetails = async (rideId: string): Promise<{ ride: Ride | null; error: string | null }> => {
+export const getDriverRideHistory = async (userId: string): Promise<{ rides: Ride[]; error: string | null }> => {
   try {
     const { data, error } = await supabase
       .from('rides')
-      .select(`
-        *,
-        driver:driver_id (
-          id,
-          name,
-          avatar
-        ),
-        passenger:passenger_id (
-          id,
-          name,
-          avatar
-        )
-      `)
-      .eq('id', rideId)
-      .single();
+      .select('*')
+      .eq('driver_id', userId)
+      .order('created_at', { ascending: false });
     
     if (error) throw error;
     
-    if (!data) {
-      return { ride: null, error: "Ride not found" };
+    if (!data || data.length === 0) {
+      return { rides: [], error: null };
     }
     
-    // Parse pickup location from JSON
-    const pickup: Location = typeof data.pickup_location === 'string'
-      ? JSON.parse(data.pickup_location as string)
-      : data.pickup_location as unknown as Location;
+    // Convert database records to Ride objects
+    const rides: Ride[] = data.map(ride => {
+      return mapDatabaseRideToRideObject(ride);
+    });
     
-    // Parse dropoff location from JSON
-    const dropoff: Location = typeof data.dropoff_location === 'string'
-      ? JSON.parse(data.dropoff_location as string)
-      : data.dropoff_location as unknown as Location;
-    
-    // Parse ride option from JSON
-    const rideOption: RideOption = typeof data.ride_option === 'string'
-      ? JSON.parse(data.ride_option as string)
-      : data.ride_option as unknown as RideOption;
-    
-    // Create driver object if driver info exists
-    let driver: Driver | undefined;
-    if ('driver' in data && data.driver) {
-      const driverData = data.driver as unknown as { id: string; name: string; avatar: string | null };
-      driver = {
-        id: driverData.id,
-        name: driverData.name,
-        rating: 4.8, // Default rating if not available
-        licensePlate: "Unknown", // Default value if not available
-        avatar: driverData.avatar || "",
-      };
-    }
-    
-    // Parse dates
-    const startTime = data.start_time ? new Date(data.start_time) : undefined;
-    const endTime = data.end_time ? new Date(data.end_time) : undefined;
-    
-    // Create Ride object
-    const ride: Ride = {
-      id: data.id,
-      pickup,
-      dropoff,
-      rideOption,
-      driver,
-      status: data.status as Ride['status'],
-      price: data.price,
-      currency: data.currency,
-      distance: data.distance,
-      duration: data.duration,
-      startTime,
-      endTime,
-      paymentMethod: data.payment_method as PaymentMethod,
-    };
-    
-    return { ride, error: null };
+    return { rides, error: null };
   } catch (error: any) {
-    console.error("Ride details error:", error.message);
-    return { ride: null, error: error.message };
+    console.error("Get driver ride history error:", error.message);
+    return { rides: [], error: error.message };
   }
+};
+
+/**
+ * Maps a database ride record to a Ride object
+ */
+const mapDatabaseRideToRideObject = (ride: RideRow): Ride => {
+  // Create pickup location object
+  const pickupLocation: Location = {
+    name: ride.pickup_location.name,
+    address: ride.pickup_location.address,
+    coordinates: ride.pickup_location.coordinates
+  };
+  
+  // Create dropoff location object
+  const dropoffLocation: Location = {
+    name: ride.dropoff_location.name,
+    address: ride.dropoff_location.address,
+    coordinates: ride.dropoff_location.coordinates
+  };
+  
+  // Create ride option object
+  const rideOption: RideOption = {
+    id: ride.ride_option.id,
+    name: ride.ride_option.name,
+    image: ride.ride_option.image,
+    price: ride.price, // Use the actual price paid
+    currency: ride.currency,
+    duration: ride.duration,
+    capacity: ride.ride_option.capacity
+  };
+  
+  // Create driver object if available
+  let driver: Driver | undefined = undefined;
+  if (ride.driver) {
+    driver = {
+      id: ride.driver.id,
+      name: ride.driver.name,
+      rating: ride.driver.rating,
+      licensePlate: ride.driver.licensePlate,
+      avatar: ride.driver.avatar
+    };
+  }
+  
+  // Create ride object
+  const rideObject: Ride = {
+    id: ride.id,
+    pickup: pickupLocation,
+    dropoff: dropoffLocation,
+    rideOption: rideOption,
+    driver: driver,
+    status: ride.status as "searching" | "confirmed" | "in_progress" | "completed" | "cancelled",
+    price: ride.price,
+    currency: ride.currency,
+    distance: ride.distance,
+    duration: ride.duration,
+    startTime: ride.start_time ? new Date(ride.start_time) : undefined,
+    endTime: ride.end_time ? new Date(ride.end_time) : undefined,
+    paymentMethod: ride.payment_method as "cash" | "wallet"
+  };
+  
+  return rideObject;
+};
+
+/**
+ * Subscribes to ride history updates
+ */
+export const subscribeToRideHistory = (
+  userId: string, 
+  isDriver: boolean,
+  callback: (rides: Ride[]) => void
+) => {
+  const userField = isDriver ? 'driver_id' : 'passenger_id';
+  
+  const channel = supabase
+    .channel(`ride_history:${userId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*', // Listen for all changes (INSERT, UPDATE, DELETE)
+        schema: 'public',
+        table: 'rides',
+        filter: `${userField}=eq.${userId}`
+      },
+      () => {
+        // When a change is detected, fetch the updated history
+        if (isDriver) {
+          getDriverRideHistory(userId)
+            .then(({ rides }) => callback(rides));
+        } else {
+          getPassengerRideHistory(userId)
+            .then(({ rides }) => callback(rides));
+        }
+      }
+    )
+    .subscribe();
+    
+  return () => {
+    supabase.removeChannel(channel);
+  };
 };

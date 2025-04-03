@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { useRide } from '@/lib/context/RideContext';
@@ -63,6 +62,17 @@ const PassengerPanel: React.FC = () => {
     setDropoffLocation(location);
   };
 
+  useEffect(() => {
+    if (isWaitingForDriverAcceptance && driverAcceptanceTimer <= 0) {
+      setWaitingForDriverAcceptance(false);
+      toast({
+        title: "No drivers available",
+        description: "Please try increasing your bid to find a driver faster.",
+        duration: 5000
+      });
+    }
+  }, [isWaitingForDriverAcceptance, driverAcceptanceTimer]);
+
   const handleFindRides = () => {
     // Check if user has completed their profile
     if (!user?.phone) {
@@ -99,7 +109,7 @@ const PassengerPanel: React.FC = () => {
       return;
     }
 
-    // Start the driver acceptance timer when passenger places order
+    // Send ride request to drivers
     confirmRide(paymentMethod);
     setWaitingForDriverAcceptance(true);
     resetDriverAcceptanceTimer();
@@ -118,7 +128,11 @@ const PassengerPanel: React.FC = () => {
   const handleIncreaseBid = () => {
     if (selectedRideOption && estimatedDistance) {
       const minBid = calculateBaseFare(estimatedDistance, selectedRideOption.name);
-      setBidAmount(Math.round(minBid * 1.1)); // Increase by 10%
+      const currentBid = userBid || minBid;
+      
+      // Increase by 20%
+      const increasedBid = Math.round(currentBid * 1.2);
+      setBidAmount(increasedBid);
       setShowBidModal(true);
     }
   };
@@ -247,7 +261,9 @@ const PassengerPanel: React.FC = () => {
         {showBidModal && estimatedDistance && selectedRideOption && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-xl p-6 w-full max-w-md">
-              <h3 className="text-xl font-medium mb-4">Place Your Bid</h3>
+              <h3 className="text-xl font-medium mb-4">
+                {userBid ? 'Update Your Bid' : 'Place Your Bid'}
+              </h3>
               
               <div className="mb-4">
                 <p className="text-gray-600 mb-2">Route: {pickupLocation?.name} → {dropoffLocation?.name}</p>
@@ -281,7 +297,7 @@ const PassengerPanel: React.FC = () => {
                   onClick={handlePlaceBid} 
                   disabled={bidAmount < calculateBaseFare(estimatedDistance, selectedRideOption.name)}
                 >
-                  Place Bid
+                  {userBid ? 'Update Bid' : 'Place Bid'}
                 </Button>
               </div>
             </div>

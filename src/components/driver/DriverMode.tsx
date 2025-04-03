@@ -1,11 +1,17 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useRide } from '@/lib/context/RideContext';
+import { useAuth } from '@/lib/context/AuthContext';
 import { Map, Clock, DollarSign, PhoneCall, MessageSquare } from 'lucide-react';
 import { Ride } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
+import { 
+  getAvailableRideRequests, 
+  subscribeToNewRideRequests,
+  acceptRideRequest as acceptRide
+} from '@/lib/utils/rideUtils';
 
 interface DriverModeProps {
   isOnline: boolean;
@@ -14,19 +20,80 @@ interface DriverModeProps {
 
 const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { toast } = useToast();
   const { 
-    pendingRideRequests, 
     calculateBaseFare, 
-    acceptRideRequest, 
+    acceptRideRequest,
     setCurrentRide,
-    walletBalance
+    walletBalance,
+    pendingRideRequests, 
+    setPendingRideRequests
   } = useRide();
   
   const [showBidModal, setShowBidModal] = useState(false);
   const [selectedRide, setSelectedRide] = useState<Ride | null>(null);
   const [bidAmount, setBidAmount] = useState<number>(0);
   const [showContactModal, setShowContactModal] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Fetch available ride requests when going online
+  useEffect(() => {
+    if (isOnline && user?.isVerifiedDriver) {
+      setIsLoading(true);
+      
+      const fetchRideRequests = async () => {
+        const { rides, error } = await getAvailableRideRequests();
+        
+        if (!error) {
+          const formattedRides = rides.map(ride => ({
+            id: ride.id,
+            pickup: ride.pickup_location,
+            dropoff: ride.dropoff_location,
+            rideOption: ride.ride_option,
+            status: ride.status,
+            price: ride.price,
+            currency: ride.currency,
+            distance: ride.distance,
+            duration: ride.duration,
+            paymentMethod: ride.payment_method
+          }));
+          
+          setPendingRideRequests(formattedRides);
+        }
+        
+        setIsLoading(false);
+      };
+      
+      fetchRideRequests();
+      
+      // Subscribe to new ride requests
+      const unsubscribe = subscribeToNewRideRequests((newRide) => {
+        const formattedRide = {
+          id: newRide.id,
+          pickup: newRide.pickup_location,
+          dropoff: newRide.dropoff_location,
+          rideOption: newRide.ride_option,
+          status: newRide.status,
+          price: newRide.price,
+          currency: newRide.currency,
+          distance: newRide.distance,
+          duration: newRide.duration,
+          paymentMethod: newRide.payment_method
+        };
+        
+        setPendingRideRequests(prev => [formattedRide, ...prev]);
+        
+        toast({
+          title: "New Ride Request",
+          description: "A new ride request is available",
+          duration: 3000
+        });
+      });
+      
+      return () => unsubscribe();
+    }
+  }, [isOnline, user?.isVerifiedDriver]);
 
   const handleGoOnline = () => {
     setIsOnline(true);
@@ -53,8 +120,24 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
     setShowBidModal(true);
   };
 
-  const handleAcceptRide = () => {
-    if (selectedRide) {
+  const handleAcceptRide = async () => {
+    if (!selectedRide || !user?.id) {
+      toast({
+        title: "Error",
+        description: "Failed to accept ride",
+        duration: 3000
+      });
+      return;
+    }
+    
+    try {
+      // Update the ride with the driver's ID in the database
+      const { success, error } = await acceptRide(selectedRide.id, user.id);
+      
+      if (!success) {
+        throw new Error(error || "Failed to accept ride");
+      }
+      
       // Update the ride with the new bid amount
       const updatedRide = {
         ...selectedRide,
@@ -73,6 +156,13 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
       });
       
       navigate('/ride-progress');
+    } catch (error: any) {
+      console.error("Error accepting ride:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to accept ride",
+        duration: 3000
+      });
     }
   };
 
@@ -111,9 +201,23 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
           <Button 
             className="w-full bg-black text-white hover:bg-gray-800 py-6 text-xl rounded-xl"
             onClick={handleGoOnline}
+            disabled={!user?.isVerifiedDriver}
           >
-            Go Online
+            {user?.isVerifiedDriver ? 'Go Online' : 'Complete Driver Registration'}
           </Button>
+          
+          {!user?.isVerifiedDriver && (
+            <div className="mt-4 text-center">
+              <p className="text-sm text-gray-600 mb-2">You need to complete driver registration first.</p>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => navigate('/official-driver')}
+              >
+                Register as Driver
+              </Button>
+            </div>
+          )}
         </div>
       ) : (
         <div>
@@ -130,7 +234,11 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
           
           <h3 className="text-xl font-medium mb-3">Nearby Requests</h3>
           
-          {pendingRideRequests.length === 0 ? (
+          {isLoading ? (
+            <div className="flex justify-center py-8">
+              <p>Loading ride requests...</p>
+            </div>
+          ) : pendingRideRequests.length === 0 ? (
             <div className="text-center py-8 border border-gray-200 rounded-xl">
               <p className="text-gray-500">No ride requests available at the moment.</p>
               <p className="text-sm text-gray-400 mt-2">Wait for passengers to place ride requests.</p>

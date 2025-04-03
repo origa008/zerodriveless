@@ -1,16 +1,17 @@
-
 import React, { useState } from 'react';
 import { useRide } from '@/lib/context/RideContext';
 import { useAuth } from '@/lib/context/AuthContext';
 import { User, Phone, MapPin, Clock, Navigation, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
+import Chat from './Chat';
 
 const RideDetails: React.FC = () => {
   const { currentRide, isDriverMode, rideTimer, walletBalance } = useRide();
   const { user } = useAuth();
   const { toast } = useToast();
   const [showContactModal, setShowContactModal] = useState(false);
+  const [showChat, setShowChat] = useState(false);
 
   if (!currentRide) return null;
 
@@ -30,12 +31,16 @@ const RideDetails: React.FC = () => {
   };
   
   const handleMessage = () => {
-    toast({
-      title: "Message sent",
-      description: `Your message has been sent to the ${isDriverMode ? 'passenger' : 'driver'}`,
-      duration: 3000
-    });
     setShowContactModal(false);
+    setShowChat(true);
+  };
+
+  const getPartnerId = () => {
+    if (isDriverMode) {
+      return currentRide.id.split('-')[0];
+    } else {
+      return currentRide.driver?.id || '';
+    }
   };
 
   return (
@@ -187,6 +192,15 @@ const RideDetails: React.FC = () => {
             </Button>
           </div>
         </div>
+      )}
+
+      {/* Chat Modal */}
+      {showChat && (
+        <Chat 
+          rideId={currentRide.id} 
+          partnerId={getPartnerId()} 
+          onClose={() => setShowChat(false)} 
+        />
       )}
     </div>
   );

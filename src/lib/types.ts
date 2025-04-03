@@ -55,19 +55,48 @@ export type Ride = {
   paymentMethod?: PaymentMethod;
 };
 
+export type ChatMessage = {
+  id: string;
+  senderId: string;
+  receiverId: string;
+  rideId: string;
+  message: string;
+  createdAt: string;
+  isRead: boolean;
+};
+
 export type DriverDocument = {
   fullName: string;
   phoneNumber: string;
   cnicNumber: string;
+  vehicleType?: string;
+  vehicleRegistrationNumber: string;
   cnicFrontPhoto?: File;
   cnicBackPhoto?: File;
   driverLicenseFrontPhoto?: File;
   driverLicenseBackPhoto?: File;
-  vehicleRegistrationNumber: string;
   vehicleRegistrationPhoto?: File;
   vehiclePhoto?: File;
   selfieWithCNIC?: File;
   selfiePhoto?: File;
+};
+
+export type Transaction = {
+  id: string;
+  userId: string;
+  amount: number;
+  type: 'deposit' | 'withdrawal' | 'ride_payment' | 'ride_earning' | 'referral';
+  status: 'pending' | 'completed' | 'cancelled';
+  description?: string;
+  createdAt: string;
+  rideId?: string;
+  paymentMethod?: string;
+  bankDetails?: {
+    bankName: string;
+    accountNumber: string;
+    accountTitle: string;
+    phone: string;
+  };
 };
 
 export type Post = {
