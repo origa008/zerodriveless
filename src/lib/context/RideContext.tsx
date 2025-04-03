@@ -182,7 +182,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Insert a ride object into the rides table
       const { data: rideData, error: rideError } = await supabase
         .from('rides')
-        .insert({
+        .insert([{  // Wrap the object in an array for Supabase
           passenger_id: user.id,
           pickup_location: pickupLocation,
           dropoff_location: dropoffLocation,
@@ -193,7 +193,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
           duration: estimatedDuration,
           status: 'searching',
           payment_method: 'cash'
-        })
+        }])
         .select();
       
       if (rideError) {
@@ -718,7 +718,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setRideTimer(prev => prev + 1);
     }, 1000);
     
-    // Fixed: return Promise.resolve() directly instead of returning a function
+    // Return Promise.resolve() directly
     return Promise.resolve();
   };
 
