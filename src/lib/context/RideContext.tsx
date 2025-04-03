@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Ride, Location, RideOption, Driver, PaymentMethod, RideStatus, Passenger } from '../types';
 import { calculateDistance } from '../utils/mapsApi';
@@ -179,10 +180,10 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsSearchingRide(true);
 
     try {
-      // Insert a single object into the rides table - not in an array
+      // Insert a single object into the rides table - using array syntax for Supabase
       const { data: rideData, error: rideError } = await supabase
         .from('rides')
-        .insert({
+        .insert([{  // Fixed: Wrap object in an array
           passenger_id: user.id,
           pickup_location: pickupLocation,
           dropoff_location: dropoffLocation,
@@ -193,7 +194,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
           duration: estimatedDuration,
           status: 'searching',
           payment_method: 'cash'
-        })
+        }])
         .select();
       
       if (rideError) {
