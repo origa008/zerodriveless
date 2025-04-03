@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Ride, Location, RideOption, Driver, PaymentMethod, RideStatus, Passenger } from '../types';
 import { calculateDistance } from '../utils/mapsApi';
@@ -181,7 +180,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsSearchingRide(true);
 
     try {
-      // Fix: Insert as a single object with all properties directly
+      // Fix: Insert as a single object with all properties
       const { data: rideData, error: rideError } = await supabase
         .from('rides')
         .insert({
@@ -566,7 +565,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
             distance: ride.distance,
             duration: ride.duration,
             passenger: {
-              id: ride.passenger_id,
+              id: ride.passenger_id || '',
               name: 'Passenger' // Default name
             }
           };
@@ -710,6 +709,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     acceptRide(rideId);
   };
 
+  // Start a ride
   const startRide = () => {
     if (!currentRide) return;
     setIsRideTimerActive(true);
@@ -718,9 +718,6 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const timerInterval = setInterval(() => {
       setRideTimer(prev => prev + 1);
     }, 1000);
-    
-    // Return cleanup function
-    return () => clearInterval(timerInterval);
   };
 
   const cancelRide = () => {
