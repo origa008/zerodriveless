@@ -2,24 +2,26 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User } from '../types';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+import { 
+  signUpWithEmail, 
+  signInWithEmail, 
+  signOut,
+  resetPassword,
+  updatePassword,
+  getCurrentSession
+} from '../utils/authUtils';
+import { fetchUserProfile, updateUserProfile } from '../utils/profileUtils';
 
 type AuthContextType = {
   user: User | null;
   login: (email: string, password: string) => Promise<void>;
   signup: (name: string, email: string, password: string, referralCode?: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
+  resetUserPassword: (email: string) => Promise<void>;
+  updateUserPassword: (password: string) => Promise<void>;
+  updateUserProfile: (updates: Partial<User>) => Promise<void>;
   isLoading: boolean;
-  updateUserProfile: (updates: Partial<User>) => void;
-};
-
-const defaultUser: User = {
-  id: '1',
-  name: 'John Smith',
-  email: 'john@example.com',
-  avatar: '/lovable-uploads/498e0bf1-4c8a-4cad-8ee2-6f43fdccc511.png',
-  isLoggedIn: false,
-  referralCode: 'zerodrive-1',
-  referralEarnings: 0
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -29,38 +31,81 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const { toast } = useToast();
 
+  // Listen for authentication state changes
   useEffect(() => {
-    // Check if user is logged in from localStorage
-    const storedUser = localStorage.getItem('zerodrive_user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    }
-    setIsLoading(false);
-  }, []);
+    // Set up auth state listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        setIsLoading(true);
+        
+        if (event === 'SIGNED_IN' && session) {
+          // Fetch user profile when signed in
+          try {
+            const { profile } = await fetchUserProfile(session.user.id);
+            if (profile) {
+              setUser({ ...profile, isLoggedIn: true });
+            }
+          } catch (error) {
+            console.error('Error fetching user profile:', error);
+          }
+        } else if (event === 'SIGNED_OUT') {
+          // Clear user when signed out
+          setUser(null);
+        }
+        
+        setIsLoading(false);
+      }
+    );
 
-  const updateUserProfile = (updates: Partial<User>) => {
-    if (!user) return;
-    
-    const updatedUser = { ...user, ...updates };
-    setUser(updatedUser);
-    localStorage.setItem('zerodrive_user', JSON.stringify(updatedUser));
-    
-    toast({
-      title: "Profile Updated",
-      description: "Your profile information has been updated successfully.",
-      duration: 3000
-    });
-  };
+    // Check for existing session
+    const checkSession = async () => {
+      try {
+        const { data } = await getCurrentSession();
+        
+        if (data.session) {
+          // User is already logged in, fetch their profile
+          const { profile } = await fetchUserProfile(data.session.user.id);
+          if (profile) {
+            setUser({ ...profile, isLoggedIn: true });
+          }
+        }
+      } catch (error) {
+        console.error('Session check error:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkSession();
+
+    // Cleanup
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
 
   const login = async (email: string, password: string) => {
     setIsLoading(true);
     try {
-      // Mock login - in real app this would call an API
-      // For demo purposes we just set the user
-      const loggedInUser = { ...defaultUser, isLoggedIn: true };
-      setUser(loggedInUser);
-      localStorage.setItem('zerodrive_user', JSON.stringify(loggedInUser));
-    } catch (error) {
+      const { user: loggedInUser, error } = await signInWithEmail(email, password);
+      
+      if (error) {
+        toast({
+          title: "Login failed",
+          description: error,
+          variant: "destructive"
+        });
+        throw new Error(error);
+      }
+      
+      if (loggedInUser) {
+        setUser(loggedInUser);
+        toast({
+          title: "Login successful",
+          description: `Welcome back, ${loggedInUser.name}!`,
+        });
+      }
+    } catch (error: any) {
       console.error('Login failed:', error);
       throw error;
     } finally {
@@ -71,32 +116,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signup = async (name: string, email: string, password: string, referralCode?: string) => {
     setIsLoading(true);
     try {
-      // Generate unique referral code for new user
-      const userReferralCode = `zerodrive-${Math.random().toString(36).substring(2, 8)}`;
+      const { user: newUser, error } = await signUpWithEmail(email, password, { name });
       
-      // Mock signup - in real app this would call an API
-      const newUser = { 
-        ...defaultUser, 
-        name, 
-        email,
-        isLoggedIn: true,
-        referralCode: userReferralCode,
-        referralEarnings: 0
-      };
-      
-      setUser(newUser);
-      localStorage.setItem('zerodrive_user', JSON.stringify(newUser));
-      
-      // In a real app, would process the referral here
-      if (referralCode) {
-        console.log(`User signed up with referral code: ${referralCode}`);
+      if (error) {
         toast({
-          title: "Referral Applied",
-          description: "Your account has been created with a referral.",
-          duration: 3000
+          title: "Signup failed",
+          description: error,
+          variant: "destructive"
         });
+        throw new Error(error);
       }
-    } catch (error) {
+      
+      if (newUser) {
+        setUser(newUser);
+        toast({
+          title: "Signup successful",
+          description: "Your account has been created successfully.",
+        });
+        
+        // Process referral if provided
+        if (referralCode && newUser.id) {
+          try {
+            await supabase.functions.invoke('create-referral', {
+              body: { referrerCode: referralCode, referredId: newUser.id }
+            });
+          } catch (referralError) {
+            console.error('Referral processing error:', referralError);
+          }
+        }
+      }
+    } catch (error: any) {
       console.error('Signup failed:', error);
       throw error;
     } finally {
@@ -104,9 +153,111 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('zerodrive_user');
+  const logout = async () => {
+    setIsLoading(true);
+    try {
+      const { error } = await signOut();
+      
+      if (error) {
+        toast({
+          title: "Logout failed",
+          description: error,
+          variant: "destructive"
+        });
+        throw new Error(error);
+      }
+      
+      setUser(null);
+      toast({
+        title: "Logged out",
+        description: "You have been logged out successfully.",
+      });
+    } catch (error: any) {
+      console.error('Logout failed:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const resetUserPassword = async (email: string) => {
+    try {
+      const { error } = await resetPassword(email);
+      
+      if (error) {
+        toast({
+          title: "Password reset failed",
+          description: error,
+          variant: "destructive"
+        });
+        throw new Error(error);
+      }
+      
+      toast({
+        title: "Password reset email sent",
+        description: "Check your email for a password reset link.",
+      });
+    } catch (error: any) {
+      console.error('Password reset failed:', error);
+      throw error;
+    }
+  };
+
+  const updateUserPassword = async (password: string) => {
+    try {
+      const { error } = await updatePassword(password);
+      
+      if (error) {
+        toast({
+          title: "Password update failed",
+          description: error,
+          variant: "destructive"
+        });
+        throw new Error(error);
+      }
+      
+      toast({
+        title: "Password updated",
+        description: "Your password has been updated successfully.",
+      });
+    } catch (error: any) {
+      console.error('Password update failed:', error);
+      throw error;
+    }
+  };
+
+  const updateUserProfileDetails = async (updates: Partial<User>) => {
+    if (!user || !user.id) {
+      toast({
+        title: "Update failed",
+        description: "You must be logged in to update your profile.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    try {
+      const { success, error } = await updateUserProfile(user.id, updates);
+      
+      if (error || !success) {
+        toast({
+          title: "Profile update failed",
+          description: error || "An unknown error occurred",
+          variant: "destructive"
+        });
+        throw new Error(error || "Profile update failed");
+      }
+      
+      // Update local user state
+      setUser(prev => prev ? { ...prev, ...updates } : null);
+      
+      toast({
+        title: "Profile Updated",
+        description: "Your profile information has been updated successfully.",
+      });
+    } catch (error: any) {
+      console.error('Profile update failed:', error);
+      throw error;
+    }
   };
 
   return (
@@ -115,8 +266,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       login, 
       signup, 
       logout, 
-      isLoading,
-      updateUserProfile
+      resetUserPassword,
+      updateUserPassword,
+      updateUserProfile: updateUserProfileDetails,
+      isLoading 
     }}>
       {children}
     </AuthContext.Provider>

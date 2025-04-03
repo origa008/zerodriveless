@@ -24,6 +24,7 @@ import AboutUs from "./pages/AboutUs";
 import Policies from "./pages/Policies";
 import OfficialDriver from "./pages/OfficialDriver";
 import NotFound from "./pages/NotFound";
+import ResetPassword from "./pages/ResetPassword";
 
 const queryClient = new QueryClient();
 
@@ -40,6 +41,7 @@ const App = () => (
               <Route path="/welcome" element={<Welcome />} />
               <Route path="/login" element={<Login />} />
               <Route path="/signup" element={<Signup />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/ride-progress" element={<RideProgress />} />
               <Route path="/ride-completed" element={<RideCompleted />} />
               <Route path="/community" element={<Community />} />

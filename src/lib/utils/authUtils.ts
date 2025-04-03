@@ -1,0 +1,156 @@
+
+import { supabase } from "@/integrations/supabase/client";
+import { User } from "@/lib/types";
+import { toast } from "@/hooks/use-toast";
+
+/**
+ * Signs up a new user with email and password
+ */
+export const signUpWithEmail = async (
+  email: string, 
+  password: string, 
+  userData: { name: string }
+): Promise<{ user: User | null; error: string | null }> => {
+  try {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          name: userData.name,
+        },
+      },
+    });
+    
+    if (error) throw error;
+    
+    // Create a user object from the auth data
+    const newUser: User = {
+      id: data.user?.id || '',
+      name: userData.name,
+      email,
+      isLoggedIn: !!data.user,
+      referralCode: `zerodrive-${Math.random().toString(36).substring(2, 8)}`
+    };
+    
+    return { user: newUser, error: null };
+  } catch (error: any) {
+    console.error("Signup error:", error.message);
+    return { user: null, error: error.message };
+  }
+};
+
+/**
+ * Signs in a user with email and password
+ */
+export const signInWithEmail = async (
+  email: string, 
+  password: string
+): Promise<{ user: User | null; error: string | null }> => {
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    
+    if (error) throw error;
+    
+    if (!data.user) {
+      return { user: null, error: "No user data returned" };
+    }
+    
+    // Fetch user profile from profiles table
+    const { data: profileData, error: profileError } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', data.user.id)
+      .single();
+    
+    if (profileError && profileError.code !== 'PGRST116') {
+      console.error("Profile fetch error:", profileError);
+    }
+    
+    // Create user object from auth and profile data
+    const user: User = {
+      id: data.user.id,
+      name: profileData?.name || data.user.user_metadata.name || '',
+      email: data.user.email || '',
+      phone: profileData?.phone || '',
+      avatar: profileData?.avatar || '',
+      address: profileData?.address || '',
+      isLoggedIn: true,
+      isVerifiedDriver: profileData?.is_verified_driver || false,
+      referralCode: profileData?.referral_code || '',
+    };
+    
+    return { user, error: null };
+  } catch (error: any) {
+    console.error("Login error:", error.message);
+    return { user: null, error: error.message };
+  }
+};
+
+/**
+ * Signs out the current user
+ */
+export const signOut = async (): Promise<{ error: string | null }> => {
+  try {
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
+    return { error: null };
+  } catch (error: any) {
+    console.error("Signout error:", error.message);
+    return { error: error.message };
+  }
+};
+
+/**
+ * Sends a password reset email
+ */
+export const resetPassword = async (email: string): Promise<{ error: string | null }> => {
+  try {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    
+    if (error) throw error;
+    
+    return { error: null };
+  } catch (error: any) {
+    console.error("Password reset error:", error.message);
+    return { error: error.message };
+  }
+};
+
+/**
+ * Updates the user's password
+ */
+export const updatePassword = async (newPassword: string): Promise<{ error: string | null }> => {
+  try {
+    const { error } = await supabase.auth.updateUser({
+      password: newPassword,
+    });
+    
+    if (error) throw error;
+    
+    return { error: null };
+  } catch (error: any) {
+    console.error("Update password error:", error.message);
+    return { error: error.message };
+  }
+};
+
+/**
+ * Gets the current session
+ */
+export const getCurrentSession = async () => {
+  return await supabase.auth.getSession();
+};
+
+/**
+ * Checks if a user is logged in
+ */
+export const isLoggedIn = async (): Promise<boolean> => {
+  const { data } = await supabase.auth.getSession();
+  return !!data.session;
+};

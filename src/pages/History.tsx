@@ -1,68 +1,102 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Bike, Car } from 'lucide-react';
+import { ArrowLeft, Bike, Car, Clock, Calendar } from 'lucide-react';
 import BottomNavigation from '@/components/layout/BottomNavigation';
-
-type HistoryItem = {
-  id: string;
-  type: 'ride' | 'drive';
-  date: string;
-  from: string;
-  to: string;
-  price: number;
-  status: 'completed' | 'cancelled';
-};
-
-const mockHistory: HistoryItem[] = [
-  {
-    id: 'hist1',
-    type: 'ride',
-    date: '2023-10-15 14:30',
-    from: 'Gulberg III',
-    to: 'Johar Town',
-    price: 120,
-    status: 'completed'
-  },
-  {
-    id: 'hist2',
-    type: 'drive',
-    date: '2023-10-14 10:15',
-    from: 'DHA Phase 5',
-    to: 'Bahria Town',
-    price: 220,
-    status: 'completed'
-  },
-  {
-    id: 'hist3',
-    type: 'ride',
-    date: '2023-10-12 18:45',
-    from: 'Model Town',
-    to: 'Liberty Market',
-    price: 95,
-    status: 'completed'
-  },
-  {
-    id: 'hist4',
-    type: 'drive',
-    date: '2023-10-10 09:20',
-    from: 'Allama Iqbal Town',
-    to: 'Fortress Stadium',
-    price: 185,
-    status: 'cancelled'
-  }
-];
+import { useAuth } from '@/lib/context/AuthContext';
+import { fetchUserRideHistory } from '@/lib/utils/historyUtils';
+import { Ride } from '@/lib/types';
+import { format } from 'date-fns';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 
 const History: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<'all' | 'rides' | 'drives'>('all');
+  const [rideHistory, setRideHistory] = useState<Ride[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   
-  const filteredHistory = mockHistory.filter(item => {
+  useEffect(() => {
+    // Redirect if not logged in
+    if (!user?.isLoggedIn) {
+      navigate('/login');
+      return;
+    }
+    
+    const loadRideHistory = async () => {
+      setIsLoading(true);
+      try {
+        const { rides, error } = await fetchUserRideHistory(user.id);
+        if (error) {
+          toast({
+            title: "Error loading history",
+            description: error,
+            variant: "destructive"
+          });
+          return;
+        }
+        
+        setRideHistory(rides);
+      } catch (error) {
+        console.error("Failed to load ride history:", error);
+        toast({
+          title: "Failed to load history",
+          description: "Please try again later",
+          variant: "destructive"
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    loadRideHistory();
+    
+    // Set up a real-time subscription for new rides
+    const subsChannel = supabase
+      .channel('public:rides')
+      .on('postgres_changes', 
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'rides',
+          filter: `passenger_id=eq.${user.id}` 
+        }, 
+        () => {
+          // Reload rides when changes occur
+          loadRideHistory();
+        }
+      )
+      .subscribe();
+      
+    return () => {
+      subsChannel.unsubscribe();
+    };
+  }, [user, navigate, toast]);
+  
+  // Filter history based on active tab
+  const filteredHistory = rideHistory.filter(item => {
     if (activeTab === 'all') return true;
-    if (activeTab === 'rides') return item.type === 'ride';
-    if (activeTab === 'drives') return item.type === 'drive';
+    
+    // For 'rides' tab, show where user is passenger (no driver ID or driver ID doesn't match user)
+    if (activeTab === 'rides') {
+      return !item.driver || item.driver.id !== user?.id;
+    }
+    
+    // For 'drives' tab, show where user is driver (driver exists and driver ID matches user)
+    if (activeTab === 'drives') {
+      return !!item.driver && item.driver.id === user?.id;
+    }
+    
     return true;
   });
+
+  const formatDate = (dateString?: Date | string) => {
+    if (!dateString) return 'N/A';
+    const date = typeof dateString === 'string' ? new Date(dateString) : dateString;
+    return format(date, 'dd MMM yyyy, h:mm a');
+  };
 
   return (
     <div className="min-h-screen bg-white pb-20">
@@ -102,35 +136,63 @@ const History: React.FC = () => {
         </div>
         
         <div className="space-y-4">
-          {filteredHistory.length === 0 ? (
-            <p className="text-center text-gray-500 py-6">No history found</p>
+          {isLoading ? (
+            // Loading skeletons
+            Array(3).fill(0).map((_, i) => (
+              <div key={i} className="border border-gray-200 rounded-xl p-4">
+                <div className="flex justify-between mb-2">
+                  <Skeleton className="h-5 w-24" />
+                  <Skeleton className="h-5 w-32" />
+                </div>
+                <Skeleton className="h-6 w-full mb-3" />
+                <div className="flex justify-between items-center">
+                  <Skeleton className="h-5 w-20" />
+                  <Skeleton className="h-6 w-24" />
+                </div>
+              </div>
+            ))
+          ) : filteredHistory.length === 0 ? (
+            <div className="text-center text-gray-500 py-6">
+              <Clock className="mx-auto mb-2 text-gray-400" size={32} />
+              <p className="mb-1">No history found</p>
+              <p className="text-sm">Your ride history will appear here</p>
+            </div>
           ) : (
             filteredHistory.map((item) => (
               <div key={item.id} className="border border-gray-200 rounded-xl p-4">
                 <div className="flex justify-between mb-2">
                   <div className="flex items-center">
-                    {item.type === 'ride' ? (
-                      <Bike size={16} className="mr-2 text-gray-500" />
-                    ) : (
+                    {item.driver?.id === user?.id ? (
                       <Car size={16} className="mr-2 text-gray-500" />
+                    ) : (
+                      <Bike size={16} className="mr-2 text-gray-500" />
                     )}
-                    <span className="text-sm text-gray-500 capitalize">{item.type}</span>
+                    <span className="text-sm text-gray-500 capitalize">
+                      {item.driver?.id === user?.id ? 'Drive' : 'Ride'}
+                    </span>
                   </div>
-                  <span className="text-sm text-gray-500">{item.date}</span>
+                  <div className="flex items-center text-sm text-gray-500">
+                    <Calendar size={14} className="mr-1" />
+                    {formatDate(item.startTime || item.endTime)}
+                  </div>
                 </div>
                 
                 <div className="mb-3">
-                  <p className="font-medium">{item.from} → {item.to}</p>
+                  <p className="font-medium">
+                    {item.pickup.name || 'Unknown'} → {item.dropoff.name || 'Unknown'}
+                  </p>
                 </div>
                 
                 <div className="flex justify-between items-center">
                   <span className={`text-sm px-2 py-1 rounded ${
-                    item.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                    item.status === 'completed' ? 'bg-green-100 text-green-800' : 
+                    item.status === 'cancelled' ? 'bg-red-100 text-red-800' : 
+                    'bg-blue-100 text-blue-800'
                   }`}>
-                    {item.status}
+                    {item.status.replace('_', ' ')}
                   </span>
                   <span className="font-bold">
-                    {item.type === 'ride' ? '-' : '+'} RS {item.price}
+                    {item.driver?.id === user?.id ? '+' : '-'} {item.currency} {item.price}
                   </span>
                 </div>
               </div>
