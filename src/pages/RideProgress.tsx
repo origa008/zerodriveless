@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useRide } from '@/lib/context/RideContext';
@@ -22,6 +23,7 @@ const RideProgress: React.FC = () => {
   const [timeoutExpired, setTimeoutExpired] = useState(false);
   const [showBidIncrease, setShowBidIncrease] = useState(false);
   const [newBidAmount, setNewBidAmount] = useState(0);
+  const [showChat, setShowChat] = useState(false);
 
   useEffect(() => {
     if (currentRide && currentRide.status === 'confirmed') {
@@ -29,6 +31,7 @@ const RideProgress: React.FC = () => {
     }
     
     if (currentRide && currentRide.status === 'searching') {
+      // Set a 60-second timeout for driver acceptance
       const timeout = setTimeout(() => {
         setTimeoutExpired(true);
         setShowBidIncrease(true);
@@ -82,8 +85,49 @@ const RideProgress: React.FC = () => {
   };
 
   const handleIncreaseBid = () => {
-    setShowBidIncrease(false);
-    setTimeoutExpired(false);
+    if (!currentRide) return;
+    
+    // Increase bid by 20%
+    const increasedBid = Math.round(currentRide.price * 1.2);
+    
+    // Update ride with new bid in the database
+    supabase
+      .from('rides')
+      .update({ price: increasedBid })
+      .eq('id', currentRide.id)
+      .then(({ error }) => {
+        if (error) {
+          toast({
+            title: "Bid Update Failed",
+            description: "Could not update your bid. Please try again.",
+            variant: "destructive"
+          });
+          return;
+        }
+        
+        // Update local state
+        setCurrentRide({
+          ...currentRide,
+          price: increasedBid
+        });
+        
+        toast({
+          title: "Bid Increased",
+          description: `Your bid has been increased to ${increasedBid} RS to attract drivers.`,
+          duration: 5000
+        });
+        
+        setShowBidIncrease(false);
+        setTimeoutExpired(false);
+        
+        // Reset the timer
+        setTimeout(() => {
+          if (currentRide.status === 'searching') {
+            setTimeoutExpired(true);
+            setShowBidIncrease(true);
+          }
+        }, 60000);
+      });
   };
 
   const vehicleImages = {
@@ -180,7 +224,7 @@ const RideProgress: React.FC = () => {
               <label className="block text-sm font-medium mb-2">New Bid Amount</label>
               <input 
                 type="number" 
-                value={newBidAmount || (currentRide.price * 1.2)}
+                value={newBidAmount || (currentRide.price * 1.2).toFixed(0)}
                 onChange={(e) => setNewBidAmount(Number(e.target.value))}
                 className="w-full border border-gray-300 rounded-lg p-3"
               />

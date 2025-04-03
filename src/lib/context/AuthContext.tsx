@@ -147,7 +147,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw error;
       }
 
-      // Profile and user will be set by the auth listener
+      // Redirect to index page on successful login
+      window.location.href = '/';
     } catch (error: any) {
       console.error('Login failed:', error.message);
       toast({
@@ -187,7 +188,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
       }
 
-      // User profile will be created automatically by the database trigger
+      // Redirect to index page after successful signup
+      window.location.href = '/';
+      
       toast({
         title: "Account created",
         description: "Your account has been created successfully.",

@@ -179,10 +179,10 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsSearchingRide(true);
 
     try {
-      // Insert a ride object into the rides table
+      // Fixed: use correct Supabase insert format without array
       const { data: rideData, error: rideError } = await supabase
         .from('rides')
-        .insert([{  // Wrap the object in an array for Supabase
+        .insert({
           passenger_id: user.id,
           pickup_location: pickupLocation,
           dropoff_location: dropoffLocation,
@@ -193,7 +193,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
           duration: estimatedDuration,
           status: 'searching',
           payment_method: 'cash'
-        }])
+        })
         .select();
       
       if (rideError) {
@@ -718,7 +718,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setRideTimer(prev => prev + 1);
     }, 1000);
     
-    // Return Promise.resolve() directly
+    // Fixed: return Promise.resolve() directly
     return Promise.resolve();
   };
 
