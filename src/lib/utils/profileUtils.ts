@@ -1,6 +1,9 @@
 
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@/lib/types";
+import { Database } from "@/integrations/supabase/types";
+
+type ProfileRow = Database['public']['Tables']['profiles']['Row'];
 
 /**
  * Retrieves the user profile from Supabase
@@ -48,7 +51,7 @@ export const updateUserProfile = async (
 ): Promise<{ success: boolean; error: string | null }> => {
   try {
     // Map User type to database profile structure
-    const profileUpdates: any = {
+    const profileUpdates: Partial<ProfileRow> = {
       name: updates.name,
       phone: updates.phone,
       address: updates.address,
@@ -56,7 +59,12 @@ export const updateUserProfile = async (
     
     // Only include defined fields
     Object.keys(profileUpdates).forEach(
-      key => profileUpdates[key] === undefined && delete profileUpdates[key]
+      (key) => {
+        const typedKey = key as keyof typeof profileUpdates;
+        if (profileUpdates[typedKey] === undefined) {
+          delete profileUpdates[typedKey];
+        }
+      }
     );
     
     const { error } = await supabase

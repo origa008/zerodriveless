@@ -1,6 +1,10 @@
 
 import { supabase } from "@/integrations/supabase/client";
 import { Location, Ride, Driver, RideOption, PaymentMethod } from "@/lib/types";
+import { Database } from "@/integrations/supabase/types";
+
+type RideRow = Database['public']['Tables']['rides']['Row'];
+type ProfileRow = Database['public']['Tables']['profiles']['Row'];
 
 /**
  * Fetches ride history for a user (both as passenger and driver)
@@ -43,36 +47,39 @@ export const fetchUserRideHistory = async (userId: string): Promise<{ rides: Rid
     const allRides = [...(passengerRides || []), ...(driverRides || [])];
     
     // Sort by created_at date
-    allRides.sort((a, b) => 
-      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    );
+    allRides.sort((a, b) => {
+      const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return dateB - dateA;
+    });
     
     // Map Supabase data to our Ride type
     const formattedRides: Ride[] = allRides.map(ride => {
       // Parse pickup location from JSON
       const pickup: Location = typeof ride.pickup_location === 'string'
-        ? JSON.parse(ride.pickup_location)
-        : ride.pickup_location as Location;
+        ? JSON.parse(ride.pickup_location as string)
+        : ride.pickup_location as unknown as Location;
       
       // Parse dropoff location from JSON
       const dropoff: Location = typeof ride.dropoff_location === 'string'
-        ? JSON.parse(ride.dropoff_location)
-        : ride.dropoff_location as Location;
+        ? JSON.parse(ride.dropoff_location as string)
+        : ride.dropoff_location as unknown as Location;
       
       // Parse ride option from JSON
       const rideOption: RideOption = typeof ride.ride_option === 'string'
-        ? JSON.parse(ride.ride_option)
-        : ride.ride_option as RideOption;
+        ? JSON.parse(ride.ride_option as string)
+        : ride.ride_option as unknown as RideOption;
       
       // Create driver object if driver info exists
       let driver: Driver | undefined;
-      if (ride.driver) {
+      if ('driver' in ride && ride.driver) {
+        const driverData = ride.driver as unknown as { id: string; name: string; avatar: string | null };
         driver = {
-          id: ride.driver.id,
-          name: ride.driver.name,
+          id: driverData.id,
+          name: driverData.name,
           rating: 4.8, // Default rating if not available
           licensePlate: "Unknown", // Default value if not available
-          avatar: ride.driver.avatar || "",
+          avatar: driverData.avatar || "",
         };
       }
       
@@ -87,7 +94,7 @@ export const fetchUserRideHistory = async (userId: string): Promise<{ rides: Rid
         dropoff,
         rideOption,
         driver,
-        status: ride.status,
+        status: ride.status as Ride['status'],
         price: ride.price,
         currency: ride.currency,
         distance: ride.distance,
@@ -136,28 +143,29 @@ export const fetchRideDetails = async (rideId: string): Promise<{ ride: Ride | n
     
     // Parse pickup location from JSON
     const pickup: Location = typeof data.pickup_location === 'string'
-      ? JSON.parse(data.pickup_location)
-      : data.pickup_location as Location;
+      ? JSON.parse(data.pickup_location as string)
+      : data.pickup_location as unknown as Location;
     
     // Parse dropoff location from JSON
     const dropoff: Location = typeof data.dropoff_location === 'string'
-      ? JSON.parse(data.dropoff_location)
-      : data.dropoff_location as Location;
+      ? JSON.parse(data.dropoff_location as string)
+      : data.dropoff_location as unknown as Location;
     
     // Parse ride option from JSON
     const rideOption: RideOption = typeof data.ride_option === 'string'
-      ? JSON.parse(data.ride_option)
-      : data.ride_option as RideOption;
+      ? JSON.parse(data.ride_option as string)
+      : data.ride_option as unknown as RideOption;
     
     // Create driver object if driver info exists
     let driver: Driver | undefined;
-    if (data.driver) {
+    if ('driver' in data && data.driver) {
+      const driverData = data.driver as unknown as { id: string; name: string; avatar: string | null };
       driver = {
-        id: data.driver.id,
-        name: data.driver.name,
+        id: driverData.id,
+        name: driverData.name,
         rating: 4.8, // Default rating if not available
         licensePlate: "Unknown", // Default value if not available
-        avatar: data.driver.avatar || "",
+        avatar: driverData.avatar || "",
       };
     }
     
@@ -172,7 +180,7 @@ export const fetchRideDetails = async (rideId: string): Promise<{ ride: Ride | n
       dropoff,
       rideOption,
       driver,
-      status: data.status,
+      status: data.status as Ride['status'],
       price: data.price,
       currency: data.currency,
       distance: data.distance,

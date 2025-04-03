@@ -2,6 +2,9 @@
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@/lib/types";
 import { toast } from "@/hooks/use-toast";
+import { Database } from "@/integrations/supabase/types";
+
+type ProfileRow = Database['public']['Tables']['profiles']['Row'];
 
 /**
  * Signs up a new user with email and password
@@ -75,12 +78,12 @@ export const signInWithEmail = async (
       id: data.user.id,
       name: profileData?.name || data.user.user_metadata.name || '',
       email: data.user.email || '',
-      phone: profileData?.phone || '',
-      avatar: profileData?.avatar || '',
-      address: profileData?.address || '',
+      phone: profileData?.phone || undefined,
+      avatar: profileData?.avatar || undefined,
+      address: profileData?.address || undefined,
       isLoggedIn: true,
       isVerifiedDriver: profileData?.is_verified_driver || false,
-      referralCode: profileData?.referral_code || '',
+      referralCode: profileData?.referral_code || undefined,
     };
     
     return { user, error: null };
