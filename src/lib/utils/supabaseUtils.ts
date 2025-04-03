@@ -10,7 +10,8 @@ import {
   Location, 
   RideOption,
   PaymentMethod,
-  DriverDetail
+  DriverDetail,
+  Driver
 } from '../types';
 
 // Profile functions
@@ -27,7 +28,22 @@ export const fetchUserProfile = async (userId: string): Promise<Profile | null> 
       return null;
     }
 
-    return data as Profile;
+    // Convert Supabase response to Profile type
+    if (data) {
+      return {
+        id: data.id,
+        name: data.name || '',
+        email: data.email || '',
+        phone: data.phone || '',
+        avatar: data.avatar || '',
+        address: data.address || '',
+        isVerifiedDriver: data.is_verified_driver || false,
+        referralCode: data.referral_code || '',
+        createdAt: new Date(data.created_at)
+      };
+    }
+
+    return null;
   } catch (error) {
     console.error('Error fetching profile:', error);
     return null;
@@ -70,6 +86,29 @@ export const fetchWalletBalance = async (userId: string): Promise<number> => {
   }
 };
 
+// Add function to update wallet balance
+export const updateWalletBalance = async (userId: string, amount: number): Promise<boolean> => {
+  try {
+    const { error } = await supabase.rpc(
+      amount >= 0 ? 'add_to_wallet' : 'deduct_from_wallet',
+      { 
+        user_id: userId, 
+        amount: Math.abs(amount) 
+      }
+    );
+
+    if (error) {
+      console.error('Error updating wallet:', error);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error updating wallet:', error);
+    return false;
+  }
+};
+
 // Transaction functions
 export const createTransaction = async (transaction: {
   userId: string;
@@ -77,7 +116,7 @@ export const createTransaction = async (transaction: {
   type: 'deposit' | 'withdrawal' | 'fare' | 'referral';
   status: 'pending' | 'completed' | 'failed';
   description: string;
-  paymentMethod: string;
+  paymentMethod?: string;
   rideId?: string;
   bankDetails?: any;
 }): Promise<boolean> => {
@@ -90,7 +129,7 @@ export const createTransaction = async (transaction: {
         type: transaction.type,
         status: transaction.status,
         description: transaction.description,
-        payment_method: transaction.paymentMethod,
+        payment_method: transaction.paymentMethod || 'cash',
         ride_id: transaction.rideId,
         bank_details: transaction.bankDetails
       });
@@ -120,7 +159,18 @@ export const fetchTransactionHistory = async (userId: string): Promise<Transacti
       return [];
     }
 
-    return data || [];
+    return data ? data.map(item => ({
+      id: item.id,
+      userId: item.user_id,
+      amount: item.amount,
+      type: item.type as 'deposit' | 'withdrawal' | 'fare' | 'referral',
+      status: item.status as 'pending' | 'completed' | 'failed',
+      description: item.description || '',
+      paymentMethod: item.payment_method || 'cash',
+      rideId: item.ride_id,
+      bankDetails: item.bank_details,
+      createdAt: new Date(item.created_at)
+    })) : [];
   } catch (error) {
     console.error('Error fetching transactions:', error);
     return [];
@@ -139,7 +189,7 @@ export const createRide = async (ride: {
   currency: string;
   payment_method: PaymentMethod;
   status: 'searching' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
-}): Promise<string | null> => {
+}): Promise<Ride | null> => {
   try {
     const { data, error } = await supabase
       .from('rides')
@@ -152,9 +202,29 @@ export const createRide = async (ride: {
     }
 
     if (data && data.length > 0) {
-      return data[0].id;
+      const rideData = data[0];
+      return {
+        id: rideData.id,
+        pickup: rideData.pickup_location as Location,
+        dropoff: rideData.dropoff_location as Location,
+        rideOption: rideData.ride_option as RideOption,
+        driver: rideData.driver_id ? {
+          id: rideData.driver_id,
+          name: 'Driver',
+          rating: 4.5,
+          licensePlate: 'Unknown',
+          avatar: '/lovable-uploads/498e0bf1-4c8a-4cad-8ee2-6f43fdccc511.png'
+        } : undefined,
+        status: rideData.status as 'searching' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled',
+        price: rideData.price,
+        currency: rideData.currency,
+        distance: rideData.distance,
+        duration: rideData.duration,
+        startTime: rideData.start_time ? new Date(rideData.start_time) : undefined,
+        endTime: rideData.end_time ? new Date(rideData.end_time) : undefined,
+        paymentMethod: rideData.payment_method as PaymentMethod
+      };
     }
-
     return null;
   } catch (error) {
     console.error('Error creating ride:', error);
@@ -193,7 +263,7 @@ export const updateRideStatus = async (rideId: string, status: 'confirmed' | 'in
   }
 };
 
-export const fetchRideHistory = async (userId: string, isDriver: boolean = false): Promise<Ride[]> => {
+export const fetchUserRides = async (userId: string, isDriver: boolean = false): Promise<Ride[]> => {
   try {
     const field = isDriver ? 'driver_id' : 'passenger_id';
     
@@ -208,7 +278,27 @@ export const fetchRideHistory = async (userId: string, isDriver: boolean = false
       return [];
     }
 
-    return data || [];
+    return data ? data.map(rideData => ({
+      id: rideData.id,
+      pickup: rideData.pickup_location as Location,
+      dropoff: rideData.dropoff_location as Location,
+      rideOption: rideData.ride_option as RideOption,
+      driver: rideData.driver_id ? {
+        id: rideData.driver_id,
+        name: 'Driver',
+        rating: 4.5,
+        licensePlate: 'Unknown',
+        avatar: '/lovable-uploads/498e0bf1-4c8a-4cad-8ee2-6f43fdccc511.png'
+      } : undefined,
+      status: rideData.status as 'searching' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled',
+      price: rideData.price,
+      currency: rideData.currency,
+      distance: rideData.distance,
+      duration: rideData.duration,
+      startTime: rideData.start_time ? new Date(rideData.start_time) : undefined,
+      endTime: rideData.end_time ? new Date(rideData.end_time) : undefined,
+      paymentMethod: rideData.payment_method as PaymentMethod
+    })) : [];
   } catch (error) {
     console.error('Error fetching ride history:', error);
     return [];
@@ -221,12 +311,18 @@ export const sendChatMessage = async (message: {
   sender_id: string;
   receiver_id: string;
   message: string;
-  is_read: boolean;
+  is_read?: boolean;
 }): Promise<boolean> => {
   try {
     const { error } = await supabase
       .from('chats')
-      .insert(message);
+      .insert({
+        ride_id: message.ride_id,
+        sender_id: message.sender_id,
+        receiver_id: message.receiver_id,
+        message: message.message,
+        is_read: message.is_read || false
+      });
 
     if (error) {
       console.error('Error sending message:', error);
@@ -240,13 +336,12 @@ export const sendChatMessage = async (message: {
   }
 };
 
-export const fetchChatMessages = async (rideId: string, userId: string): Promise<ChatMessage[]> => {
+export const fetchChatMessages = async (rideId: string): Promise<ChatMessage[]> => {
   try {
     const { data, error } = await supabase
       .from('chats')
       .select('*')
       .eq('ride_id', rideId)
-      .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
       .order('created_at', { ascending: true });
 
     if (error) {
@@ -254,28 +349,38 @@ export const fetchChatMessages = async (rideId: string, userId: string): Promise
       return [];
     }
 
-    return data || [];
+    return data ? data.map(msg => ({
+      id: msg.id,
+      rideId: msg.ride_id,
+      senderId: msg.sender_id,
+      receiverId: msg.receiver_id,
+      message: msg.message,
+      isRead: msg.is_read,
+      createdAt: new Date(msg.created_at)
+    })) : [];
   } catch (error) {
     console.error('Error fetching messages:', error);
     return [];
   }
 };
 
-export const markChatAsRead = async (chatId: string): Promise<boolean> => {
+export const markMessagesAsRead = async (rideId: string, userId: string): Promise<boolean> => {
   try {
     const { error } = await supabase
       .from('chats')
       .update({ is_read: true })
-      .eq('id', chatId);
+      .eq('ride_id', rideId)
+      .eq('receiver_id', userId)
+      .eq('is_read', false);
 
     if (error) {
-      console.error('Error marking message as read:', error);
+      console.error('Error marking messages as read:', error);
       return false;
     }
 
     return true;
   } catch (error) {
-    console.error('Error marking message as read:', error);
+    console.error('Error marking messages as read:', error);
     return false;
   }
 };
@@ -319,7 +424,26 @@ export const fetchDriverDetails = async (userId: string): Promise<DriverDetail |
       return null;
     }
 
-    return data as DriverDetail;
+    if (data) {
+      return {
+        id: data.id,
+        userId: data.user_id,
+        fullName: data.full_name,
+        cnicNumber: data.cnic_number,
+        driverLicenseNumber: data.driver_license_number,
+        vehicleType: data.vehicle_type,
+        vehicleModel: data.vehicle_model,
+        vehicleColor: data.vehicle_color,
+        vehicleRegistrationNumber: data.vehicle_registration_number,
+        status: data.status as 'pending' | 'approved' | 'rejected',
+        hasSufficientDeposit: data.has_sufficient_deposit,
+        depositAmountRequired: data.deposit_amount_required,
+        approvalDate: data.approval_date ? new Date(data.approval_date) : undefined,
+        createdAt: new Date(data.created_at)
+      };
+    }
+
+    return null;
   } catch (error) {
     console.error('Error fetching driver details:', error);
     return null;

@@ -5,7 +5,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from './AuthContext';
 import { 
   fetchWalletBalance, 
-  updateWalletBalance as updateSupabaseWalletBalance,
+  updateWalletBalance,
   createRide as createSupabaseRide,
   fetchUserRides,
   updateRideStatus,
@@ -84,7 +84,6 @@ const defaultDriver: Driver = {
   avatar: '/lovable-uploads/498e0bf1-4c8a-4cad-8ee2-6f43fdccc511.png'
 };
 
-// Default location for Lahore, Pakistan
 const defaultLocation: Location = {
   name: 'Lahore, Pakistan',
   address: 'Lahore, Punjab, Pakistan',
@@ -120,14 +119,12 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const availableRideOptions = availableRideOptionsWithPricing;
 
-  // Initialize with default location for Lahore
   useEffect(() => {
     if (!pickupLocation) {
       setPickupLocation(defaultLocation);
     }
   }, []);
 
-  // Initialize wallet balance from Supabase if user is logged in
   useEffect(() => {
     if (user) {
       const loadWalletBalance = async () => {
@@ -139,7 +136,6 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [user]);
 
-  // Load ride history from Supabase when user is logged in
   useEffect(() => {
     if (user) {
       const loadRideHistory = async () => {
@@ -151,10 +147,9 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [user, isDriverMode]);
 
-  // Update wallet balance with Supabase integration
   const updateWalletBalance = async (amount: number) => {
     if (user) {
-      const success = await updateSupabaseWalletBalance(user.id, amount);
+      const success = await updateWalletBalance(user.id, amount);
       
       if (success) {
         setWalletBalance(prevBalance => {
@@ -162,14 +157,14 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return newBalance;
         });
         
-        // Also create a transaction record
         const transactionType = amount > 0 ? 'deposit' : 'withdrawal';
         await createTransaction({
           userId: user.id,
           amount: Math.abs(amount),
           type: transactionType,
           status: 'completed',
-          description: amount > 0 ? 'Wallet deposit' : 'Wallet withdrawal'
+          description: amount > 0 ? 'Wallet deposit' : 'Wallet withdrawal',
+          paymentMethod: 'wallet'
         });
         
         return true;
@@ -179,17 +174,14 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return false;
   };
 
-  // Add a new ride request
   const addRideRequest = (ride: Ride) => {
     setPendingRideRequests(prev => [...prev, ride]);
   };
 
-  // Remove a ride request
   const removeRideRequest = (rideId: string) => {
     setPendingRideRequests(prev => prev.filter(ride => ride.id !== rideId));
   };
 
-  // Accept a ride request
   const acceptRideRequest = (rideId: string) => {
     const acceptedRide = pendingRideRequests.find(ride => ride.id === rideId);
     if (acceptedRide) {
@@ -198,7 +190,6 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Calculate base fare based on vehicle type and distance
   const calculateBaseFare = (distance: number, vehicleType: string): number => {
     const baseRate = vehicleType === 'Bike' ? 10 : 17; // RS per km
     const driverProfit = 1.25; // 25% profit for driver
@@ -213,7 +204,6 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Start driver acceptance countdown
   useEffect(() => {
     if (isWaitingForDriverAcceptance && driverAcceptanceTimer > 0) {
       const interval = setInterval(() => {
@@ -237,34 +227,26 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [isWaitingForDriverAcceptance, driverAcceptanceTimer, toast]);
 
-  // Calculate fare multiplier based on time of day, traffic, demand
   const updateFareMultiplier = () => {
-    // Check current hour to determine peak time
     const hour = new Date().getHours();
     let timeMultiplier = 1;
     
-    // Peak hours: 7-10 AM and 5-8 PM
     if ((hour >= 7 && hour <= 10) || (hour >= 17 && hour <= 20)) {
       timeMultiplier = 1.2;
     }
     
-    // Weekend multiplier (Friday and Saturday nights)
-    const day = new Date().getDay(); // 0-6, 5 is Friday, 6 is Saturday
+    const day = new Date().getDay();
     const isWeekend = (day === 5 && hour >= 20) || (day === 6 && hour >= 18);
     const weekendMultiplier = isWeekend ? 1.15 : 1;
     
-    // Random demand factor (1.0 - 1.25)
     const demandMultiplier = 1 + (Math.random() * 0.25);
     
-    // Combine all factors
     const newMultiplier = timeMultiplier * weekendMultiplier * demandMultiplier;
     
-    // Round to 2 decimal places
     setFareMultiplier(parseFloat(newMultiplier.toFixed(2)));
   };
 
   useEffect(() => {
-    // Update fare multiplier when component mounts and every 10 minutes
     updateFareMultiplier();
     const intervalId = setInterval(updateFareMultiplier, 10 * 60 * 1000);
     
@@ -288,9 +270,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setEstimatedDistance(parseFloat(result.distance.toFixed(1)));
           setEstimatedDuration(result.duration);
           
-          // Apply new fare calculation based on vehicle type
           const updatedOptions = defaultRideOptions.map(option => {
-            // Calculate base fare based on vehicle type (Bike or Auto)
             const baseFare = calculateBaseFare(result.distance, option.name);
             
             return {
@@ -342,35 +322,32 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, 1500);
   };
 
-  // Update confirmRide to save the ride to Supabase
   const confirmRide = async (paymentMethod: PaymentMethod = 'cash') => {
     if (!pickupLocation || !dropoffLocation || !selectedRideOption || !user) {
       console.error('Pickup, dropoff, ride option and user are required');
       return;
     }
 
-    // Use user bid if available, otherwise use the selected ride option price
     const finalPrice = userBid || selectedRideOption.price;
 
-    const newRide: Omit<Ride, 'id'> = {
-      pickup: pickupLocation,
-      dropoff: dropoffLocation,
-      rideOption: {
+    const newRide = {
+      passenger_id: user.id,
+      pickup_location: pickupLocation,
+      dropoff_location: dropoffLocation,
+      ride_option: {
         ...selectedRideOption,
         price: finalPrice
       },
-      driver: defaultDriver,
-      status: 'confirmed',
       price: finalPrice,
       currency: selectedRideOption.currency,
       distance: estimatedDistance || 4.8,
       duration: estimatedDuration || 15,
-      paymentMethod: paymentMethod
+      payment_method: paymentMethod,
+      status: 'confirmed' as const
     };
 
-    // Create the ride in Supabase
     if (!isDriverMode) {
-      const createdRide = await createSupabaseRide(newRide, user.id);
+      const createdRide = await createSupabaseRide(newRide);
       
       if (createdRide) {
         setCurrentRide(createdRide);
@@ -384,7 +361,6 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
           duration: 3000
         });
         
-        // Also create a pending transaction if payment method is wallet
         if (paymentMethod === 'wallet') {
           await createTransaction({
             userId: user.id,
@@ -416,7 +392,6 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
       startTime: new Date()
     };
     
-    // Update the ride status in Supabase
     const success = await updateRideStatus(currentRide.id, 'in_progress');
     
     if (success) {
@@ -442,18 +417,13 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
       endTime: new Date()
     };
     
-    // Update the ride status in Supabase
     const success = await updateRideStatus(currentRide.id, 'completed');
     
     if (success) {
       setCurrentRide(updatedRide);
       setIsRideTimerActive(false);
       
-      // Add to ride history
       addToHistory(updatedRide);
-
-      // Payment processing will be handled in the RideCompleted component
-      // to make sure it's only done once
 
       toast({
         title: "Ride completed",
@@ -478,14 +448,12 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
       status: 'cancelled'
     };
     
-    // Update the ride status in Supabase
     const success = await updateRideStatus(currentRide.id, 'cancelled');
     
     if (success) {
       setCurrentRide(updatedRide);
       setIsRideTimerActive(false);
       
-      // Add to ride history
       addToHistory(updatedRide);
 
       toast({

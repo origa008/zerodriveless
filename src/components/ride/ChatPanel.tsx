@@ -91,9 +91,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ rideId, otherUserId }) => {
     
     try {
       await sendChatMessage({
-        rideId,
-        senderId: user.id,
-        receiverId: otherUserId,
+        ride_id: rideId,
+        sender_id: user.id,
+        receiver_id: otherUserId,
         message: newMessage
       });
       
