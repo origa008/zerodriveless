@@ -179,7 +179,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsSearchingRide(true);
 
     try {
-      // Fixed: Insert a single object, not an array
+      // Insert a single object into the rides table
       const { data: rideData, error: rideError } = await supabase
         .from('rides')
         .insert({
@@ -717,6 +717,9 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const timerInterval = setInterval(() => {
       setRideTimer(prev => prev + 1);
     }, 1000);
+    
+    // Return nothing (void) to satisfy the Promise<void> return type
+    return Promise.resolve();
   };
 
   const cancelRide = () => {
