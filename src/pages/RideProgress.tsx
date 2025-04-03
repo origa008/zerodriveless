@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useRide } from '@/lib/context/RideContext';
@@ -25,29 +24,25 @@ const RideProgress: React.FC = () => {
   const [newBidAmount, setNewBidAmount] = useState(0);
 
   useEffect(() => {
-    // Start the ride automatically when the page loads
     if (currentRide && currentRide.status === 'confirmed') {
       startRide();
     }
     
-    // Set a timeout to auto-redirect if no driver accepts within 1 minute
     if (currentRide && currentRide.status === 'searching') {
       const timeout = setTimeout(() => {
         setTimeoutExpired(true);
         setShowBidIncrease(true);
-      }, 60000); // 1 minute
+      }, 60000);
       
       return () => clearTimeout(timeout);
     }
   }, [currentRide, startRide]);
 
   useEffect(() => {
-    // If ride is completed, navigate to ride-completed
     if (currentRide && currentRide.status === 'completed') {
       navigateToPage('/ride-completed');
     }
     
-    // If there's no current ride, redirect to home
     if (!currentRide) {
       navigateToPage('/');
     }
@@ -87,14 +82,10 @@ const RideProgress: React.FC = () => {
   };
 
   const handleIncreaseBid = () => {
-    // Logic for increasing bid would be implemented here
-    // For now, we'll just close the dialog
     setShowBidIncrease(false);
     setTimeoutExpired(false);
-    // In a real implementation, this would update the bid and restart the search
   };
 
-  // Vehicle images for display
   const vehicleImages = {
     Bike: '/lovable-uploads/cfd3fd57-c24d-402a-9e79-91bdb781be21.png',
     Auto: '/lovable-uploads/28c00f11-f954-45d1-94a5-4c5604aa633c.png'
@@ -103,7 +94,7 @@ const RideProgress: React.FC = () => {
   const isDriver = user?.id === currentRide?.driver?.id;
 
   if (!currentRide) {
-    return null; // We'll redirect in the useEffect above
+    return null;
   }
 
   return (
@@ -120,7 +111,6 @@ const RideProgress: React.FC = () => {
       <RideMap />
       
       <div className="bg-white rounded-t-3xl -mt-6 relative z-10 p-6">
-        {/* Vehicle image */}
         <div className="mb-4 flex justify-center">
           {currentRide.rideOption.name === 'Bike' ? (
             <img 
@@ -139,7 +129,6 @@ const RideProgress: React.FC = () => {
         
         <RideDetails />
         
-        {/* Call button */}
         {currentRide.status !== 'completed' && (
           <div className="mb-4 flex justify-center">
             <button 
@@ -174,12 +163,10 @@ const RideProgress: React.FC = () => {
         </div>
       </div>
       
-      {/* Chat Icon for communication */}
       {currentRide && currentRide.status !== 'completed' && (
         <ChatIcon ride={currentRide} variant="both" />
       )}
 
-      {/* Bid increase dialog */}
       {showBidIncrease && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl p-6 w-full max-w-md">
@@ -193,7 +180,7 @@ const RideProgress: React.FC = () => {
               <label className="block text-sm font-medium mb-2">New Bid Amount</label>
               <input 
                 type="number" 
-                value={newBidAmount || (currentRide.price * 1.2)} // 20% increase
+                value={newBidAmount || (currentRide.price * 1.2)}
                 onChange={(e) => setNewBidAmount(Number(e.target.value))}
                 className="w-full border border-gray-300 rounded-lg p-3"
               />

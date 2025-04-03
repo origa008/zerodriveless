@@ -69,7 +69,6 @@ type RideContextType = {
   fetchRideHistory: () => Promise<void>;
   availableRides: Ride[];
   acceptRide: (rideId: string) => Promise<void>;
-  // Additional properties needed for components
   pendingRideRequests: Ride[];
   calculateBaseFare: (distance: number, vehicleType: string) => number;
   acceptRideRequest: (rideId: string) => void;
@@ -180,7 +179,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsSearchingRide(true);
 
     try {
-      // Fix: Insert as a single object with all properties
+      // Fix: Insert as an object, not an array of objects
       const { data: rideData, error: rideError } = await supabase
         .from('rides')
         .insert({
@@ -718,6 +717,9 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const timerInterval = setInterval(() => {
       setRideTimer(prev => prev + 1);
     }, 1000);
+
+    // Return void instead of a function
+    return Promise.resolve();
   };
 
   const cancelRide = () => {
@@ -806,7 +808,6 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fetchRideHistory,
     availableRides,
     acceptRide,
-    // Additional properties
     pendingRideRequests,
     calculateBaseFare,
     acceptRideRequest,
