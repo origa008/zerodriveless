@@ -6,6 +6,7 @@ import { User, Mail, Phone, MapPin, Shield, ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import BottomNavigation from '@/components/layout/BottomNavigation';
 import { useToast } from '@/hooks/use-toast';
+import { updateUserProfile } from '@/lib/utils/supabaseUtils';
 
 const Profile: React.FC = () => {
   const { user, logout } = useAuth();
@@ -44,7 +45,7 @@ const Profile: React.FC = () => {
     return phone.length === 11 && /^\d+$/.test(phone);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!validatePhoneNumber(formData.phone)) {
@@ -67,17 +68,41 @@ const Profile: React.FC = () => {
       return;
     }
     
-    // In a real app, you would update the user data here
-    setIsEditing(false);
-    
-    toast({
-      title: "Profile updated",
-      description: "Your profile has been successfully updated",
-      duration: 3000
-    });
-    
-    // Just for demo purposes, we'll console log the updated data
-    console.log('Updated profile:', formData);
+    if (user) {
+      try {
+        // Update profile in database
+        const success = await updateUserProfile(user.id, {
+          name: formData.name,
+          phone: formData.phone,
+          address: formData.address
+        });
+        
+        if (success) {
+          // Update local user state
+          setIsEditing(false);
+          
+          toast({
+            title: "Profile updated",
+            description: "Your profile has been successfully updated",
+            duration: 3000
+          });
+        } else {
+          toast({
+            title: "Update failed",
+            description: "Failed to update profile. Please try again.",
+            variant: "destructive",
+            duration: 3000
+          });
+        }
+      } catch (error) {
+        toast({
+          title: "Update failed",
+          description: "An error occurred while updating your profile",
+          variant: "destructive",
+          duration: 3000
+        });
+      }
+    }
   };
 
   if (!user) {
@@ -139,8 +164,10 @@ const Profile: React.FC = () => {
                     value={formData.email}
                     onChange={handleChange}
                     className="flex-1 outline-none"
+                    disabled
                   />
                 </div>
+                <p className="text-xs text-gray-500 mt-1">Email cannot be changed</p>
               </div>
               
               <div>
@@ -267,6 +294,14 @@ const Profile: React.FC = () => {
                 onClick={logout}
               >
                 Logout
+              </Button>
+
+              <Button
+                variant="outline"
+                className="w-full text-red-500 border-red-200"
+                onClick={() => navigate('/forgot-password')}
+              >
+                Reset Password
               </Button>
             </div>
           </>

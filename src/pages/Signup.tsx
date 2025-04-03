@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ArrowLeft } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 const Signup: React.FC = () => {
   const [name, setName] = useState('');
@@ -21,6 +22,7 @@ const Signup: React.FC = () => {
   }>({});
   const { signup, loading } = useAuth();
   const navigate = useNavigate();
+  const { toast } = useToast();
 
   const validateForm = () => {
     const newErrors: any = {};
@@ -60,7 +62,21 @@ const Signup: React.FC = () => {
     e.preventDefault();
     
     if (validateForm()) {
-      await signup(email, password, name, referralCode || undefined);
+      try {
+        await signup(email, password, name, referralCode || undefined);
+        toast({
+          title: "Account created successfully",
+          description: "Welcome to Zero Drive! You're now being redirected.",
+          duration: 3000
+        });
+      } catch (error: any) {
+        toast({
+          title: "Signup failed",
+          description: error.message || "An error occurred during signup",
+          variant: "destructive",
+          duration: 5000
+        });
+      }
     }
   };
 

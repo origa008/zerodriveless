@@ -450,3 +450,121 @@ export const fetchDriverDetails = async (userId: string): Promise<DriverDetail |
     return null;
   }
 };
+
+/**
+ * Update user profile information
+ */
+export const updateUserProfile = async (userId: string, updates: Partial<Profile>): Promise<boolean> => {
+  try {
+    const { error } = await supabase
+      .from('profiles')
+      .update(updates)
+      .eq('id', userId);
+
+    if (error) {
+      console.error('Error updating profile:', error);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error updating profile:', error);
+    return false;
+  }
+};
+
+/**
+ * Upload driver document
+ */
+export const uploadDriverDocument = async (
+  userId: string, 
+  file: File, 
+  documentType: 'cnic_front' | 'cnic_back' | 'license_front' | 'license_back' | 'vehicle_registration' | 'vehicle_photo' | 'selfie_with_cnic' | 'selfie_photo'
+): Promise<{ success: boolean, url?: string }> => {
+  try {
+    const fileName = `${userId}_${documentType}_${Date.now()}`;
+    const fileExt = file.name.split('.').pop();
+    const filePath = `${userId}/${documentType}_${fileName}.${fileExt}`;
+    
+    // Upload file to Supabase Storage
+    const { data, error } = await supabase
+      .storage
+      .from('driver_documents')
+      .upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: false
+      });
+
+    if (error) {
+      console.error('Error uploading document:', error);
+      return { success: false };
+    }
+
+    // Get public URL
+    const { data: urlData } = supabase
+      .storage
+      .from('driver_documents')
+      .getPublicUrl(filePath);
+
+    const publicUrl = urlData.publicUrl;
+
+    // Update driver details with the document URL
+    const columnName = `${documentType}_url`;
+    const { error: updateError } = await supabase
+      .from('driver_details')
+      .update({ [columnName]: publicUrl })
+      .eq('user_id', userId);
+
+    if (updateError) {
+      console.error('Error updating driver details:', updateError);
+      return { success: false };
+    }
+
+    return { success: true, url: publicUrl };
+  } catch (error) {
+    console.error('Error uploading document:', error);
+    return { success: false };
+  }
+};
+
+/**
+ * Reset password
+ */
+export const resetPassword = async (email: string): Promise<boolean> => {
+  try {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + '/reset-password'
+    });
+
+    if (error) {
+      console.error('Error resetting password:', error);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error resetting password:', error);
+    return false;
+  }
+};
+
+/**
+ * Update password
+ */
+export const updatePassword = async (newPassword: string): Promise<boolean> => {
+  try {
+    const { error } = await supabase.auth.updateUser({
+      password: newPassword
+    });
+
+    if (error) {
+      console.error('Error updating password:', error);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error updating password:', error);
+    return false;
+  }
+};
