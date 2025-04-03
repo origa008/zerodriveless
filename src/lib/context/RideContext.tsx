@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Ride, Location, RideOption, Driver, PaymentMethod, RideStatus, Passenger } from '../types';
 import { calculateDistance } from '../utils/mapsApi';
@@ -74,7 +73,7 @@ type RideContextType = {
   calculateBaseFare: (distance: number, vehicleType: string) => number;
   acceptRideRequest: (rideId: string) => void;
   setCurrentRide: (ride: Ride) => void;
-  startRide: () => void;
+  startRide: () => Promise<void>;
   cancelRide: () => void;
   rideTimer: number;
   isRideTimerActive: boolean;
@@ -180,10 +179,10 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsSearchingRide(true);
 
     try {
-      // Insert a single object into the rides table - using array syntax for Supabase
+      // Insert a ride object into the rides table
       const { data: rideData, error: rideError } = await supabase
         .from('rides')
-        .insert([{  // Fixed: Wrap object in an array
+        .insert({
           passenger_id: user.id,
           pickup_location: pickupLocation,
           dropoff_location: dropoffLocation,
@@ -194,7 +193,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
           duration: estimatedDuration,
           status: 'searching',
           payment_method: 'cash'
-        }])
+        })
         .select();
       
       if (rideError) {
@@ -719,7 +718,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setRideTimer(prev => prev + 1);
     }, 1000);
     
-    // Return void to satisfy the Promise<void> return type
+    // Fixed: return Promise.resolve() directly instead of returning a function
     return Promise.resolve();
   };
 
