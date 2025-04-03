@@ -5,7 +5,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from './AuthContext';
 import { 
   fetchWalletBalance, 
-  updateWalletBalance,
+  updateWalletBalance as updateSupabaseWalletBalance,
   createRide as createSupabaseRide,
   fetchUserRides,
   updateRideStatus,
@@ -139,7 +139,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     if (user) {
       const loadRideHistory = async () => {
-        const rides = await fetchUserRides(user.id, isDriverMode);
+        const rides = await fetchUserRides(user.id);
         setRideHistory(rides);
       };
       
@@ -149,7 +149,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const updateWalletBalance = async (amount: number) => {
     if (user) {
-      const success = await updateWalletBalance(user.id, amount);
+      const success = await updateSupabaseWalletBalance(user.id, amount);
       
       if (success) {
         setWalletBalance(prevBalance => {

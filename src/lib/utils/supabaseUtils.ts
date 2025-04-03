@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { 
   User, 
@@ -263,44 +262,46 @@ export const updateRideStatus = async (rideId: string, status: 'confirmed' | 'in
   }
 };
 
-export const fetchUserRides = async (userId: string, isDriver: boolean = false): Promise<Ride[]> => {
+/**
+ * Fetch user's rides
+ */
+export const fetchUserRides = async (userId: string): Promise<Ride[]> => {
   try {
-    const field = isDriver ? 'driver_id' : 'passenger_id';
-    
     const { data, error } = await supabase
       .from('rides')
       .select('*')
-      .eq(field, userId)
+      .or(`passenger_id.eq.${userId},driver_id.eq.${userId}`)
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('Error fetching ride history:', error);
+      console.error('Error fetching user rides:', error);
       return [];
     }
 
-    return data ? data.map(rideData => ({
-      id: rideData.id,
-      pickup: rideData.pickup_location as Location,
-      dropoff: rideData.dropoff_location as Location,
-      rideOption: rideData.ride_option as RideOption,
-      driver: rideData.driver_id ? {
-        id: rideData.driver_id,
-        name: 'Driver',
-        rating: 4.5,
-        licensePlate: 'Unknown',
-        avatar: '/lovable-uploads/498e0bf1-4c8a-4cad-8ee2-6f43fdccc511.png'
+    // Transform the data to match the Ride type
+    return data.map((ride) => ({
+      id: ride.id,
+      pickup: ride.pickup_location,
+      dropoff: ride.dropoff_location,
+      rideOption: ride.ride_option,
+      driver: ride.driver_id ? {
+        id: ride.driver_id,
+        name: ride.driver_name || 'Driver',
+        rating: ride.driver_rating || 4.5,
+        licensePlate: ride.vehicle_plate || '',
+        avatar: ride.driver_avatar || '/lovable-uploads/498e0bf1-4c8a-4cad-8ee2-6f43fdccc511.png'
       } : undefined,
-      status: rideData.status as 'searching' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled',
-      price: rideData.price,
-      currency: rideData.currency,
-      distance: rideData.distance,
-      duration: rideData.duration,
-      startTime: rideData.start_time ? new Date(rideData.start_time) : undefined,
-      endTime: rideData.end_time ? new Date(rideData.end_time) : undefined,
-      paymentMethod: rideData.payment_method as PaymentMethod
-    })) : [];
+      status: ride.status,
+      price: ride.price,
+      currency: ride.currency || 'RS',
+      distance: ride.distance,
+      duration: ride.duration,
+      startTime: ride.start_time ? new Date(ride.start_time) : undefined,
+      endTime: ride.end_time ? new Date(ride.end_time) : undefined,
+      paymentMethod: ride.payment_method as PaymentMethod || 'cash'
+    }));
   } catch (error) {
-    console.error('Error fetching ride history:', error);
+    console.error('Error fetching user rides:', error);
     return [];
   }
 };
