@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Ride, Location, RideOption, Driver, PaymentMethod, RideStatus, Passenger } from '../types';
 import { calculateDistance } from '../utils/mapsApi';
@@ -179,7 +180,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsSearchingRide(true);
 
     try {
-      // Fix: Insert as an object, not an array of objects
+      // Fixed: Insert a single object, not an object within an array
       const { data: rideData, error: rideError } = await supabase
         .from('rides')
         .insert({
@@ -718,8 +719,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setRideTimer(prev => prev + 1);
     }, 1000);
 
-    // Return void instead of a function
-    return Promise.resolve();
+    // Simply return void, don't return a function
   };
 
   const cancelRide = () => {
