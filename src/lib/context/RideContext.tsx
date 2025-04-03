@@ -179,7 +179,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsSearchingRide(true);
 
     try {
-      // Insert a single object into the rides table
+      // Insert a single object into the rides table - not in an array
       const { data: rideData, error: rideError } = await supabase
         .from('rides')
         .insert({
@@ -710,7 +710,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Start a ride
   const startRide = () => {
-    if (!currentRide) return;
+    if (!currentRide) return Promise.resolve();
     setIsRideTimerActive(true);
     
     // Start ride timer
@@ -718,7 +718,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setRideTimer(prev => prev + 1);
     }, 1000);
     
-    // Return nothing (void) to satisfy the Promise<void> return type
+    // Return void to satisfy the Promise<void> return type
     return Promise.resolve();
   };
 
