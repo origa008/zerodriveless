@@ -10,14 +10,29 @@ import DriverMode from '@/components/driver/DriverMode';
 import Sidebar from '@/components/layout/Sidebar';
 import PassengerPanel from '@/components/ride/PassengerPanel';
 import { useToast } from '@/hooks/use-toast';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const Index: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { user, isLoading } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const { isDriverMode, setDriverMode } = useRide();
   const [isDriverOnline, setIsDriverOnline] = useState(false);
   const [showDriverRegistrationPrompt, setShowDriverRegistrationPrompt] = useState(false);
+  const [pageLoaded, setPageLoaded] = useState(false);
+  
+  // Effect to manage page loaded state
+  useEffect(() => {
+    // Wait until authentication is no longer loading before considering the page loaded
+    if (!authLoading) {
+      // Short delay to ensure smooth transition
+      const timer = setTimeout(() => {
+        setPageLoaded(true);
+      }, 300);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [authLoading]);
   
   // Effect to handle driver mode switch for unregistered users
   useEffect(() => {
@@ -44,13 +59,22 @@ const Index: React.FC = () => {
   
   // Redirect to Welcome for unauthenticated users
   useEffect(() => {
-    if (!isLoading && !user?.isLoggedIn) {
+    if (!authLoading && !user?.isLoggedIn) {
       navigate('/welcome');
     }
-  }, [user, isLoading, navigate]);
+  }, [user, authLoading, navigate]);
   
-  if (isLoading) {
-    return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+  // Show loading state while authentication is processing
+  if (authLoading || !pageLoaded) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-white p-4">
+        <div className="w-16 h-16 rounded-full mb-4">
+          <Skeleton className="w-full h-full rounded-full" />
+        </div>
+        <Skeleton className="h-8 w-48 rounded-md mb-2" />
+        <Skeleton className="h-4 w-36 rounded-md" />
+      </div>
+    );
   }
   
   return (

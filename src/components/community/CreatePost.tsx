@@ -6,7 +6,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Image as ImageIcon, Send } from 'lucide-react';
 
 type CreatePostProps = {
-  onPostCreated: (post: any) => void;
+  onPostCreated: (content: string) => void;
 };
 
 const CreatePost: React.FC<CreatePostProps> = ({ onPostCreated }) => {
@@ -15,7 +15,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ onPostCreated }) => {
   const { user } = useAuth();
   const { toast } = useToast();
   
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!content.trim()) {
@@ -29,30 +29,14 @@ const CreatePost: React.FC<CreatePostProps> = ({ onPostCreated }) => {
     
     setIsSubmitting(true);
     
-    // In a real app, this would be an API call
-    setTimeout(() => {
-      const newPost = {
-        id: Math.random().toString(36).substring(2, 11),
-        author: {
-          name: user?.name || 'Anonymous',
-          avatar: user?.avatar,
-          time: 'Just now'
-        },
-        content,
-        likes: 0,
-        comments: 0
-      };
-      
-      onPostCreated(newPost);
+    try {
+      await onPostCreated(content);
       setContent('');
+    } catch (error) {
+      console.error("Error creating post:", error);
+    } finally {
       setIsSubmitting(false);
-      
-      toast({
-        title: "Post created!",
-        description: "Your post has been published to the community",
-        duration: 3000
-      });
-    }, 1000);
+    }
   };
   
   return (

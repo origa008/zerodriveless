@@ -1,9 +1,11 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Share2, Copy, Check } from 'lucide-react';
 import { useAuth } from '@/lib/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+import { Skeleton } from '@/components/ui/skeleton';
 
 type ReferralInfo = {
   code: string;
@@ -17,14 +19,83 @@ const ReferralSystem: React.FC = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const [copied, setCopied] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [referralInfo, setReferralInfo] = useState<ReferralInfo>({
+    code: '',
+    totalInvited: 0,
+    pending: 0,
+    completed: 0,
+    earned: 0
+  });
   
-  // In a real app, this would come from the backend
-  const referralInfo: ReferralInfo = {
-    code: user?.id ? `zerodrive-${user.id}` : 'zerodrive-123',
-    totalInvited: 3,
-    pending: 2,
-    completed: 1,
-    earned: 50  // Rs 50 per successful referral
+  // Fetch referral data and subscribe to real-time updates
+  useEffect(() => {
+    if (user?.id) {
+      fetchReferralInfo();
+      
+      // Subscribe to referral table changes
+      const channel = supabase
+        .channel('public:referrals')
+        .on('postgres_changes', 
+          { 
+            event: '*', 
+            schema: 'public', 
+            table: 'referrals',
+            filter: `referrer_id=eq.${user.id}`
+          }, 
+          () => {
+            fetchReferralInfo();
+          }
+        )
+        .subscribe();
+      
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
+  }, [user?.id]);
+  
+  const fetchReferralInfo = async () => {
+    if (!user?.id) return;
+    
+    try {
+      setLoading(true);
+      
+      // Fetch the user's referral code
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('referral_code')
+        .eq('id', user.id)
+        .single();
+      
+      const referralCode = profileData?.referral_code || '';
+      
+      // Fetch referrals data
+      const { data: referralsData } = await supabase
+        .from('referrals')
+        .select('*')
+        .eq('referrer_id', user.id);
+      
+      // Calculate statistics
+      const totalInvited = referralsData?.length || 0;
+      const pending = referralsData?.filter(r => r.status === 'pending').length || 0;
+      const completed = referralsData?.filter(r => r.status === 'completed').length || 0;
+      const earned = referralsData
+        ?.filter(r => r.status === 'completed')
+        .reduce((sum, r) => sum + (r.amount || 0), 0) || 0;
+      
+      setReferralInfo({
+        code: referralCode,
+        totalInvited,
+        pending,
+        completed,
+        earned
+      });
+    } catch (error) {
+      console.error('Error fetching referral info:', error);
+    } finally {
+      setLoading(false);
+    }
   };
   
   const referralLink = `https://zerodrive.app/register?ref=${referralInfo.code}`;
@@ -71,6 +142,24 @@ const ReferralSystem: React.FC = () => {
       handleCopyLink();
     }
   };
+  
+  if (loading) {
+    return (
+      <div className="bg-zerodrive-purple/10 p-6 rounded-2xl mb-6">
+        <h2 className="text-2xl font-medium mb-4">Refer & Earn</h2>
+        <div className="space-y-4">
+          <Skeleton className="h-16 w-full rounded-xl mb-4" />
+          <div className="flex justify-between mb-4">
+            {Array(3).fill(0).map((_, i) => (
+              <Skeleton key={i} className="h-16 w-24" />
+            ))}
+          </div>
+          <Skeleton className="h-24 w-full rounded-xl mb-4" />
+          <Skeleton className="h-12 w-full" />
+        </div>
+      </div>
+    );
+  }
   
   return (
     <div className="bg-zerodrive-purple/10 p-6 rounded-2xl mb-6">

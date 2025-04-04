@@ -1,3 +1,4 @@
+
 import { supabase } from "@/integrations/supabase/client";
 import { Ride, Location, RideOption, Driver } from '@/lib/types';
 import { Database } from "@/integrations/supabase/types";
@@ -68,31 +69,40 @@ export const getDriverRideHistory = async (userId: string): Promise<{ rides: Rid
  */
 const mapDatabaseRideToRideObject = (ride: RideRow): Ride => {
   // Create pickup location object
-  const pickupLocationJson = ride.pickup_location as any;
+  const pickupLocationJson = typeof ride.pickup_location === 'string' 
+    ? JSON.parse(ride.pickup_location) 
+    : ride.pickup_location as any;
+    
   const pickupLocation: Location = {
-    name: pickupLocationJson.name || '',
-    address: pickupLocationJson.address || '',
-    coordinates: pickupLocationJson.coordinates
+    name: pickupLocationJson?.name || '',
+    address: pickupLocationJson?.address || '',
+    coordinates: pickupLocationJson?.coordinates || undefined
   };
   
   // Create dropoff location object
-  const dropoffLocationJson = ride.dropoff_location as any;
+  const dropoffLocationJson = typeof ride.dropoff_location === 'string' 
+    ? JSON.parse(ride.dropoff_location) 
+    : ride.dropoff_location as any;
+    
   const dropoffLocation: Location = {
-    name: dropoffLocationJson.name || '',
-    address: dropoffLocationJson.address || '',
-    coordinates: dropoffLocationJson.coordinates
+    name: dropoffLocationJson?.name || '',
+    address: dropoffLocationJson?.address || '',
+    coordinates: dropoffLocationJson?.coordinates || undefined
   };
   
   // Create ride option object
-  const rideOptionJson = ride.ride_option as any;
+  const rideOptionJson = typeof ride.ride_option === 'string' 
+    ? JSON.parse(ride.ride_option) 
+    : ride.ride_option as any;
+    
   const rideOption: RideOption = {
-    id: rideOptionJson.id || '',
-    name: rideOptionJson.name || '',
-    image: rideOptionJson.image || '',
+    id: rideOptionJson?.id || '',
+    name: rideOptionJson?.name || '',
+    image: rideOptionJson?.image || '',
     price: ride.price,
     currency: ride.currency,
     duration: ride.duration,
-    capacity: rideOptionJson.capacity || 1
+    capacity: rideOptionJson?.capacity || 1
   };
   
   // Create driver object if available
