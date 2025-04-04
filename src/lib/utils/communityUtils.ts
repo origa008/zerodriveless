@@ -97,13 +97,26 @@ export const createPost = async (authorId: string, content: string): Promise<{ p
  */
 export const likePost = async (postId: string): Promise<{ success: boolean; error: string | null }> => {
   try {
-    // Update the likes count by incrementing the current value by 1
-    const { error } = await supabase
+    // First, fetch the current likes count
+    const { data: post, error: fetchError } = await supabase
       .from('posts')
-      .update({ likes: supabase.sql`likes + 1` })
+      .select('likes')
+      .eq('id', postId)
+      .single();
+    
+    if (fetchError) throw fetchError;
+    
+    if (!post) {
+      return { success: false, error: "Post not found" };
+    }
+    
+    // Then update with the incremented value
+    const { error: updateError } = await supabase
+      .from('posts')
+      .update({ likes: post.likes + 1 })
       .eq('id', postId);
     
-    if (error) throw error;
+    if (updateError) throw updateError;
     
     return { success: true, error: null };
   } catch (error: any) {
