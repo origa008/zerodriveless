@@ -7,7 +7,7 @@ const Welcome: React.FC = () => {
   return <div className="min-h-screen flex flex-col justify-between p-6 bg-gradient-to-br from-violet-200 to-purple-100">
       <div className="mt-8 text-center md:text-left">
         
-        <p className="text-3xl md:text-5xl font-medium text-black mt-4 leading-tight">
+        <p className="md:text-5xl font-medium text-black mt-4 leading-tight text-left text-4xl">
           You ride, you decide, <br />
           we charge <span className="text-violet-700">Zero</span> commission
         </p>
