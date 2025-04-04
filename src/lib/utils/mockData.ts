@@ -7,7 +7,7 @@ export const getMockRideOptions = (): RideOption[] => {
     {
       id: 'bike',
       name: 'Bike',
-      description: 'Fast and affordable',
+      description: 'Fast and affordable', // Now this is allowed by the type
       image: '/lovable-uploads/cfd3fd57-c24d-402a-9e79-91bdb781be21.png',
       basePrice: 20,
       eta: '3 min',
@@ -15,7 +15,7 @@ export const getMockRideOptions = (): RideOption[] => {
     {
       id: 'auto',
       name: 'Auto',
-      description: 'Comfortable for 3 people',
+      description: 'Comfortable for 3 people', // Now this is allowed by the type
       image: '/lovable-uploads/28c00f11-f954-45d1-94a5-4c5604aa633c.png',
       basePrice: 35,
       eta: '5 min',

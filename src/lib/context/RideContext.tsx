@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { RideOption, Location, Driver, PaymentMethod, Ride } from '../types';
 import { createRideRequest, updateRideStatus, getRideDetails } from '../utils/rideUtils';
@@ -221,7 +220,11 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
             duration: 3000
           });
         } else {
-          const completedRide = {...currentRide, status: 'completed', endTime: new Date().toISOString()};
+          const completedRide: Ride = {
+            ...currentRide, 
+            status: 'completed', 
+            endTime: new Date().toISOString()
+          };
           setCurrentRide(completedRide);
           setRideHistory(prev => [completedRide, ...prev]);
           

@@ -79,7 +79,7 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
           paymentMethod: newRide.payment_method
         };
         
-        setPendingRideRequests((prev) => [...prev, formattedRide]);
+        setPendingRideRequests([...pendingRideRequests, formattedRide]);
         
         toast({
           title: "New Ride Request",
@@ -90,7 +90,7 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
       
       return () => unsubscribe();
     }
-  }, [isOnline, user?.isVerifiedDriver]);
+  }, [isOnline, user?.isVerifiedDriver, pendingRideRequests, setPendingRideRequests, toast]);
 
   const handleGoOnline = () => {
     setIsOnline(true);

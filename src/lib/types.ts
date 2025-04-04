@@ -14,7 +14,7 @@ export type User = {
 
 export type Location = {
   name: string;
-  address: string;
+  address?: string;
   placeId?: string;
   coordinates?: [number, number]; // [longitude, latitude]
 };
@@ -23,10 +23,13 @@ export type RideOption = {
   id: string;
   name: string;
   image: string;
-  price: number;
-  currency: string;
-  duration: number;
-  capacity: number;
+  description?: string; // Added description as optional property
+  basePrice?: number;
+  price?: number;
+  currency?: string;
+  duration?: number;
+  capacity?: number;
+  eta?: string;
 };
 
 export type Driver = {
@@ -50,8 +53,8 @@ export type Ride = {
   currency: string;
   distance: number;
   duration: number;
-  startTime?: Date;
-  endTime?: Date;
+  startTime?: string;
+  endTime?: string;
   paymentMethod?: PaymentMethod;
 };
 
