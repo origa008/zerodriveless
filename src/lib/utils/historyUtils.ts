@@ -1,4 +1,3 @@
-
 import { supabase } from "@/integrations/supabase/client";
 import { Ride, Location, RideOption, Driver } from '@/lib/types';
 import { Database } from "@/integrations/supabase/types";
@@ -25,7 +24,7 @@ export const getPassengerRideHistory = async (userId: string): Promise<{ rides: 
     // Convert database records to Ride objects
     const rides: Ride[] = data.map(ride => {
       // Sort rides by most recent first
-      return mapDatabaseRideToRideObject(ride);
+      return mapDatabaseRideToRideObject(ride as RideRow);
     });
     
     return { rides, error: null };
@@ -54,7 +53,7 @@ export const getDriverRideHistory = async (userId: string): Promise<{ rides: Rid
     
     // Convert database records to Ride objects
     const rides: Ride[] = data.map(ride => {
-      return mapDatabaseRideToRideObject(ride);
+      return mapDatabaseRideToRideObject(ride as RideRow);
     });
     
     return { rides, error: null };
@@ -69,39 +68,42 @@ export const getDriverRideHistory = async (userId: string): Promise<{ rides: Rid
  */
 const mapDatabaseRideToRideObject = (ride: RideRow): Ride => {
   // Create pickup location object
+  const pickupLocationJson = ride.pickup_location as any;
   const pickupLocation: Location = {
-    name: ride.pickup_location.name,
-    address: ride.pickup_location.address,
-    coordinates: ride.pickup_location.coordinates
+    name: pickupLocationJson.name || '',
+    address: pickupLocationJson.address || '',
+    coordinates: pickupLocationJson.coordinates
   };
   
   // Create dropoff location object
+  const dropoffLocationJson = ride.dropoff_location as any;
   const dropoffLocation: Location = {
-    name: ride.dropoff_location.name,
-    address: ride.dropoff_location.address,
-    coordinates: ride.dropoff_location.coordinates
+    name: dropoffLocationJson.name || '',
+    address: dropoffLocationJson.address || '',
+    coordinates: dropoffLocationJson.coordinates
   };
   
   // Create ride option object
+  const rideOptionJson = ride.ride_option as any;
   const rideOption: RideOption = {
-    id: ride.ride_option.id,
-    name: ride.ride_option.name,
-    image: ride.ride_option.image,
-    price: ride.price, // Use the actual price paid
+    id: rideOptionJson.id || '',
+    name: rideOptionJson.name || '',
+    image: rideOptionJson.image || '',
+    price: ride.price,
     currency: ride.currency,
     duration: ride.duration,
-    capacity: ride.ride_option.capacity
+    capacity: rideOptionJson.capacity || 1
   };
   
   // Create driver object if available
   let driver: Driver | undefined = undefined;
-  if (ride.driver) {
+  if (ride.driver_id) {
     driver = {
-      id: ride.driver.id,
-      name: ride.driver.name,
-      rating: ride.driver.rating,
-      licensePlate: ride.driver.licensePlate,
-      avatar: ride.driver.avatar
+      id: ride.driver_id,
+      name: "Driver", // Default name
+      rating: 4.5, // Default rating
+      licensePlate: "Unknown", // Default license plate
+      avatar: '/lovable-uploads/498e0bf1-4c8a-4cad-8ee2-6f43fdccc511.png' // Default avatar
     };
   }
   
@@ -161,4 +163,37 @@ export const subscribeToRideHistory = (
   return () => {
     supabase.removeChannel(channel);
   };
+};
+
+/**
+ * Fetch user ride history (combines passenger and driver history)
+ */
+export const fetchUserRideHistory = async (userId: string): Promise<{ rides: Ride[]; error: string | null }> => {
+  try {
+    // Get passenger rides
+    const { rides: passengerRides, error: passengerError } = await getPassengerRideHistory(userId);
+    
+    if (passengerError) {
+      throw new Error(passengerError);
+    }
+    
+    // Get driver rides
+    const { rides: driverRides, error: driverError } = await getDriverRideHistory(userId);
+    
+    if (driverError) {
+      throw new Error(driverError);
+    }
+    
+    // Combine and sort by date
+    const allRides = [...passengerRides, ...driverRides].sort((a, b) => {
+      const dateA = a.startTime || a.endTime || new Date();
+      const dateB = b.startTime || b.endTime || new Date();
+      return dateB.getTime() - dateA.getTime();
+    });
+    
+    return { rides: allRides, error: null };
+  } catch (error: any) {
+    console.error("Error fetching user ride history:", error.message);
+    return { rides: [], error: error.message };
+  }
 };

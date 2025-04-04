@@ -4,6 +4,7 @@ import { DriverDocument } from "@/lib/types";
 import { Database } from "@/integrations/supabase/types";
 
 type DriverDetailRow = Database['public']['Tables']['driver_details']['Row'];
+type DriverDetailInsert = Database['public']['Tables']['driver_details']['Insert'];
 
 /**
  * Uploads a driver document to storage
@@ -60,7 +61,7 @@ export const submitDriverRegistration = async (
   }
 ): Promise<{ success: boolean; error: string | null }> => {
   try {
-    const driverDetails: Partial<DriverDetailRow> = {
+    const driverDetails: DriverDetailInsert = {
       user_id: userId,
       full_name: details.fullName,
       cnic_number: details.cnicNumber,

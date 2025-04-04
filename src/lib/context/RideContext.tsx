@@ -51,6 +51,7 @@ type RideContextType = {
   walletBalance: number;
   updateWalletBalance: (amount: number) => void;
   pendingRideRequests: Ride[];
+  setPendingRideRequests: React.Dispatch<React.SetStateAction<Ride[]>>;
   addRideRequest: (ride: Ride) => void;
   removeRideRequest: (rideId: string) => void;
   acceptRideRequest: (rideId: string) => void;
@@ -623,6 +624,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     walletBalance,
     updateWalletBalance,
     pendingRideRequests,
+    setPendingRideRequests,
     addRideRequest,
     removeRideRequest,
     acceptRideRequest
