@@ -18,9 +18,7 @@ const Welcome: React.FC = () => {
       </div>
       
       <div className="flex flex-col sm:flex-row gap-4 mt-8">
-        <Button onClick={() => navigate('/signup')} className="flex-1 bg-violet-600 hover:bg-violet-700 text-white rounded-2xl text-xl py-[30px] px-[38px]">
-          Sign Up <UserPlus className="ml-2" />
-        </Button>
+        
         
         <Button onClick={() => navigate('/login')} className="flex-1 bg-black text-white hover:bg-gray-800 rounded-2xl text-xl py-[30px] px-[38px]">
           Login <LogIn className="ml-2" />
