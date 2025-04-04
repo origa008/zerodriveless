@@ -97,10 +97,10 @@ export const createPost = async (authorId: string, content: string): Promise<{ p
  */
 export const likePost = async (postId: string): Promise<{ success: boolean; error: string | null }> => {
   try {
-    // Update the likes count directly using a regular update
+    // Update the likes count by incrementing the current value by 1
     const { error } = await supabase
       .from('posts')
-      .update({ likes: supabase.rpc('increment_post_likes') })
+      .update({ likes: supabase.sql`likes + 1` })
       .eq('id', postId);
     
     if (error) throw error;

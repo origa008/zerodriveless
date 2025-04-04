@@ -129,8 +129,8 @@ const mapDatabaseRideToRideObject = (ride: RideRow): Ride => {
     currency: ride.currency,
     distance: ride.distance,
     duration: ride.duration,
-    startTime: ride.start_time ? new Date(ride.start_time) : undefined,
-    endTime: ride.end_time ? new Date(ride.end_time) : undefined,
+    startTime: ride.start_time || undefined,
+    endTime: ride.end_time || undefined,
     paymentMethod: ride.payment_method as "cash" | "wallet"
   };
   
@@ -196,9 +196,9 @@ export const fetchUserRideHistory = async (userId: string): Promise<{ rides: Rid
     
     // Combine and sort by date
     const allRides = [...passengerRides, ...driverRides].sort((a, b) => {
-      const dateA = a.startTime || a.endTime || new Date();
-      const dateB = b.startTime || b.endTime || new Date();
-      return dateB.getTime() - dateA.getTime();
+      const dateA = a.startTime ? new Date(a.startTime).getTime() : (a.endTime ? new Date(a.endTime).getTime() : Date.now());
+      const dateB = b.startTime ? new Date(b.startTime).getTime() : (b.endTime ? new Date(b.endTime).getTime() : Date.now());
+      return dateB - dateA;
     });
     
     return { rides: allRides, error: null };
