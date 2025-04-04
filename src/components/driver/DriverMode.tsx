@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -37,7 +36,6 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
   const [showContactModal, setShowContactModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Fetch available ride requests when going online
   useEffect(() => {
     if (isOnline && user?.isVerifiedDriver) {
       setIsLoading(true);
@@ -67,7 +65,6 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
       
       fetchRideRequests();
       
-      // Subscribe to new ride requests
       const unsubscribe = subscribeToNewRideRequests((newRide) => {
         const formattedRide = {
           id: newRide.id,
@@ -82,7 +79,7 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
           paymentMethod: newRide.payment_method
         };
         
-        setPendingRideRequests(prev => [formattedRide, ...prev]);
+        setPendingRideRequests((prev) => [...prev, formattedRide]);
         
         toast({
           title: "New Ride Request",
@@ -115,7 +112,6 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
 
   const handleShowBid = (ride: Ride) => {
     setSelectedRide(ride);
-    // Set initial bid to the ride's price
     setBidAmount(ride.price);
     setShowBidModal(true);
   };
@@ -131,20 +127,17 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
     }
     
     try {
-      // Update the ride with the driver's ID in the database
       const { success, error } = await acceptRide(selectedRide.id, user.id);
       
       if (!success) {
         throw new Error(error || "Failed to accept ride");
       }
       
-      // Update the ride with the new bid amount
       const updatedRide = {
         ...selectedRide,
         price: bidAmount,
       };
       
-      // Accept the ride
       acceptRideRequest(selectedRide.id);
       setCurrentRide(updatedRide);
       setShowBidModal(false);
@@ -295,7 +288,6 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
         </div>
       )}
 
-      {/* Bid Modal */}
       {showBidModal && selectedRide && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl p-6 w-full max-w-md">
@@ -340,7 +332,6 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
         </div>
       )}
       
-      {/* Contact Modal */}
       {showContactModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl p-6 w-full max-w-md">
