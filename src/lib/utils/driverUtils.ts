@@ -1,3 +1,4 @@
+
 import { supabase } from "@/integrations/supabase/client";
 import { DriverDocument } from "@/lib/types";
 import { Database } from "@/integrations/supabase/types";
@@ -68,6 +69,7 @@ export const submitDriverRegistration = async (
   try {
     const userEmail = (await supabase.auth.getUser()).data.user?.email;
     
+    // Create driver details object without email first
     const driverDetails: DriverDetailInsert = {
       user_id: userId,
       full_name: details.fullName,
@@ -85,13 +87,18 @@ export const submitDriverRegistration = async (
       vehicle_registration_url: documentUrls.vehicleRegistration,
       vehicle_photo_url: documentUrls.vehiclePhoto,
       selfie_with_cnic_url: documentUrls.selfieWithCNIC,
-      selfie_photo_url: documentUrls.selfiePhoto,
+      selfie_photo_url: documentUrls.selfiePhoto
+    };
+    
+    // Add email separately to avoid TypeScript errors
+    const insertData = {
+      ...driverDetails,
       email: userEmail
     };
     
     const { error } = await supabase
       .from('driver_details')
-      .upsert(driverDetails);
+      .upsert(insertData);
     
     if (error) throw error;
     

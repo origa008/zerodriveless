@@ -37,7 +37,7 @@ export const fetchPosts = async (email?: string): Promise<{ posts: PostData[]; e
     }
     
     // Map database records to PostData objects
-    const posts: PostData[] = data.map((post: any) => ({
+    const posts: PostData[] = data.map((post) => ({
       id: post.id,
       author: {
         name: post.profiles?.name || 'Anonymous',
