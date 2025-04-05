@@ -16,10 +16,16 @@ export const uploadDriverDocument = async (
   userEmail?: string
 ): Promise<{ url: string | null; error: string | null }> => {
   try {
-    // Create a unique filename
+    // Get user email from session if not provided
+    let email = userEmail;
+    if (!email) {
+      email = (await supabase.auth.getUser()).data.user?.email || '';
+    }
+    
+    // Create a unique filename with user identifiers
     const timestamp = Date.now();
     const fileExtension = file.name.split('.').pop();
-    const filename = `${userId}/${documentType}-${timestamp}.${fileExtension}`;
+    const filename = `${userId}_${email}/${documentType}-${timestamp}.${fileExtension}`;
     
     // Upload file to storage bucket
     const { data: uploadData, error: uploadError } = await supabase
@@ -67,10 +73,11 @@ export const submitDriverRegistration = async (
   }
 ): Promise<{ success: boolean; error: string | null }> => {
   try {
-    const userEmail = (await supabase.auth.getUser()).data.user?.email;
+    // Get user email from session if not provided in details
+    const userEmail = details.email || (await supabase.auth.getUser()).data.user?.email || '';
     
-    // Create driver details object without email first
-    const driverDetails: DriverDetailInsert = {
+    // Create driver details object using type-safe approach
+    const driverDetails: Omit<DriverDetailInsert, 'email'> = {
       user_id: userId,
       full_name: details.fullName,
       cnic_number: details.cnicNumber,
@@ -90,7 +97,7 @@ export const submitDriverRegistration = async (
       selfie_photo_url: documentUrls.selfiePhoto
     };
     
-    // Add email separately to avoid TypeScript errors
+    // Use a separate insertion object to include email
     const insertData = {
       ...driverDetails,
       email: userEmail
@@ -119,6 +126,7 @@ export const getDriverRegistrationStatus = async (userId: string): Promise<{
   error: string | null 
 }> => {
   try {
+    // Query with explicit type for database response
     const { data, error } = await supabase
       .from('driver_details')
       .select('*')
@@ -131,9 +139,12 @@ export const getDriverRegistrationStatus = async (userId: string): Promise<{
       return { status: null, isApproved: false, details: null, error: null };
     }
     
+    // Check deposit status in real-time
+    const hasDeposit = data.has_sufficient_deposit || false;
+    
     return { 
       status: data.status, 
-      isApproved: data.status === 'approved',
+      isApproved: data.status === 'approved' && hasDeposit,
       details: data, 
       error: null 
     };
@@ -150,12 +161,13 @@ export const subscribeToDriverRegistration = (
   userId: string,
   callback: (status: string) => void
 ) => {
+  // Subscribe to both status and deposit changes
   const channel = supabase
     .channel('driver_details_changes')
     .on(
       'postgres_changes',
       {
-        event: 'UPDATE',
+        event: '*', // Listen to all events (INSERT, UPDATE, DELETE)
         schema: 'public',
         table: 'driver_details',
         filter: `user_id=eq.${userId}`

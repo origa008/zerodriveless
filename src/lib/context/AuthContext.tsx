@@ -31,39 +31,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const { toast } = useToast();
 
-  // Listen for authentication state changes
+  // Initialize auth and set up listeners
   useEffect(() => {
-    // Set up auth state listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        setIsLoading(true);
-        
-        if (event === 'SIGNED_IN' && session) {
-          // Fetch user profile when signed in
-          try {
-            const { profile } = await fetchUserProfile(session.user.id);
-            if (profile) {
-              setUser({ ...profile, isLoggedIn: true });
-            }
-          } catch (error) {
-            console.error('Error fetching user profile:', error);
-          }
-        } else if (event === 'SIGNED_OUT') {
-          // Clear user when signed out
-          setUser(null);
-        }
-        
-        setIsLoading(false);
-      }
-    );
-
-    // Check for existing session
-    const checkSession = async () => {
+    // Set initial loading state
+    setIsLoading(true);
+    
+    // First check for an existing session
+    const initializeAuth = async () => {
       try {
         const { data } = await getCurrentSession();
         
         if (data.session) {
-          // User is already logged in, fetch their profile
+          console.log("Found existing session");
           const { profile } = await fetchUserProfile(data.session.user.id);
           if (profile) {
             setUser({ ...profile, isLoggedIn: true });
@@ -76,7 +55,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     };
 
-    checkSession();
+    initializeAuth();
+    
+    // Then set up the auth state listener for future changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log("Auth state changed:", event);
+        
+        if (event === 'SIGNED_IN' && session) {
+          setIsLoading(true);
+          try {
+            const { profile } = await fetchUserProfile(session.user.id);
+            if (profile) {
+              setUser({ ...profile, isLoggedIn: true });
+            }
+          } catch (error) {
+            console.error('Error fetching user profile:', error);
+          } finally {
+            setIsLoading(false);
+          }
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null);
+        }
+      }
+    );
 
     // Cleanup
     return () => {

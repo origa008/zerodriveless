@@ -1,11 +1,29 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { ArrowRight, UserPlus, LogIn, UserRound, CarFront, Bike } from 'lucide-react';
+import { useAuth } from '@/lib/context/AuthContext';
 
 const Welcome: React.FC = () => {
   const navigate = useNavigate();
+  const { user, isLoading } = useAuth();
+  
+  // Redirect to main page if user is already authenticated
+  useEffect(() => {
+    if (!isLoading && user?.isLoggedIn) {
+      navigate('/');
+    }
+  }, [user, isLoading, navigate]);
+  
+  // Show loading skeleton during auth check
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-violet-700"></div>
+      </div>
+    );
+  }
   
   return (
     <div className="min-h-screen flex flex-col justify-between p-6 bg-gradient-to-br from-violet-200 to-purple-100">

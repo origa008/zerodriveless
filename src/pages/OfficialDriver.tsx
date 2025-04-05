@@ -9,18 +9,17 @@ import {
   submitDriverRegistration, 
   uploadDriverDocument,
   getDriverRegistrationStatus,
-  subscribeToDriverRegistration,
-  getAvailableDrivers
+  subscribeToDriverRegistration
 } from '@/lib/utils/driverUtils';
 import { getAvailableRideRequests, subscribeToNearbyRides } from '@/lib/utils/rideUtils';
 import { DriverDocument } from '@/lib/types';
-import { UserRound, CarFront, Bike, Search, MapPin } from 'lucide-react';
+import { UserRound, CarFront, Bike, Search, MapPin, Loader2 } from 'lucide-react';
 
 const OfficialDriver: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [registrationStatus, setRegistrationStatus] = useState<string | null>(null);
   const [nearbyRides, setNearbyRides] = useState<any[]>([]);
   const [hasDeposit, setHasDeposit] = useState(false);
@@ -28,12 +27,17 @@ const OfficialDriver: React.FC = () => {
   const checkRegistrationStatus = useCallback(async () => {
     if (!user?.id) return;
     
+    console.log("Checking driver registration status for user:", user.id);
     const { status, details } = await getDriverRegistrationStatus(user.id);
+    console.log("Driver status:", status, "Details:", details);
+    
     setRegistrationStatus(status);
     
     if (details) {
       setHasDeposit(details.has_sufficient_deposit || false);
     }
+    
+    setLoading(false);
   }, [user?.id]);
   
   useEffect(() => {
@@ -50,8 +54,9 @@ const OfficialDriver: React.FC = () => {
     // Check if user is already registered
     checkRegistrationStatus();
     
-    // Subscribe to status changes
+    // Subscribe to status changes in real-time
     const unsubscribe = subscribeToDriverRegistration(user.id, (newStatus) => {
+      console.log("Driver status changed:", newStatus);
       setRegistrationStatus(newStatus);
       checkRegistrationStatus();
       
@@ -325,6 +330,17 @@ const OfficialDriver: React.FC = () => {
   };
   
   const renderRegistrationStatus = () => {
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <Loader2 className="h-10 w-10 animate-spin mx-auto mb-4 text-violet-700" />
+            <p className="text-gray-600">Loading driver information...</p>
+          </div>
+        </div>
+      );
+    }
+    
     switch (registrationStatus) {
       case 'pending':
         return (
@@ -393,13 +409,7 @@ const OfficialDriver: React.FC = () => {
   
   return (
     <div className="min-h-screen bg-gray-50">
-      {loading ? (
-        <div className="flex items-center justify-center min-h-screen">
-          <p>Processing your application...</p>
-        </div>
-      ) : (
-        renderRegistrationStatus()
-      )}
+      {renderRegistrationStatus()}
     </div>
   );
 };

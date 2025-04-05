@@ -5,6 +5,11 @@ import { PostData } from "@/components/community/Post";
 import { Database } from "@/integrations/supabase/types";
 
 type PostRow = Database['public']['Tables']['posts']['Row'];
+type ProfileType = { name: string | null; avatar: string | null };
+
+interface PostWithProfile extends PostRow {
+  profiles?: ProfileType;
+}
 
 /**
  * Fetches all community posts
@@ -36,8 +41,8 @@ export const fetchPosts = async (email?: string): Promise<{ posts: PostData[]; e
       return { posts: [], error: null };
     }
     
-    // Map database records to PostData objects
-    const posts: PostData[] = data.map((post) => ({
+    // Map database records to PostData objects using explicit typing
+    const posts: PostData[] = (data as PostWithProfile[]).map((post) => ({
       id: post.id,
       author: {
         name: post.profiles?.name || 'Anonymous',
@@ -88,8 +93,8 @@ export const createPost = async (authorId: string, content: string): Promise<{ p
     const post: PostData = {
       id: postData.id,
       author: {
-        name: postData.profiles?.name || 'Anonymous',
-        avatar: postData.profiles?.avatar as string | undefined,
+        name: (postData as any).profiles?.name || 'Anonymous',
+        avatar: (postData as any).profiles?.avatar as string | undefined,
         time: 'Just now'
       },
       content: postData.content,

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useRide } from '@/lib/context/RideContext';
 import { useAuth } from '@/lib/context/AuthContext';
-import { Map, Clock, DollarSign, PhoneCall, MessageSquare } from 'lucide-react';
+import { Map, Clock, DollarSign, PhoneCall, MessageSquare, AlertTriangle } from 'lucide-react';
 import { Ride } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { 
@@ -11,6 +11,7 @@ import {
   subscribeToNewRideRequests,
   acceptRideRequest as acceptRide
 } from '@/lib/utils/rideUtils';
+import { getDriverRegistrationStatus } from '@/lib/utils/driverUtils';
 
 interface DriverModeProps {
   isOnline: boolean;
@@ -35,9 +36,23 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
   const [bidAmount, setBidAmount] = useState<number>(0);
   const [showContactModal, setShowContactModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [driverStatus, setDriverStatus] = useState<string | null>(null);
+  const [hasDeposit, setHasDeposit] = useState(false);
 
   useEffect(() => {
-    if (isOnline && user?.isVerifiedDriver) {
+    if (user?.id) {
+      const checkStatus = async () => {
+        const { status, details } = await getDriverRegistrationStatus(user.id);
+        setDriverStatus(status);
+        setHasDeposit(details?.has_sufficient_deposit || false);
+      };
+      
+      checkStatus();
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (isOnline && user?.id && driverStatus === 'approved' && hasDeposit) {
       setIsLoading(true);
       
       const fetchRideRequests = async () => {
@@ -79,7 +94,7 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
           paymentMethod: newRide.payment_method
         };
         
-        setPendingRideRequests([...pendingRideRequests, formattedRide]);
+        setPendingRideRequests(prev => [...prev, formattedRide]);
         
         toast({
           title: "New Ride Request",
@@ -90,9 +105,24 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
       
       return () => unsubscribe();
     }
-  }, [isOnline, user?.isVerifiedDriver, pendingRideRequests, setPendingRideRequests, toast]);
+  }, [isOnline, user?.id, driverStatus, hasDeposit, setPendingRideRequests, toast]);
 
   const handleGoOnline = () => {
+    if (driverStatus !== 'approved') {
+      navigate('/official-driver');
+      return;
+    }
+    
+    if (!hasDeposit) {
+      toast({
+        title: "Deposit required",
+        description: "You need to add Rs. 3,000 to your wallet before going online",
+        duration: 5000
+      });
+      navigate('/wallet');
+      return;
+    }
+    
     setIsOnline(true);
     toast({
       title: "You're online",
@@ -177,6 +207,37 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
     setShowContactModal(false);
   };
 
+  const renderDriverStatusMessage = () => {
+    if (!user?.isVerifiedDriver) {
+      return (
+        <div className="flex items-center mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+          <AlertTriangle className="text-amber-600 mr-2" />
+          <span className="text-amber-800 text-sm">Complete driver registration to receive ride requests.</span>
+        </div>
+      );
+    }
+    
+    if (driverStatus === 'pending') {
+      return (
+        <div className="flex items-center mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <AlertTriangle className="text-blue-600 mr-2" />
+          <span className="text-blue-800 text-sm">Your driver application is under review.</span>
+        </div>
+      );
+    }
+    
+    if (driverStatus === 'approved' && !hasDeposit) {
+      return (
+        <div className="flex items-center mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+          <AlertTriangle className="text-amber-600 mr-2" />
+          <span className="text-amber-800 text-sm">Add Rs. 3,000 to your wallet to start accepting rides.</span>
+        </div>
+      );
+    }
+    
+    return null;
+  };
+
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-4">
@@ -187,6 +248,8 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
         </div>
       </div>
       
+      {renderDriverStatusMessage()}
+      
       {!isOnline ? (
         <div>
           <p className="text-gray-600 mb-6">You are currently offline. Go online to receive ride requests.</p>
@@ -194,20 +257,27 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
           <Button 
             className="w-full bg-black text-white hover:bg-gray-800 py-6 text-xl rounded-xl"
             onClick={handleGoOnline}
-            disabled={!user?.isVerifiedDriver}
+            disabled={driverStatus !== 'approved' || !hasDeposit}
           >
-            {user?.isVerifiedDriver ? 'Go Online' : 'Complete Driver Registration'}
+            {driverStatus === 'approved' && hasDeposit ? 'Go Online' : 
+             driverStatus === 'approved' ? 'Add Deposit to Start' : 'Complete Driver Registration'}
           </Button>
           
-          {!user?.isVerifiedDriver && (
+          {(driverStatus !== 'approved' || !hasDeposit) && (
             <div className="mt-4 text-center">
-              <p className="text-sm text-gray-600 mb-2">You need to complete driver registration first.</p>
+              <p className="text-sm text-gray-600 mb-2">
+                {driverStatus !== 'approved' 
+                  ? 'You need to complete driver registration first.' 
+                  : 'You need to add the required deposit to your wallet.'}
+              </p>
               <Button 
                 variant="outline" 
                 size="sm"
-                onClick={() => navigate('/official-driver')}
+                onClick={() => driverStatus !== 'approved' 
+                  ? navigate('/official-driver') 
+                  : navigate('/wallet')}
               >
-                Register as Driver
+                {driverStatus !== 'approved' ? 'Register as Driver' : 'Add Funds'}
               </Button>
             </div>
           )}

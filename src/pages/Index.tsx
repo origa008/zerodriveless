@@ -23,16 +23,13 @@ const Index: React.FC = () => {
   
   // Effect to manage page loaded state
   useEffect(() => {
-    // Wait until authentication is no longer loading before considering the page loaded
-    if (!authLoading) {
-      // Short delay to ensure smooth transition
-      const timer = setTimeout(() => {
-        setPageLoaded(true);
-      }, 300);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [authLoading]);
+    // Shorter timeout for smoother experience
+    const timer = setTimeout(() => {
+      setPageLoaded(true);
+    }, 100);
+    
+    return () => clearTimeout(timer);
+  }, []);
   
   // Effect to handle driver mode switch for unregistered users
   useEffect(() => {
@@ -46,7 +43,6 @@ const Index: React.FC = () => {
   // Handle toggle between passenger and driver modes
   const handleModeToggle = (isDriver: boolean) => {
     if (isDriver && user && !user.isVerifiedDriver) {
-      // If user tries to switch to driver mode but isn't verified
       setShowDriverRegistrationPrompt(true);
     }
     setDriverMode(isDriver);
@@ -59,12 +55,14 @@ const Index: React.FC = () => {
   
   // Redirect to Welcome for unauthenticated users
   useEffect(() => {
+    console.log("Auth state:", { user, authLoading });
     if (!authLoading && !user?.isLoggedIn) {
+      console.log("Redirecting to welcome page - no authenticated user found");
       navigate('/welcome');
     }
   }, [user, authLoading, navigate]);
   
-  // Show loading state while authentication is processing
+  // Show loading state during initial load
   if (authLoading || !pageLoaded) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-white p-4">
@@ -75,6 +73,11 @@ const Index: React.FC = () => {
         <Skeleton className="h-4 w-36 rounded-md" />
       </div>
     );
+  }
+  
+  // Do an additional check to ensure we don't render the main UI without a user
+  if (!user?.isLoggedIn) {
+    return null; // This prevents any flash of content before redirect happens
   }
   
   return (
