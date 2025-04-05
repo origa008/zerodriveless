@@ -9,10 +9,10 @@ type PostRow = Database['public']['Tables']['posts']['Row'];
 /**
  * Fetches all community posts
  */
-export const fetchPosts = async (): Promise<{ posts: PostData[]; error: string | null }> => {
+export const fetchPosts = async (email?: string): Promise<{ posts: PostData[]; error: string | null }> => {
   try {
-    // Fetch posts with author information
-    const { data, error } = await supabase
+    // Build the query
+    let query = supabase
       .from('posts')
       .select(`
         *,
@@ -22,6 +22,13 @@ export const fetchPosts = async (): Promise<{ posts: PostData[]; error: string |
         )
       `)
       .order('created_at', { ascending: false });
+    
+    // Add email filter if provided
+    if (email) {
+      query = query.eq('author_email', email);
+    }
+    
+    const { data, error } = await query;
     
     if (error) throw error;
     
@@ -54,6 +61,10 @@ export const fetchPosts = async (): Promise<{ posts: PostData[]; error: string |
  */
 export const createPost = async (authorId: string, content: string): Promise<{ post: PostData | null; error: string | null }> => {
   try {
+    // Get user email
+    const { data: { user } } = await supabase.auth.getUser();
+    const email = user?.email;
+    
     // Insert new post
     const { data: postData, error: postError } = await supabase
       .from('posts')
@@ -61,7 +72,8 @@ export const createPost = async (authorId: string, content: string): Promise<{ p
         author_id: authorId,
         content,
         likes: 0,
-        comments: 0
+        comments: 0,
+        author_email: email
       })
       .select('*, profiles:author_id (name, avatar)')
       .single();
@@ -90,6 +102,31 @@ export const createPost = async (authorId: string, content: string): Promise<{ p
     console.error("Create post error:", error.message);
     return { post: null, error: error.message };
   }
+};
+
+/**
+ * Subscribes to real-time post updates
+ */
+export const subscribeToPostsUpdates = (callback: (posts: PostData[]) => void) => {
+  const channel = supabase
+    .channel('public:posts')
+    .on('postgres_changes', 
+      { 
+        event: '*', 
+        schema: 'public', 
+        table: 'posts' 
+      }, 
+      async () => {
+        // Refetch posts when there's any change
+        const { posts } = await fetchPosts();
+        callback(posts);
+      }
+    )
+    .subscribe();
+    
+  return () => {
+    supabase.removeChannel(channel);
+  };
 };
 
 /**

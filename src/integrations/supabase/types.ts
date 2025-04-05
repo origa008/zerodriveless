@@ -15,8 +15,10 @@ export type Database = {
           id: string
           is_read: boolean
           message: string
+          receiver_email: string | null
           receiver_id: string
           ride_id: string
+          sender_email: string | null
           sender_id: string
         }
         Insert: {
@@ -24,8 +26,10 @@ export type Database = {
           id?: string
           is_read?: boolean
           message: string
+          receiver_email?: string | null
           receiver_id: string
           ride_id: string
+          sender_email?: string | null
           sender_id: string
         }
         Update: {
@@ -33,8 +37,10 @@ export type Database = {
           id?: string
           is_read?: boolean
           message?: string
+          receiver_email?: string | null
           receiver_id?: string
           ride_id?: string
+          sender_email?: string | null
           sender_id?: string
         }
         Relationships: [
@@ -70,6 +76,7 @@ export type Database = {
           created_at: string
           deposit_amount_required: number
           driver_license_number: string | null
+          email: string | null
           full_name: string
           has_sufficient_deposit: boolean
           id: string
@@ -94,6 +101,7 @@ export type Database = {
           created_at?: string
           deposit_amount_required?: number
           driver_license_number?: string | null
+          email?: string | null
           full_name: string
           has_sufficient_deposit?: boolean
           id?: string
@@ -118,6 +126,7 @@ export type Database = {
           created_at?: string
           deposit_amount_required?: number
           driver_license_number?: string | null
+          email?: string | null
           full_name?: string
           has_sufficient_deposit?: boolean
           id?: string
@@ -146,6 +155,7 @@ export type Database = {
       }
       posts: {
         Row: {
+          author_email: string | null
           author_id: string
           comments: number
           content: string
@@ -154,6 +164,7 @@ export type Database = {
           likes: number
         }
         Insert: {
+          author_email?: string | null
           author_id: string
           comments?: number
           content: string
@@ -162,6 +173,7 @@ export type Database = {
           likes?: number
         }
         Update: {
+          author_email?: string | null
           author_id?: string
           comments?: number
           content?: string
@@ -317,11 +329,13 @@ export type Database = {
           created_at: string
           currency: string
           distance: number
+          driver_email: string | null
           driver_id: string | null
           dropoff_location: Json
           duration: number
           end_time: string | null
           id: string
+          passenger_email: string | null
           passenger_id: string
           payment_method: string
           pickup_location: Json
@@ -334,11 +348,13 @@ export type Database = {
           created_at?: string
           currency?: string
           distance: number
+          driver_email?: string | null
           driver_id?: string | null
           dropoff_location: Json
           duration: number
           end_time?: string | null
           id?: string
+          passenger_email?: string | null
           passenger_id: string
           payment_method?: string
           pickup_location: Json
@@ -351,11 +367,13 @@ export type Database = {
           created_at?: string
           currency?: string
           distance?: number
+          driver_email?: string | null
           driver_id?: string | null
           dropoff_location?: Json
           duration?: number
           end_time?: string | null
           id?: string
+          passenger_email?: string | null
           passenger_id?: string
           payment_method?: string
           pickup_location?: Json
@@ -387,6 +405,7 @@ export type Database = {
           bank_details: Json | null
           created_at: string
           description: string | null
+          email: string | null
           id: string
           payment_method: string | null
           ride_id: string | null
@@ -399,6 +418,7 @@ export type Database = {
           bank_details?: Json | null
           created_at?: string
           description?: string | null
+          email?: string | null
           id?: string
           payment_method?: string | null
           ride_id?: string | null
@@ -411,6 +431,7 @@ export type Database = {
           bank_details?: Json | null
           created_at?: string
           description?: string | null
+          email?: string | null
           id?: string
           payment_method?: string | null
           ride_id?: string | null

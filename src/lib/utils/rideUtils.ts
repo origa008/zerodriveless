@@ -1,4 +1,3 @@
-
 import { supabase } from "@/integrations/supabase/client";
 import { Ride, Location, RideOption, PaymentMethod } from "@/lib/types";
 import { Database } from "@/integrations/supabase/types";
@@ -17,6 +16,9 @@ export const createRideRequest = async (
   paymentMethod: PaymentMethod = 'cash'
 ): Promise<{ rideId: string | null; error: string | null }> => {
   try {
+    const { data: { user } } = await supabase.auth.getUser();
+    const email = user?.email;
+    
     const rideData = {
       passenger_id: passengerId,
       pickup_location: pickupLocation,
@@ -27,7 +29,8 @@ export const createRideRequest = async (
       duration,
       status: 'searching',
       payment_method: paymentMethod,
-      currency: 'RS'
+      currency: 'RS',
+      passenger_email: email
     };
     
     const { data, error } = await supabase
@@ -48,11 +51,18 @@ export const createRideRequest = async (
 /**
  * Gets all available ride requests for drivers
  */
-export const getAvailableRideRequests = async (): Promise<{ rides: any[]; error: string | null }> => {
+export const getAvailableRideRequests = async (driverEmail?: string): Promise<{ rides: any[]; error: string | null }> => {
   try {
     const { data, error } = await supabase
       .from('rides')
-      .select('*')
+      .select(`
+        *,
+        passengers:passenger_id (
+          name,
+          email,
+          avatar
+        )
+      `)
       .eq('status', 'searching')
       .order('created_at', { ascending: false });
     
@@ -73,10 +83,14 @@ export const acceptRideRequest = async (
   driverId: string
 ): Promise<{ success: boolean; error: string | null }> => {
   try {
+    const { data: { user } } = await supabase.auth.getUser();
+    const email = user?.email;
+    
     const { error } = await supabase
       .from('rides')
       .update({ 
         driver_id: driverId,
+        driver_email: email,
         status: 'confirmed'
       })
       .eq('id', rideId)
@@ -89,6 +103,50 @@ export const acceptRideRequest = async (
     console.error("Accept ride request error:", error.message);
     return { success: false, error: error.message };
   }
+};
+
+/**
+ * Subscribes to new ride requests for drivers with sufficient deposit
+ */
+export const subscribeToNearbyRides = (
+  driverId: string,
+  callback: (rides: any[]) => void
+) => {
+  // First check if the driver is eligible (approved & has sufficient deposit)
+  const checkEligibility = async () => {
+    const { data } = await supabase
+      .from('driver_details')
+      .select('status, has_sufficient_deposit')
+      .eq('user_id', driverId)
+      .single();
+    
+    return data && data.status === 'approved' && data.has_sufficient_deposit;
+  };
+  
+  // Subscribe to new rides
+  const channel = supabase
+    .channel('nearby_rides')
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'rides',
+        filter: 'status=eq.searching'
+      },
+      async () => {
+        const isEligible = await checkEligibility();
+        if (isEligible) {
+          const { rides } = await getAvailableRideRequests();
+          callback(rides);
+        }
+      }
+    )
+    .subscribe();
+  
+  return () => {
+    supabase.removeChannel(channel);
+  };
 };
 
 /**

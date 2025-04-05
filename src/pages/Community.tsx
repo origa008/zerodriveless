@@ -1,15 +1,16 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import BottomNavigation from '@/components/layout/BottomNavigation';
 import { useAuth } from '@/lib/context/AuthContext';
 import ReferralSystem from '@/components/community/ReferralSystem';
 import CreatePost from '@/components/community/CreatePost';
 import Post, { PostData } from '@/components/community/Post';
-import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
 import { Skeleton } from '@/components/ui/skeleton';
-import { fetchPosts, createPost } from '@/lib/utils/communityUtils';
+import { fetchPosts, createPost, subscribeToPostsUpdates } from '@/lib/utils/communityUtils';
 import { useToast } from '@/hooks/use-toast';
+import { Input } from '@/components/ui/input';
+import { Search } from 'lucide-react';
 
 const Community: React.FC = () => {
   const { user } = useAuth();
@@ -17,34 +18,44 @@ const Community: React.FC = () => {
   const { toast } = useToast();
   const [posts, setPosts] = useState<PostData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filteredPosts, setFilteredPosts] = useState<PostData[]>([]);
 
   // Fetch posts when component mounts
   useEffect(() => {
-    if (user?.isLoggedIn) {
-      loadPosts();
-      
-      // Subscribe to real-time post updates
-      const channel = supabase
-        .channel('public:posts')
-        .on('postgres_changes', 
-          { 
-            event: '*', 
-            schema: 'public', 
-            table: 'posts' 
-          }, 
-          () => {
-            loadPosts();
-          }
-        )
-        .subscribe();
-      
-      return () => {
-        supabase.removeChannel(channel);
-      };
+    if (!user?.isLoggedIn) {
+      navigate('/login');
+      return;
     }
-  }, [user]);
+    
+    loadPosts();
+    
+    // Subscribe to real-time post updates
+    const unsubscribe = subscribeToPostsUpdates((updatedPosts) => {
+      setPosts(updatedPosts);
+    });
+    
+    return () => {
+      unsubscribe();
+    };
+  }, [user, navigate]);
   
-  const loadPosts = async () => {
+  // Filter posts based on search query
+  useEffect(() => {
+    if (searchQuery.trim() === '') {
+      setFilteredPosts(posts);
+      return;
+    }
+    
+    const filtered = posts.filter(post => 
+      post.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      post.author.name.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+    
+    setFilteredPosts(filtered);
+  }, [searchQuery, posts]);
+  
+  const loadPosts = useCallback(async () => {
     try {
       setLoading(true);
       const { posts, error } = await fetchPosts();
@@ -56,11 +67,12 @@ const Community: React.FC = () => {
         });
       } else {
         setPosts(posts);
+        setFilteredPosts(posts);
       }
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
 
   const handlePostCreated = async (content: string) => {
     if (!user?.id) return;
@@ -88,13 +100,6 @@ const Community: React.FC = () => {
     }
   };
 
-  // Redirect to login if not authenticated
-  useEffect(() => {
-    if (!user?.isLoggedIn) {
-      navigate('/login');
-    }
-  }, [user, navigate]);
-
   return (
     <div className="min-h-screen bg-white p-6 pb-20">
       <h1 className="text-3xl font-bold mb-6">Community</h1>
@@ -109,6 +114,16 @@ const Community: React.FC = () => {
       </div>
       
       <CreatePost onPostCreated={handlePostCreated} />
+      
+      <div className="relative mt-4 mb-6">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+        <Input 
+          placeholder="Search posts..." 
+          className="pl-10 bg-gray-50 border-gray-200"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+      </div>
       
       <div className="space-y-6">
         {loading ? (
@@ -126,13 +141,13 @@ const Community: React.FC = () => {
               <Skeleton className="h-4 w-2/3" />
             </div>
           ))
-        ) : posts.length > 0 ? (
-          posts.map(post => (
+        ) : filteredPosts.length > 0 ? (
+          filteredPosts.map(post => (
             <Post key={post.id} post={post} />
           ))
         ) : (
           <div className="text-center py-6 text-gray-500">
-            No posts yet. Be the first to share something with the community!
+            {searchQuery ? "No posts match your search query" : "No posts yet. Be the first to share something with the community!"}
           </div>
         )}
       </div>
