@@ -35,53 +35,67 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     // Set initial loading state
     setIsLoading(true);
+    console.log("Auth provider initializing...");
     
-    // First check for an existing session
-    const initializeAuth = async () => {
-      try {
-        const { data } = await getCurrentSession();
-        
-        if (data.session) {
-          console.log("Found existing session");
-          const { profile } = await fetchUserProfile(data.session.user.id);
-          if (profile) {
-            setUser({ ...profile, isLoggedIn: true });
-          }
-        }
-      } catch (error) {
-        console.error('Session check error:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    initializeAuth();
-    
-    // Then set up the auth state listener for future changes
+    // First set up the auth state listener for future changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log("Auth state changed:", event);
+        console.log("Auth state changed:", event, session ? "session exists" : "no session");
         
-        if (event === 'SIGNED_IN' && session) {
-          setIsLoading(true);
+        if (session) {
           try {
-            const { profile } = await fetchUserProfile(session.user.id);
+            const { profile, error } = await fetchUserProfile(session.user.id);
             if (profile) {
+              console.log("User profile fetched on auth change:", profile.name);
               setUser({ ...profile, isLoggedIn: true });
+            } else if (error) {
+              console.error("Error fetching profile:", error);
             }
           } catch (error) {
-            console.error('Error fetching user profile:', error);
+            console.error('Error fetching user profile on auth change:', error);
           } finally {
             setIsLoading(false);
           }
         } else if (event === 'SIGNED_OUT') {
+          console.log("User signed out");
           setUser(null);
+          setIsLoading(false);
         }
       }
     );
+    
+    // Then check for an existing session
+    const checkExistingSession = async () => {
+      try {
+        console.log("Checking for existing session...");
+        const { data } = await supabase.auth.getSession();
+        
+        if (data.session) {
+          console.log("Found existing session for user:", data.session.user.id);
+          const { profile, error } = await fetchUserProfile(data.session.user.id);
+          
+          if (profile) {
+            console.log("User profile fetched from existing session:", profile.name);
+            setUser({ ...profile, isLoggedIn: true });
+          } else if (error) {
+            console.error("Error fetching profile from existing session:", error);
+          }
+        } else {
+          console.log("No existing session found");
+        }
+      } catch (error) {
+        console.error('Session check error:', error);
+      } finally {
+        console.log("Setting isLoading to false after session check");
+        setIsLoading(false);
+      }
+    };
 
+    checkExistingSession();
+    
     // Cleanup
     return () => {
+      console.log("Auth provider cleanup");
       subscription.unsubscribe();
     };
   }, []);

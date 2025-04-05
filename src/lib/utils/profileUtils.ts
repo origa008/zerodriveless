@@ -10,15 +10,21 @@ type ProfileRow = Database['public']['Tables']['profiles']['Row'];
  */
 export const fetchUserProfile = async (userId: string): Promise<{ profile: User | null; error: string | null }> => {
   try {
+    console.log("Fetching profile for user:", userId);
+    
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', userId)
       .single();
     
-    if (error) throw error;
+    if (error) {
+      console.error("Error fetching profile:", error.message);
+      throw error;
+    }
     
     if (!data) {
+      console.warn("No profile found for user:", userId);
       return { profile: null, error: "Profile not found" };
     }
     
@@ -35,6 +41,7 @@ export const fetchUserProfile = async (userId: string): Promise<{ profile: User 
       referralCode: data.referral_code || undefined,
     };
     
+    console.log("Profile fetched successfully:", profile.name);
     return { profile, error: null };
   } catch (error: any) {
     console.error("Profile fetch error:", error.message);
@@ -50,6 +57,8 @@ export const updateUserProfile = async (
   updates: Partial<User>
 ): Promise<{ success: boolean; error: string | null }> => {
   try {
+    console.log("Updating profile for user:", userId);
+    
     // Map User type to database profile structure
     const profileUpdates: Partial<ProfileRow> = {
       name: updates.name,
@@ -74,6 +83,7 @@ export const updateUserProfile = async (
     
     if (error) throw error;
     
+    console.log("Profile updated successfully");
     return { success: true, error: null };
   } catch (error: any) {
     console.error("Profile update error:", error.message);
@@ -89,6 +99,8 @@ export const updateUserAvatar = async (
   file: File
 ): Promise<{ url: string | null; error: string | null }> => {
   try {
+    console.log("Updating avatar for user:", userId);
+    
     // Upload avatar to storage
     const filename = `${userId}-${Date.now()}`;
     const { data: uploadData, error: uploadError } = await supabase
@@ -116,6 +128,7 @@ export const updateUserAvatar = async (
     
     if (updateError) throw updateError;
     
+    console.log("Avatar updated successfully");
     return { url: urlData.publicUrl, error: null };
   } catch (error: any) {
     console.error("Avatar update error:", error.message);

@@ -51,6 +51,7 @@ export const signInWithEmail = async (
   password: string
 ): Promise<{ user: User | null; error: string | null }> => {
   try {
+    console.log("Signing in with email:", email);
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -61,6 +62,8 @@ export const signInWithEmail = async (
     if (!data.user) {
       return { user: null, error: "No user data returned" };
     }
+    
+    console.log("Sign in successful, fetching profile for user:", data.user.id);
     
     // Fetch user profile from profiles table
     const { data: profileData, error: profileError } = await supabase
@@ -86,6 +89,7 @@ export const signInWithEmail = async (
       referralCode: profileData?.referral_code || undefined,
     };
     
+    console.log("User profile fetched:", user.name);
     return { user, error: null };
   } catch (error: any) {
     console.error("Login error:", error.message);
@@ -98,8 +102,10 @@ export const signInWithEmail = async (
  */
 export const signOut = async (): Promise<{ error: string | null }> => {
   try {
+    console.log("Signing out...");
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
+    console.log("Sign out successful");
     return { error: null };
   } catch (error: any) {
     console.error("Signout error:", error.message);
@@ -147,7 +153,10 @@ export const updatePassword = async (newPassword: string): Promise<{ error: stri
  * Gets the current session
  */
 export const getCurrentSession = async () => {
-  return await supabase.auth.getSession();
+  console.log("Getting current session...");
+  const session = await supabase.auth.getSession();
+  console.log("Current session:", session.data.session ? "exists" : "none");
+  return session;
 };
 
 /**
@@ -155,5 +164,7 @@ export const getCurrentSession = async () => {
  */
 export const isLoggedIn = async (): Promise<boolean> => {
   const { data } = await supabase.auth.getSession();
-  return !!data.session;
+  const loggedIn = !!data.session;
+  console.log("isLoggedIn check:", loggedIn);
+  return loggedIn;
 };
