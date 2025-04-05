@@ -15,6 +15,7 @@ export const signUpWithEmail = async (
   userData: { name: string }
 ): Promise<{ user: User | null; error: string | null }> => {
   try {
+    console.log("Starting signup process for:", email);
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -26,6 +27,8 @@ export const signUpWithEmail = async (
     });
     
     if (error) throw error;
+    
+    console.log("Signup successful, user created:", data.user?.id);
     
     // Create a user object from the auth data
     const newUser: User = {
@@ -72,8 +75,9 @@ export const signInWithEmail = async (
       .eq('id', data.user.id)
       .single();
     
-    if (profileError && profileError.code !== 'PGRST116') {
+    if (profileError) {
       console.error("Profile fetch error:", profileError);
+      // Don't throw error to allow login without profile
     }
     
     // Create user object from auth and profile data
@@ -153,18 +157,33 @@ export const updatePassword = async (newPassword: string): Promise<{ error: stri
  * Gets the current session
  */
 export const getCurrentSession = async () => {
-  console.log("Getting current session...");
-  const session = await supabase.auth.getSession();
-  console.log("Current session:", session.data.session ? "exists" : "none");
-  return session;
+  try {
+    console.log("Getting current session...");
+    const { data, error } = await supabase.auth.getSession();
+    
+    if (error) throw error;
+    
+    console.log("Current session:", data.session ? "exists" : "none");
+    return { data, error: null };
+  } catch (error: any) {
+    console.error("Get session error:", error.message);
+    return { data: { session: null }, error: error.message };
+  }
 };
 
 /**
  * Checks if a user is logged in
  */
 export const isLoggedIn = async (): Promise<boolean> => {
-  const { data } = await supabase.auth.getSession();
-  const loggedIn = !!data.session;
-  console.log("isLoggedIn check:", loggedIn);
-  return loggedIn;
+  try {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) throw error;
+    
+    const loggedIn = !!data.session;
+    console.log("isLoggedIn check:", loggedIn);
+    return loggedIn;
+  } catch (error) {
+    console.error("isLoggedIn error:", error);
+    return false;
+  }
 };

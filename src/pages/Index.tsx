@@ -20,22 +20,25 @@ const Index: React.FC = () => {
   const [isDriverOnline, setIsDriverOnline] = useState(false);
   const [showDriverRegistrationPrompt, setShowDriverRegistrationPrompt] = useState(false);
   const [pageLoaded, setPageLoaded] = useState(false);
+  const [initComplete, setInitComplete] = useState(false);
 
   // Debug logs for authentication state
   useEffect(() => {
     console.log("Index page - Auth state:", { 
       user: user?.name, 
+      email: user?.email,
       isLoggedIn: user?.isLoggedIn, 
-      authLoading 
+      authLoading,
+      initComplete
     });
-  }, [user, authLoading]);
+  }, [user, authLoading, initComplete]);
 
   // Effect to manage page loaded state
   useEffect(() => {
-    // Shorter timeout for smoother experience
+    // Set loaded after a brief delay
     const timer = setTimeout(() => {
       setPageLoaded(true);
-    }, 100);
+    }, 300);
     return () => clearTimeout(timer);
   }, []);
 
@@ -61,31 +64,38 @@ const Index: React.FC = () => {
     navigate('/official-driver');
   };
 
-  // Redirect to Welcome for unauthenticated users
+  // Wait for auth to initialize, then check login status
   useEffect(() => {
-    if (!authLoading && !user?.isLoggedIn) {
-      console.log("Redirecting to welcome page - no authenticated user found");
-      navigate('/welcome');
+    if (!authLoading) {
+      if (!user?.isLoggedIn) {
+        console.log("User not authenticated, redirecting to welcome");
+        navigate('/welcome');
+      } else {
+        console.log("Auth initialization complete, user authenticated");
+        setInitComplete(true);
+      }
     }
   }, [user, authLoading, navigate]);
 
-  // Show loading state during initial load
-  if (authLoading || !pageLoaded) {
+  // Show loading state during initial auth check and page load
+  if (authLoading || !pageLoaded || !initComplete) {
     return (
-      <div className="min-h-screen bg-white flex flex-col items-center justify-center p-4">
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center p-4 animate-pulse">
         <div className="w-16 h-16 border-4 border-gray-200 border-t-violet-600 rounded-full animate-spin mb-4"></div>
-        <p className="text-gray-600">Loading your account...</p>
+        <p className="text-gray-600">Checking your account...</p>
+        <p className="text-gray-400 text-sm mt-1">{authLoading ? "Authenticating..." : "Loading app..."}</p>
       </div>
     );
   }
 
-  // Double check authentication
+  // If we get here but user is not logged in (can happen during state transitions), redirect to welcome
   if (!user?.isLoggedIn) {
-    console.log("User not logged in, rendering null");
+    console.log("User authenticated check failed in render phase, redirecting");
+    navigate('/welcome');
     return null;
   }
 
-  console.log("Rendering main Index content");
+  console.log("Rendering main Index content for user:", user.name);
   
   return (
     <div className="min-h-screen bg-white">

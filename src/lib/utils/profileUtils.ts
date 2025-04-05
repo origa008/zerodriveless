@@ -12,6 +12,11 @@ export const fetchUserProfile = async (userId: string): Promise<{ profile: User 
   try {
     console.log("Fetching profile for user:", userId);
     
+    if (!userId) {
+      console.error("fetchUserProfile called with empty userId");
+      return { profile: null, error: "Invalid user ID" };
+    }
+    
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
@@ -19,7 +24,31 @@ export const fetchUserProfile = async (userId: string): Promise<{ profile: User 
       .single();
     
     if (error) {
-      console.error("Error fetching profile:", error.message);
+      console.error("Error fetching profile:", error.message, error.code);
+      
+      // If the profile doesn't exist yet (could happen with new signups), create a basic one
+      if (error.code === 'PGRST116') {
+        console.log("No profile found, attempting to retrieve user from auth");
+        
+        // Try to get user data from auth
+        const { data: userData, error: userError } = await supabase.auth.admin.getUserById(userId);
+        
+        if (userError || !userData.user) {
+          console.error("Could not retrieve user data:", userError || "No user data");
+          return { profile: null, error: "User not found" };
+        }
+        
+        // Return basic profile from auth data
+        const basicProfile: User = {
+          id: userId,
+          name: userData.user.user_metadata.name || "New User",
+          email: userData.user.email || "",
+          isLoggedIn: true
+        };
+        
+        return { profile: basicProfile, error: null };
+      }
+      
       throw error;
     }
     

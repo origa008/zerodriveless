@@ -33,65 +33,78 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Initialize auth and set up listeners
   useEffect(() => {
-    // Set initial loading state
-    setIsLoading(true);
     console.log("Auth provider initializing...");
+    setIsLoading(true);
     
-    // First set up the auth state listener for future changes
+    // Set up auth state change listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      (event, session) => {
         console.log("Auth state changed:", event, session ? "session exists" : "no session");
         
         if (session) {
-          try {
-            const { profile, error } = await fetchUserProfile(session.user.id);
-            if (profile) {
-              console.log("User profile fetched on auth change:", profile.name);
-              setUser({ ...profile, isLoggedIn: true });
-            } else if (error) {
-              console.error("Error fetching profile:", error);
+          // Use setTimeout to prevent deadlocks
+          setTimeout(async () => {
+            try {
+              const { profile, error } = await fetchUserProfile(session.user.id);
+              if (profile) {
+                console.log("User profile fetched on auth change:", profile.name);
+                setUser({ ...profile, isLoggedIn: true });
+              } else {
+                console.error("Error fetching profile on auth change:", error);
+                setUser(null);
+              }
+            } catch (error) {
+              console.error('Error fetching user profile on auth change:', error);
+              setUser(null);
+            } finally {
+              setIsLoading(false);
             }
-          } catch (error) {
-            console.error('Error fetching user profile on auth change:', error);
-          } finally {
-            setIsLoading(false);
-          }
-        } else if (event === 'SIGNED_OUT') {
-          console.log("User signed out");
+          }, 0);
+        } else {
+          console.log("No session in auth change event");
           setUser(null);
           setIsLoading(false);
         }
       }
     );
     
-    // Then check for an existing session
-    const checkExistingSession = async () => {
+    // Then check for existing session
+    const checkSession = async () => {
       try {
         console.log("Checking for existing session...");
-        const { data } = await supabase.auth.getSession();
+        const { data: { session } } = await supabase.auth.getSession();
         
-        if (data.session) {
-          console.log("Found existing session for user:", data.session.user.id);
-          const { profile, error } = await fetchUserProfile(data.session.user.id);
+        if (session) {
+          console.log("Found existing session for user:", session.user.id);
           
-          if (profile) {
-            console.log("User profile fetched from existing session:", profile.name);
-            setUser({ ...profile, isLoggedIn: true });
-          } else if (error) {
-            console.error("Error fetching profile from existing session:", error);
+          try {
+            const { profile, error } = await fetchUserProfile(session.user.id);
+            
+            if (profile) {
+              console.log("User profile fetched from existing session:", profile.name);
+              setUser({ ...profile, isLoggedIn: true });
+            } else {
+              console.error("Error fetching profile from existing session:", error);
+              setUser(null);
+            }
+          } catch (profileError) {
+            console.error("Failed to fetch profile:", profileError);
+            setUser(null);
           }
         } else {
           console.log("No existing session found");
+          setUser(null);
         }
       } catch (error) {
         console.error('Session check error:', error);
+        setUser(null);
       } finally {
         console.log("Setting isLoading to false after session check");
         setIsLoading(false);
       }
     };
 
-    checkExistingSession();
+    checkSession();
     
     // Cleanup
     return () => {
