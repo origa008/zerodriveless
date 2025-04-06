@@ -106,7 +106,7 @@ const Index: React.FC = () => {
         <Sidebar />
       </div>
       
-      {showDriverRegistrationPrompt && <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      {showDriverRegistrationPrompt && <div className="fixed inset-0 bg-opacity-50 flex items-center justify-center z-50 p-4 bg-transparent">
           
         </div>}
       
