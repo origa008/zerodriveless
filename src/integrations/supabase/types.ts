@@ -67,6 +67,48 @@ export type Database = {
           },
         ]
       }
+      deposit_requests: {
+        Row: {
+          account_number: string
+          account_title: string
+          amount: number
+          bank_name: string
+          created_at: string
+          id: string
+          processed_at: string | null
+          receipt_url: string | null
+          status: string
+          transaction_reference: string | null
+          user_id: string
+        }
+        Insert: {
+          account_number: string
+          account_title: string
+          amount: number
+          bank_name: string
+          created_at?: string
+          id?: string
+          processed_at?: string | null
+          receipt_url?: string | null
+          status?: string
+          transaction_reference?: string | null
+          user_id: string
+        }
+        Update: {
+          account_number?: string
+          account_title?: string
+          amount?: number
+          bank_name?: string
+          created_at?: string
+          id?: string
+          processed_at?: string | null
+          receipt_url?: string | null
+          status?: string
+          transaction_reference?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       driver_details: {
         Row: {
           approval_date: string | null

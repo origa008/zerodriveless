@@ -1,3 +1,4 @@
+
 export type User = {
   id: string;
   name: string;
@@ -83,6 +84,10 @@ export type DriverDocument = {
   vehiclePhoto?: File;
   selfieWithCNIC?: File;
   selfiePhoto?: File;
+  // Adding the missing properties
+  vehicleModel?: string;
+  vehicleColor?: string;
+  driverLicenseNumber?: string;
 };
 
 export type Transaction = {
@@ -121,4 +126,19 @@ export type ReferralInfo = {
   pending: number;
   completed: number;
   earned: number;
+};
+
+// Add DepositRequest type to match the database table
+export type DepositRequest = {
+  id: string;
+  userId: string;
+  amount: number;
+  bankName: string;
+  accountTitle: string;
+  accountNumber: string;
+  receiptUrl?: string;
+  transactionReference?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  createdAt: string;
+  processedAt?: string;
 };

@@ -1,131 +1,153 @@
 
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Camera, Upload, ArrowLeft, Check } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { Check, X, Upload, Loader2 } from 'lucide-react';
 import { DriverDocument } from '@/lib/types';
 
-type DriverRegistrationProps = {
+interface DriverRegistrationProps {
   onClose: () => void;
   onSubmit: (data: DriverDocument) => void;
-};
+}
 
 const DriverRegistration: React.FC<DriverRegistrationProps> = ({ onClose, onSubmit }) => {
-  const { toast } = useToast();
-  const [step, setStep] = useState(1);
+  const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState<DriverDocument>({
     fullName: '',
     phoneNumber: '',
     cnicNumber: '',
+    vehicleType: 'Bike',
     vehicleRegistrationNumber: '',
+    vehicleModel: '',  // Add this field
+    vehicleColor: '',  // Add this field
+    driverLicenseNumber: ''  // Add this field
   });
+  
+  const [documents, setDocuments] = useState<{
+    cnicFront?: File;
+    cnicBack?: File;
+    driverLicenseFront?: File;
+    driverLicenseBack?: File;
+    vehicleRegistration?: File;
+    vehiclePhoto?: File;
+    selfieWithCNIC?: File;
+    selfiePhoto?: File;
+  }>({});
+  
+  const [documentNames, setDocumentNames] = useState<{
+    cnicFront?: string;
+    cnicBack?: string;
+    driverLicenseFront?: string;
+    driverLicenseBack?: string;
+    vehicleRegistration?: string;
+    vehiclePhoto?: string;
+    selfieWithCNIC?: string;
+    selfiePhoto?: string;
+  }>({});
 
-  const [fileNames, setFileNames] = useState<Record<string, string>>({});
-  
-  const totalSteps = 5;
-  
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   };
-  
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, fieldName: keyof DriverDocument) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setFormData(prev => ({ ...prev, [fieldName]: file }));
-      setFileNames(prev => ({ ...prev, [fieldName]: file.name }));
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, docType: string) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setDocuments(prev => ({ 
+        ...prev, 
+        [docType]: file 
+      }));
+      setDocumentNames(prev => ({ 
+        ...prev, 
+        [docType]: file.name 
+      }));
     }
   };
-  
-  const nextStep = () => {
-    if (step === 1) {
-      // Validate personal info
-      if (!formData.fullName || !formData.phoneNumber || !formData.cnicNumber) {
-        toast({
-          title: "Incomplete information",
-          description: "Please fill in all required fields",
-          duration: 3000
-        });
-        return;
-      }
-      
-      if (formData.phoneNumber.length !== 11 || !/^\d+$/.test(formData.phoneNumber)) {
-        toast({
-          title: "Invalid phone number",
-          description: "Please enter a valid 11-digit phone number",
-          duration: 3000
-        });
-        return;
-      }
-      
-      if (formData.cnicNumber.length !== 13 || !/^\d+$/.test(formData.cnicNumber)) {
-        toast({
-          title: "Invalid CNIC number",
-          description: "Please enter a valid 13-digit CNIC number",
-          duration: 3000
-        });
-        return;
-      }
-    } else if (step === 2) {
-      // Validate CNIC photos
-      if (!formData.cnicFrontPhoto || !formData.cnicBackPhoto) {
-        toast({
-          title: "Missing documents",
-          description: "Please upload both front and back CNIC photos",
-          duration: 3000
-        });
-        return;
-      }
-    } else if (step === 3) {
-      // Validate license photos
-      if (!formData.driverLicenseFrontPhoto || !formData.driverLicenseBackPhoto) {
-        toast({
-          title: "Missing documents",
-          description: "Please upload both front and back driver license photos",
-          duration: 3000
-        });
-        return;
-      }
-    } else if (step === 4) {
-      // Validate vehicle info
-      if (!formData.vehicleRegistrationNumber || !formData.vehicleRegistrationPhoto || !formData.vehiclePhoto) {
-        toast({
-          title: "Incomplete information",
-          description: "Please provide all vehicle information and photos",
-          duration: 3000
-        });
-        return;
-      }
-    }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
     
-    if (step < totalSteps) {
-      setStep(step + 1);
-    } else {
-      // Submit form
-      onSubmit(formData);
+    try {
+      const completeFormData: DriverDocument = {
+        ...formData,
+        cnicFrontPhoto: documents.cnicFront,
+        cnicBackPhoto: documents.cnicBack,
+        driverLicenseFrontPhoto: documents.driverLicenseFront,
+        driverLicenseBackPhoto: documents.driverLicenseBack,
+        vehicleRegistrationPhoto: documents.vehicleRegistration,
+        vehiclePhoto: documents.vehiclePhoto,
+        selfieWithCNIC: documents.selfieWithCNIC,
+        selfiePhoto: documents.selfiePhoto
+      };
+      
+      await onSubmit(completeFormData);
+    } catch (error) {
+      console.error("Form submission error:", error);
+    } finally {
+      setIsLoading(false);
     }
   };
-  
-  const prevStep = () => {
-    if (step > 1) {
-      setStep(step - 1);
-    } else {
-      onClose();
-    }
-  };
-  
-  const renderStepContent = () => {
-    switch(step) {
-      case 1:
-        return (
-          <div className="space-y-4">
-            <h2 className="text-xl font-medium">Personal Information</h2>
-            <p className="text-gray-500 text-sm mb-4">
-              Please enter your details as they appear on your CNIC.
-            </p>
-            
+
+  const renderFileInput = (
+    id: string, 
+    label: string, 
+    docType: keyof typeof documentNames, 
+    required: boolean = true
+  ) => (
+    <div className="mb-4">
+      <label className="block text-sm font-medium mb-1">
+        {label} {required && '*'}
+      </label>
+      <div className="border-2 border-dashed border-gray-300 rounded-lg p-4">
+        <input
+          type="file"
+          id={id}
+          className="hidden"
+          accept="image/*"
+          onChange={(e) => handleFileChange(e, docType)}
+          required={required}
+        />
+        <label
+          htmlFor={id}
+          className="flex flex-col items-center justify-center cursor-pointer"
+        >
+          {documentNames[docType] ? (
+            <div className="text-center">
+              <div className="bg-green-100 h-10 w-10 rounded-full flex items-center justify-center mx-auto mb-2">
+                <Check className="text-green-500" size={20} />
+              </div>
+              <p className="text-green-600 font-medium text-sm">{documentNames[docType]}</p>
+              <p className="text-xs text-gray-500 mt-1">Click to replace</p>
+            </div>
+          ) : (
+            <>
+              <Upload className="h-10 w-10 text-gray-400 mb-2" />
+              <p className="text-gray-500 text-sm">Click to upload</p>
+              <p className="text-gray-400 text-xs mt-1">JPG, PNG or PDF</p>
+            </>
+          )}
+        </label>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white z-10 p-4 border-b flex justify-between items-center">
+          <h2 className="text-xl font-bold">Driver Registration</h2>
+          <button 
+            onClick={onClose}
+            className="p-2 hover:bg-gray-100 rounded-full"
+          >
+            <X size={20} />
+          </button>
+        </div>
+        
+        <form onSubmit={handleSubmit} className="p-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Full Name (as per CNIC) *</label>
+              <label className="block text-sm font-medium mb-1">Full Name *</label>
               <input
                 type="text"
                 name="fullName"
@@ -145,11 +167,9 @@ const DriverRegistration: React.FC<DriverRegistrationProps> = ({ onClose, onSubm
                 value={formData.phoneNumber}
                 onChange={handleInputChange}
                 className="w-full border border-gray-300 rounded-lg p-3"
-                placeholder="11-digit phone number"
-                maxLength={11}
+                placeholder="e.g., 03001234567"
                 required
               />
-              <p className="text-xs text-gray-500 mt-1">Format: 03001234567</p>
             </div>
             
             <div>
@@ -160,162 +180,38 @@ const DriverRegistration: React.FC<DriverRegistrationProps> = ({ onClose, onSubm
                 value={formData.cnicNumber}
                 onChange={handleInputChange}
                 className="w-full border border-gray-300 rounded-lg p-3"
-                placeholder="13-digit CNIC number"
-                maxLength={13}
+                placeholder="e.g., 12345-6789012-3"
                 required
               />
-              <p className="text-xs text-gray-500 mt-1">Format: 3520212345678</p>
-            </div>
-          </div>
-        );
-        
-      case 2:
-        return (
-          <div className="space-y-4">
-            <h2 className="text-xl font-medium">CNIC Documents</h2>
-            <p className="text-gray-500 text-sm mb-4">
-              Upload clear photos of the front and back of your CNIC.
-            </p>
-            
-            <div className="border border-gray-200 rounded-lg p-4">
-              <label className="block text-sm font-medium mb-2">CNIC Front *</label>
-              <div className="relative">
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  id="cnicFront"
-                  onChange={(e) => handleFileChange(e, 'cnicFrontPhoto')}
-                />
-                <label
-                  htmlFor="cnicFront"
-                  className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg p-6 cursor-pointer hover:bg-gray-50"
-                >
-                  {formData.cnicFrontPhoto ? (
-                    <div className="text-center">
-                      <Check size={32} className="mx-auto mb-2 text-green-500" />
-                      <p className="text-green-600 font-medium">{fileNames.cnicFrontPhoto}</p>
-                      <p className="text-sm text-gray-500 mt-1">Click to replace</p>
-                    </div>
-                  ) : (
-                    <>
-                      <Upload size={32} className="text-gray-400 mb-2" />
-                      <p className="text-gray-500">Click to upload CNIC front</p>
-                    </>
-                  )}
-                </label>
-              </div>
             </div>
             
-            <div className="border border-gray-200 rounded-lg p-4">
-              <label className="block text-sm font-medium mb-2">CNIC Back *</label>
-              <div className="relative">
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  id="cnicBack"
-                  onChange={(e) => handleFileChange(e, 'cnicBackPhoto')}
-                />
-                <label
-                  htmlFor="cnicBack"
-                  className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg p-6 cursor-pointer hover:bg-gray-50"
-                >
-                  {formData.cnicBackPhoto ? (
-                    <div className="text-center">
-                      <Check size={32} className="mx-auto mb-2 text-green-500" />
-                      <p className="text-green-600 font-medium">{fileNames.cnicBackPhoto}</p>
-                      <p className="text-sm text-gray-500 mt-1">Click to replace</p>
-                    </div>
-                  ) : (
-                    <>
-                      <Upload size={32} className="text-gray-400 mb-2" />
-                      <p className="text-gray-500">Click to upload CNIC back</p>
-                    </>
-                  )}
-                </label>
-              </div>
-            </div>
-          </div>
-        );
-        
-      case 3:
-        return (
-          <div className="space-y-4">
-            <h2 className="text-xl font-medium">Driver License Documents</h2>
-            <p className="text-gray-500 text-sm mb-4">
-              Upload clear photos of your driver license.
-            </p>
-            
-            <div className="border border-gray-200 rounded-lg p-4">
-              <label className="block text-sm font-medium mb-2">License Front *</label>
-              <div className="relative">
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  id="licenseFront"
-                  onChange={(e) => handleFileChange(e, 'driverLicenseFrontPhoto')}
-                />
-                <label
-                  htmlFor="licenseFront"
-                  className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg p-6 cursor-pointer hover:bg-gray-50"
-                >
-                  {formData.driverLicenseFrontPhoto ? (
-                    <div className="text-center">
-                      <Check size={32} className="mx-auto mb-2 text-green-500" />
-                      <p className="text-green-600 font-medium">{fileNames.driverLicenseFrontPhoto}</p>
-                      <p className="text-sm text-gray-500 mt-1">Click to replace</p>
-                    </div>
-                  ) : (
-                    <>
-                      <Upload size={32} className="text-gray-400 mb-2" />
-                      <p className="text-gray-500">Click to upload license front</p>
-                    </>
-                  )}
-                </label>
-              </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Driver License Number *</label>
+              <input
+                type="text"
+                name="driverLicenseNumber"
+                value={formData.driverLicenseNumber}
+                onChange={handleInputChange}
+                className="w-full border border-gray-300 rounded-lg p-3"
+                placeholder="Enter driver license number"
+                required
+              />
             </div>
             
-            <div className="border border-gray-200 rounded-lg p-4">
-              <label className="block text-sm font-medium mb-2">License Back *</label>
-              <div className="relative">
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  id="licenseBack"
-                  onChange={(e) => handleFileChange(e, 'driverLicenseBackPhoto')}
-                />
-                <label
-                  htmlFor="licenseBack"
-                  className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg p-6 cursor-pointer hover:bg-gray-50"
-                >
-                  {formData.driverLicenseBackPhoto ? (
-                    <div className="text-center">
-                      <Check size={32} className="mx-auto mb-2 text-green-500" />
-                      <p className="text-green-600 font-medium">{fileNames.driverLicenseBackPhoto}</p>
-                      <p className="text-sm text-gray-500 mt-1">Click to replace</p>
-                    </div>
-                  ) : (
-                    <>
-                      <Upload size={32} className="text-gray-400 mb-2" />
-                      <p className="text-gray-500">Click to upload license back</p>
-                    </>
-                  )}
-                </label>
-              </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Vehicle Type *</label>
+              <select
+                name="vehicleType"
+                value={formData.vehicleType}
+                onChange={handleInputChange}
+                className="w-full border border-gray-300 rounded-lg p-3"
+                required
+              >
+                <option value="Bike">Bike</option>
+                <option value="Car">Car</option>
+                <option value="Rickshaw">Rickshaw</option>
+              </select>
             </div>
-          </div>
-        );
-        
-      case 4:
-        return (
-          <div className="space-y-4">
-            <h2 className="text-xl font-medium">Vehicle Information</h2>
-            <p className="text-gray-500 text-sm mb-4">
-              Provide details about the vehicle you'll be using.
-            </p>
             
             <div>
               <label className="block text-sm font-medium mb-1">Vehicle Registration Number *</label>
@@ -330,184 +226,74 @@ const DriverRegistration: React.FC<DriverRegistrationProps> = ({ onClose, onSubm
               />
             </div>
             
-            <div className="border border-gray-200 rounded-lg p-4">
-              <label className="block text-sm font-medium mb-2">Vehicle Registration Document *</label>
-              <div className="relative">
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  id="regDoc"
-                  onChange={(e) => handleFileChange(e, 'vehicleRegistrationPhoto')}
-                />
-                <label
-                  htmlFor="regDoc"
-                  className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg p-6 cursor-pointer hover:bg-gray-50"
-                >
-                  {formData.vehicleRegistrationPhoto ? (
-                    <div className="text-center">
-                      <Check size={32} className="mx-auto mb-2 text-green-500" />
-                      <p className="text-green-600 font-medium">{fileNames.vehicleRegistrationPhoto}</p>
-                      <p className="text-sm text-gray-500 mt-1">Click to replace</p>
-                    </div>
-                  ) : (
-                    <>
-                      <Upload size={32} className="text-gray-400 mb-2" />
-                      <p className="text-gray-500">Upload registration document</p>
-                    </>
-                  )}
-                </label>
-              </div>
-            </div>
-            
-            <div className="border border-gray-200 rounded-lg p-4">
-              <label className="block text-sm font-medium mb-2">Vehicle Photo *</label>
-              <div className="relative">
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  id="vehiclePhoto"
-                  onChange={(e) => handleFileChange(e, 'vehiclePhoto')}
-                />
-                <label
-                  htmlFor="vehiclePhoto"
-                  className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg p-6 cursor-pointer hover:bg-gray-50"
-                >
-                  {formData.vehiclePhoto ? (
-                    <div className="text-center">
-                      <Check size={32} className="mx-auto mb-2 text-green-500" />
-                      <p className="text-green-600 font-medium">{fileNames.vehiclePhoto}</p>
-                      <p className="text-sm text-gray-500 mt-1">Click to replace</p>
-                    </div>
-                  ) : (
-                    <>
-                      <Upload size={32} className="text-gray-400 mb-2" />
-                      <p className="text-gray-500">Upload vehicle photo</p>
-                    </>
-                  )}
-                </label>
-              </div>
-            </div>
-          </div>
-        );
-        
-      case 5:
-        return (
-          <div className="space-y-4">
-            <h2 className="text-xl font-medium">Personal Photos</h2>
-            <p className="text-gray-500 text-sm mb-4">
-              Please take the following photos for verification.
-            </p>
-            
-            <div className="border border-gray-200 rounded-lg p-4">
-              <label className="block text-sm font-medium mb-2">Selfie with CNIC *</label>
-              <p className="text-xs text-gray-500 mb-3">
-                Hold your CNIC next to your face and take a photo.
-              </p>
-              <div className="relative">
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  id="selfieWithCNIC"
-                  onChange={(e) => handleFileChange(e, 'selfieWithCNIC')}
-                />
-                <label
-                  htmlFor="selfieWithCNIC"
-                  className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg p-6 cursor-pointer hover:bg-gray-50"
-                >
-                  {formData.selfieWithCNIC ? (
-                    <div className="text-center">
-                      <Check size={32} className="mx-auto mb-2 text-green-500" />
-                      <p className="text-green-600 font-medium">{fileNames.selfieWithCNIC}</p>
-                      <p className="text-sm text-gray-500 mt-1">Click to replace</p>
-                    </div>
-                  ) : (
-                    <>
-                      <Camera size={32} className="text-gray-400 mb-2" />
-                      <p className="text-gray-500">Take or upload a photo</p>
-                    </>
-                  )}
-                </label>
-              </div>
-            </div>
-            
-            <div className="border border-gray-200 rounded-lg p-4">
-              <label className="block text-sm font-medium mb-2">Profile Selfie *</label>
-              <p className="text-xs text-gray-500 mb-3">
-                Take a clear photo of your face for your driver profile.
-              </p>
-              <div className="relative">
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  id="selfiePhoto"
-                  onChange={(e) => handleFileChange(e, 'selfiePhoto')}
-                />
-                <label
-                  htmlFor="selfiePhoto"
-                  className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg p-6 cursor-pointer hover:bg-gray-50"
-                >
-                  {formData.selfiePhoto ? (
-                    <div className="text-center">
-                      <Check size={32} className="mx-auto mb-2 text-green-500" />
-                      <p className="text-green-600 font-medium">{fileNames.selfiePhoto}</p>
-                      <p className="text-sm text-gray-500 mt-1">Click to replace</p>
-                    </div>
-                  ) : (
-                    <>
-                      <Camera size={32} className="text-gray-400 mb-2" />
-                      <p className="text-gray-500">Take or upload a photo</p>
-                    </>
-                  )}
-                </label>
-              </div>
-            </div>
-          </div>
-        );
-        
-      default:
-        return null;
-    }
-  };
-  
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 overflow-y-auto">
-      <div className="bg-white rounded-xl w-full max-w-md mx-auto my-8">
-        <div className="p-4 border-b border-gray-200 flex items-center">
-          <button 
-            onClick={prevStep}
-            className="mr-2"
-          >
-            <ArrowLeft size={20} />
-          </button>
-          <h2 className="text-lg font-medium">Driver Registration</h2>
-        </div>
-        
-        <div className="p-6">
-          {/* Progress indicator */}
-          <div className="flex justify-between mb-6">
-            {Array.from({ length: totalSteps }).map((_, index) => (
-              <div 
-                key={index} 
-                className={`w-full h-1 rounded-full mx-0.5 ${index + 1 <= step ? 'bg-zerodrive-purple' : 'bg-gray-200'}`}
+            <div>
+              <label className="block text-sm font-medium mb-1">Vehicle Model *</label>
+              <input
+                type="text"
+                name="vehicleModel"
+                value={formData.vehicleModel}
+                onChange={handleInputChange}
+                className="w-full border border-gray-300 rounded-lg p-3"
+                placeholder="e.g., Honda 125"
+                required
               />
-            ))}
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium mb-1">Vehicle Color *</label>
+              <input
+                type="text"
+                name="vehicleColor"
+                value={formData.vehicleColor}
+                onChange={handleInputChange}
+                className="w-full border border-gray-300 rounded-lg p-3"
+                placeholder="e.g., Red"
+                required
+              />
+            </div>
           </div>
           
-          {renderStepContent()}
-          
-          <div className="mt-8 flex justify-end">
-            <Button 
-              onClick={nextStep}
-              className="bg-zerodrive-purple text-white"
-            >
-              {step === totalSteps ? 'Submit Application' : 'Continue'}
-            </Button>
+          <div className="mt-6">
+            <h3 className="text-lg font-medium mb-3">Upload Documents</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {renderFileInput('cnicFront', 'CNIC Front Side', 'cnicFront')}
+              {renderFileInput('cnicBack', 'CNIC Back Side', 'cnicBack')}
+              {renderFileInput('driverLicenseFront', 'Driver License Front', 'driverLicenseFront')}
+              {renderFileInput('driverLicenseBack', 'Driver License Back', 'driverLicenseBack')}
+              {renderFileInput('vehicleRegistration', 'Vehicle Registration', 'vehicleRegistration')}
+              {renderFileInput('vehiclePhoto', 'Vehicle Photo', 'vehiclePhoto')}
+              {renderFileInput('selfieWithCNIC', 'Selfie with CNIC', 'selfieWithCNIC')}
+              {renderFileInput('selfiePhoto', 'Selfie Photo', 'selfiePhoto')}
+            </div>
           </div>
-        </div>
+          
+          <div className="mt-6">
+            <p className="text-sm text-gray-500 mb-4">
+              By submitting this application, I confirm that all information provided is accurate and I agree to the terms and conditions of ZeroDrive.
+            </p>
+            <div className="flex justify-end space-x-3">
+              <Button 
+                type="button" 
+                variant="outline"
+                onClick={onClose}
+              >
+                Cancel
+              </Button>
+              <Button 
+                type="submit"
+                className="bg-zerodrive-purple hover:bg-violet-800"
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Submitting...
+                  </>
+                ) : 'Submit Application'}
+              </Button>
+            </div>
+          </div>
+        </form>
       </div>
     </div>
   );
