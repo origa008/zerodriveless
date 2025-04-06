@@ -5,6 +5,7 @@ import { Check, Info, Upload, Loader2 } from 'lucide-react';
 import { useAuth } from '@/lib/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { DepositRequest } from '@/lib/types';
 
 type PaymentMethod = 'bank_transfer' | 'mobile_wallet';
 
@@ -129,20 +130,18 @@ const AddFundsForm: React.FC<{ onSuccess: () => void }> = ({ onSuccess }) => {
         throw new Error("Failed to upload screenshot");
       }
       
-      // Create deposit request using the raw query method instead of the typed method
-      // This is a workaround for the type issue since deposit_requests isn't in the types
-      const { error } = await supabase
-        .from('deposit_requests')
-        .insert({
-          user_id: user.id,
-          amount: bankDetails.amount,
-          bank_name: bankDetails.bankName,
-          account_title: bankDetails.accountTitle,
-          account_number: bankDetails.accountNumber,
-          receipt_url: screenshotUrl,
-          transaction_reference: bankDetails.transactionReference,
-          status: 'pending'
-        } as any); // Use 'as any' to bypass type checking for this insert
+      // Use the REST API directly rather than the typed client to bypass type checking
+      // This allows us to insert into tables not yet reflected in the TypeScript types
+      const { error } = await supabase.rest.from('deposit_requests').insert({
+        user_id: user.id,
+        amount: bankDetails.amount,
+        bank_name: bankDetails.bankName,
+        account_title: bankDetails.accountTitle,
+        account_number: bankDetails.accountNumber,
+        receipt_url: screenshotUrl,
+        transaction_reference: bankDetails.transactionReference,
+        status: 'pending'
+      });
       
       if (error) throw error;
       
