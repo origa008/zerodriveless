@@ -13,7 +13,7 @@ import {
 } from '@/lib/utils/driverUtils';
 import { getAvailableRideRequests, subscribeToNearbyRides } from '@/lib/utils/rideUtils';
 import { DriverDocument } from '@/lib/types';
-import { UserRound, CarFront, Bike, Search, MapPin, Loader2, ShieldCheck, Wallet, Calendar, Clock, DollarSign } from 'lucide-react';
+import { UserRound, CarFront, Bike, Search, MapPin, Loader2, ShieldCheck, Wallet, Calendar, Clock, DollarSign, ArrowLeft } from 'lucide-react';
 
 const OfficialDriver: React.FC = () => {
   const navigate = useNavigate();
