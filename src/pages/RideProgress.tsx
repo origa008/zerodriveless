@@ -1,19 +1,26 @@
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useRide } from '@/lib/context/RideContext';
+import { useAuth } from '@/lib/context/AuthContext';
 import RideMap from '@/components/map/RideMap';
 import RideDetails from '@/components/ride/RideDetails';
+import { completeRideAndProcessPayment } from '@/lib/utils/rideUtils';
+import { useToast } from '@/hooks/use-toast';
+import { Loader2 } from 'lucide-react';
 
 const RideProgress: React.FC = () => {
   const navigate = useNavigate();
+  const { toast } = useToast();
+  const { user } = useAuth();
   const {
     currentRide,
     startRide,
     completeRide,
     cancelRide
   } = useRide();
+  const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
     // Start the ride automatically when the page loads
@@ -39,8 +46,38 @@ const RideProgress: React.FC = () => {
     navigate('/');
   };
 
-  const handleComplete = () => {
-    completeRide();
+  const handleComplete = async () => {
+    if (!user?.id || !currentRide) return;
+    
+    setIsProcessing(true);
+    
+    try {
+      // Process payment if needed and complete the ride
+      const { success, error } = await completeRideAndProcessPayment(currentRide.id);
+      
+      if (!success || error) {
+        throw new Error(error || "Failed to complete ride");
+      }
+      
+      completeRide();
+      
+      toast({
+        title: "Ride Completed",
+        description: currentRide.paymentMethod === 'wallet' 
+          ? "Payment has been processed automatically" 
+          : "Please collect cash payment from the passenger",
+        duration: 5000
+      });
+    } catch (error: any) {
+      console.error("Failed to complete ride:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to complete ride",
+        duration: 5000
+      });
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   // Vehicle images for display
@@ -78,17 +115,37 @@ const RideProgress: React.FC = () => {
             <Button 
               className="w-full bg-black text-white hover:bg-gray-800 py-6 text-xl rounded-xl" 
               onClick={handleComplete}
+              disabled={isProcessing}
             >
-              Completed
+              {isProcessing ? (
+                <>
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                'Completed'
+              )}
             </Button>
           ) : (
             <Button 
               variant="outline" 
               className="w-full border-gray-300 py-6 text-xl rounded-xl" 
               onClick={handleCancel}
+              disabled={isProcessing}
             >
               Cancel
             </Button>
+          )}
+          
+          {currentRide.paymentMethod === 'wallet' && (
+            <p className="text-center text-sm text-gray-500 mt-2">
+              Payment will be processed automatically from passenger's wallet
+            </p>
+          )}
+          {currentRide.paymentMethod === 'cash' && (
+            <p className="text-center text-sm text-gray-500 mt-2">
+              Please collect cash payment of {currentRide.price} RS from passenger
+            </p>
           )}
         </div>
       </div>

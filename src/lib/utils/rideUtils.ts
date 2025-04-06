@@ -1,3 +1,4 @@
+
 import { supabase } from "@/integrations/supabase/client";
 import { Ride, Location, RideOption, PaymentMethod } from "@/lib/types";
 import { Database } from "@/integrations/supabase/types";
@@ -257,4 +258,115 @@ export const subscribeToNewRideRequests = (
   return () => {
     supabase.removeChannel(channel);
   };
+};
+
+/**
+ * Complete ride and process payment
+ */
+export const completeRideAndProcessPayment = async (rideId: string): Promise<{ success: boolean; error: string | null }> => {
+  try {
+    // Get ride details
+    const { ride, error: rideError } = await getRideDetails(rideId);
+    
+    if (rideError || !ride) throw new Error(rideError || "Ride not found");
+    
+    // Update ride status to completed
+    const { error: updateError } = await supabase
+      .from('rides')
+      .update({ 
+        status: 'completed',
+        end_time: new Date().toISOString()
+      })
+      .eq('id', rideId);
+    
+    if (updateError) throw updateError;
+    
+    // Process payment if needed
+    if (ride.payment_method === 'wallet') {
+      // Transfer money from passenger to driver
+      await processWalletPayment(
+        ride.passenger_id,
+        ride.driver_id,
+        ride.price,
+        rideId
+      );
+    }
+    
+    return { success: true, error: null };
+  } catch (error: any) {
+    console.error("Complete ride error:", error.message);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Process wallet payment between passenger and driver
+ */
+export const processWalletPayment = async (
+  passengerId: string,
+  driverId: string,
+  amount: number,
+  rideId: string
+): Promise<{ success: boolean; error: string | null }> => {
+  try {
+    // Get passenger and driver details
+    const { data: passengerData } = await supabase
+      .from('profiles')
+      .select('name, email')
+      .eq('id', passengerId)
+      .single();
+      
+    const { data: driverData } = await supabase
+      .from('profiles')
+      .select('name, email')
+      .eq('id', driverId)
+      .single();
+    
+    // Calculate platform fee (20%)
+    const platformFee = amount * 0.2;
+    const driverAmount = amount - platformFee;
+    
+    // Start transaction - deduct from passenger
+    const { error: deductError } = await supabase.rpc(
+      'deduct_from_wallet',
+      { user_id: passengerId, amount }
+    );
+    
+    if (deductError) throw deductError;
+    
+    // Record passenger payment transaction
+    await supabase
+      .from('transactions')
+      .insert({
+        user_id: passengerId,
+        amount: -amount,
+        type: 'ride_payment',
+        status: 'completed',
+        description: `Payment for ride to ${driverData?.name || 'Driver'}`,
+        ride_id: rideId
+      });
+    
+    // Add to driver wallet
+    await supabase.rpc(
+      'add_to_wallet',
+      { user_id: driverId, amount: driverAmount }
+    );
+    
+    // Record driver earning transaction
+    await supabase
+      .from('transactions')
+      .insert({
+        user_id: driverId,
+        amount: driverAmount,
+        type: 'ride_earning',
+        status: 'completed',
+        description: `Earnings from ride for ${passengerData?.name || 'Passenger'}`,
+        ride_id: rideId
+      });
+    
+    return { success: true, error: null };
+  } catch (error: any) {
+    console.error("Process wallet payment error:", error.message);
+    return { success: false, error: error.message };
+  }
 };

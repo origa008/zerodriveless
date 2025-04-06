@@ -234,3 +234,35 @@ export const subscribeToTransactions = (
     supabase.removeChannel(channel);
   };
 };
+
+/**
+ * Get deposit request status
+ */
+export const getDepositRequestStatus = async (userId: string): Promise<{
+  pending: boolean;
+  amount: number;
+  createdAt: string | null;
+  error: string | null;
+}> => {
+  try {
+    const { data, error } = await supabase
+      .from('deposit_requests')
+      .select('id, amount, created_at')
+      .eq('user_id', userId)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false })
+      .maybeSingle();
+    
+    if (error) throw error;
+    
+    return {
+      pending: !!data,
+      amount: data?.amount || 0,
+      createdAt: data?.created_at || null,
+      error: null
+    };
+  } catch (error: any) {
+    console.error("Get deposit request status error:", error.message);
+    return { pending: false, amount: 0, createdAt: null, error: error.message };
+  }
+};

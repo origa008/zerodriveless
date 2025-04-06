@@ -190,22 +190,26 @@ export const getDriverRegistrationStatus = async (userId: string): Promise<{
     console.log("Deposit status:", data.has_sufficient_deposit);
     
     // Check if the user's wallet balance meets the deposit requirement
-    if (data.status === 'approved' && !data.has_sufficient_deposit) {
+    if (data.status === 'approved') {
       const { data: walletData } = await supabase
         .from('wallets')
         .select('balance')
         .eq('user_id', userId)
         .single();
         
-      if (walletData && walletData.balance >= data.deposit_amount_required) {
+      const hasSufficientDeposit = (walletData && walletData.balance >= data.deposit_amount_required);
+      
+      // Update the has_sufficient_deposit flag if it's changed
+      if (hasSufficientDeposit !== data.has_sufficient_deposit) {
+        console.log(`Updating deposit status from ${data.has_sufficient_deposit} to ${hasSufficientDeposit}`);
+        
         // Update the has_sufficient_deposit flag
-        console.log("User has sufficient deposit, updating flag");
         await supabase
           .from('driver_details')
-          .update({ has_sufficient_deposit: true })
+          .update({ has_sufficient_deposit: hasSufficientDeposit })
           .eq('user_id', userId);
           
-        data.has_sufficient_deposit = true;
+        data.has_sufficient_deposit = hasSufficientDeposit;
       }
     }
     
@@ -287,5 +291,39 @@ export const getAvailableDrivers = async (email?: string): Promise<{
   } catch (error: any) {
     console.error("Get available drivers error:", error.message);
     return { drivers: [], error: error.message };
+  }
+};
+
+/**
+ * Check if user is eligible to be a driver
+ */
+export const isEligibleDriver = async (userId: string): Promise<boolean> => {
+  try {
+    // Check driver details status and deposit
+    const { data: driverData } = await supabase
+      .from('driver_details')
+      .select('status, has_sufficient_deposit')
+      .eq('user_id', userId)
+      .maybeSingle();
+    
+    if (!driverData) return false;
+    
+    // Check if approved and has deposit
+    if (driverData.status === 'approved') {
+      // Double check the wallet balance
+      const { data: walletData } = await supabase
+        .from('wallets')
+        .select('balance')
+        .eq('user_id', userId)
+        .single();
+      
+      const requiredDeposit = 3000; // Use constant or fetch from settings
+      return walletData?.balance >= requiredDeposit;
+    }
+    
+    return false;
+  } catch (error) {
+    console.error("Error checking driver eligibility:", error);
+    return false;
   }
 };

@@ -12,11 +12,12 @@ import {
   subscribeToDriverRegistration
 } from '@/lib/utils/driverUtils';
 import { getAvailableRideRequests, subscribeToNearbyRides } from '@/lib/utils/rideUtils';
+import { getWalletBalance } from '@/lib/utils/walletUtils';
 import { DriverDocument } from '@/lib/types';
 import { 
   UserRound, CarFront, Bike, Search, MapPin, Loader2, 
   ShieldCheck, Wallet, Calendar, Clock, DollarSign, 
-  ArrowLeft, Check, AlertTriangle, CheckCircle, Star
+  ArrowLeft, Check, AlertTriangle, CheckCircle, Star, FileText
 } from 'lucide-react';
 
 const OfficialDriver: React.FC = () => {
@@ -25,6 +26,7 @@ const OfficialDriver: React.FC = () => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [registrationStatus, setRegistrationStatus] = useState<string | null>(null);
+  const [hasSubmittedApplication, setHasSubmittedApplication] = useState(false);
   const [nearbyRides, setNearbyRides] = useState<any[]>([]);
   const [hasDeposit, setHasDeposit] = useState(false);
   const [showRegistrationForm, setShowRegistrationForm] = useState(false);
@@ -38,6 +40,8 @@ const OfficialDriver: React.FC = () => {
     const { status, details } = await getDriverRegistrationStatus(user.id);
     console.log("Driver status:", status, "Details:", details);
     
+    // Check if user has submitted an application
+    setHasSubmittedApplication(!!status);
     setRegistrationStatus(status);
     
     if (details) {
@@ -52,6 +56,12 @@ const OfficialDriver: React.FC = () => {
           duration: 5000
         });
       }
+    }
+
+    // Get wallet balance
+    if (user?.id) {
+      const { balance } = await getWalletBalance(user.id);
+      setWalletBalance(balance);
     }
     
     setLoading(false);
@@ -240,6 +250,7 @@ const OfficialDriver: React.FC = () => {
           duration: 5000
         });
         setRegistrationStatus('pending');
+        setHasSubmittedApplication(true);
         setShowRegistrationForm(false);
       } else {
         throw new Error(error || "Failed to submit application");
@@ -318,7 +329,7 @@ const OfficialDriver: React.FC = () => {
               </div>
               <Button 
                 size="sm" 
-                className="bg-zerodrive-purple hover:bg-violet-800" 
+                className="bg-black hover:bg-gray-800 text-white" 
                 onClick={() => handleRideAccept(ride.id)}
               >
                 Accept
@@ -364,100 +375,36 @@ const OfficialDriver: React.FC = () => {
     return null;
   };
 
+  // NEW UI based on the provided images
   const renderDriverBenefits = () => {
     return (
       <div className="mb-8">
         <h2 className="text-2xl font-bold mb-6">Benefits of becoming a ZeroDrive Driver</h2>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="p-5 bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
-            <div className="flex items-center mb-3">
-              <div className="h-12 w-12 rounded-xl bg-green-100 flex items-center justify-center mr-3">
-                <DollarSign className="h-6 w-6 text-green-600" />
-              </div>
-              <h3 className="text-lg font-medium">Competitive Earnings</h3>
-            </div>
-            <p className="text-gray-600">Earn up to 80% of each fare with flexible working hours and keep more of what you earn.</p>
-            <ul className="mt-3 space-y-1">
-              <li className="flex items-center text-sm text-gray-600">
-                <Check className="h-4 w-4 text-green-500 mr-2" /> Daily payouts available
-              </li>
-              <li className="flex items-center text-sm text-gray-600">
-                <Check className="h-4 w-4 text-green-500 mr-2" /> No hidden fees
-              </li>
-            </ul>
+        <div className="space-y-4">
+          <div className="p-4 border-l-4 border-green-500 bg-white rounded-lg flex items-center">
+            <Check className="text-green-500 mr-3" size={24} />
+            <p className="font-medium">Priority access to high-value ride requests</p>
           </div>
           
-          <div className="p-5 bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
-            <div className="flex items-center mb-3">
-              <div className="h-12 w-12 rounded-xl bg-blue-100 flex items-center justify-center mr-3">
-                <Calendar className="h-6 w-6 text-blue-600" />
-              </div>
-              <h3 className="text-lg font-medium">Flexible Schedule</h3>
-            </div>
-            <p className="text-gray-600">Work whenever you want with no minimum hours required. Be your own boss.</p>
-            <ul className="mt-3 space-y-1">
-              <li className="flex items-center text-sm text-gray-600">
-                <Check className="h-4 w-4 text-green-500 mr-2" /> Drive when it works for you
-              </li>
-              <li className="flex items-center text-sm text-gray-600">
-                <Check className="h-4 w-4 text-green-500 mr-2" /> No schedules or shifts
-              </li>
-            </ul>
+          <div className="p-4 border-l-4 border-green-500 bg-white rounded-lg flex items-center">
+            <Check className="text-green-500 mr-3" size={24} />
+            <p className="font-medium">Lower platform fees (0.5% vs 1% for regular drivers)</p>
           </div>
           
-          <div className="p-5 bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
-            <div className="flex items-center mb-3">
-              <div className="h-12 w-12 rounded-xl bg-purple-100 flex items-center justify-center mr-3">
-                <Clock className="h-6 w-6 text-purple-600" />
-              </div>
-              <h3 className="text-lg font-medium">Quick Payments</h3>
-            </div>
-            <p className="text-gray-600">Get paid immediately after completing rides with our secure payment system.</p>
-            <ul className="mt-3 space-y-1">
-              <li className="flex items-center text-sm text-gray-600">
-                <Check className="h-4 w-4 text-green-500 mr-2" /> Instant payments
-              </li>
-              <li className="flex items-center text-sm text-gray-600">
-                <Check className="h-4 w-4 text-green-500 mr-2" /> Multiple withdrawal options
-              </li>
-            </ul>
+          <div className="p-4 border-l-4 border-green-500 bg-white rounded-lg flex items-center">
+            <Check className="text-green-500 mr-3" size={24} />
+            <p className="font-medium">Exclusive driver insurance coverage</p>
           </div>
           
-          <div className="p-5 bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
-            <div className="flex items-center mb-3">
-              <div className="h-12 w-12 rounded-xl bg-amber-100 flex items-center justify-center mr-3">
-                <ShieldCheck className="h-6 w-6 text-amber-600" />
-              </div>
-              <h3 className="text-lg font-medium">Safety & Support</h3>
-            </div>
-            <p className="text-gray-600">24/7 support team and driver safety features to ensure a secure experience.</p>
-            <ul className="mt-3 space-y-1">
-              <li className="flex items-center text-sm text-gray-600">
-                <Check className="h-4 w-4 text-green-500 mr-2" /> Emergency assistance
-              </li>
-              <li className="flex items-center text-sm text-gray-600">
-                <Check className="h-4 w-4 text-green-500 mr-2" /> Dedicated driver support
-              </li>
-            </ul>
+          <div className="p-4 border-l-4 border-green-500 bg-white rounded-lg flex items-center">
+            <Check className="text-green-500 mr-3" size={24} />
+            <p className="font-medium">Daily payment settlement</p>
           </div>
           
-          <div className="p-5 bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
-            <div className="flex items-center mb-3">
-              <div className="h-12 w-12 rounded-xl bg-indigo-100 flex items-center justify-center mr-3">
-                <Star className="h-6 w-6 text-indigo-600" />
-              </div>
-              <h3 className="text-lg font-medium">Build Your Reputation</h3>
-            </div>
-            <p className="text-gray-600">Increase your earnings with great ratings from passengers.</p>
-            <ul className="mt-3 space-y-1">
-              <li className="flex items-center text-sm text-gray-600">
-                <Check className="h-4 w-4 text-green-500 mr-2" /> Rating system
-              </li>
-              <li className="flex items-center text-sm text-gray-600">
-                <Check className="h-4 w-4 text-green-500 mr-2" /> Tips from satisfied passengers
-              </li>
-            </ul>
+          <div className="p-4 border-l-4 border-green-500 bg-white rounded-lg flex items-center">
+            <Check className="text-green-500 mr-3" size={24} />
+            <p className="font-medium">Official Zero Drive uniform and merchandise</p>
           </div>
         </div>
       </div>
@@ -466,71 +413,98 @@ const OfficialDriver: React.FC = () => {
 
   const renderDriverRequirements = () => {
     return (
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold mb-4">Requirements</h2>
+      <div className="mb-8 space-y-6">
+        <div>
+          <h2 className="text-xl font-bold mb-4">Driver Requirements</h2>
+          <ul className="space-y-3 pl-1">
+            <li className="flex items-start">
+              <div className="mt-1 mr-2 text-gray-400">•</div>
+              <p>Valid Pakistani driving license (at least 2 years old)</p>
+            </li>
+            <li className="flex items-start">
+              <div className="mt-1 mr-2 text-gray-400">•</div>
+              <p>Minimum age of 21 years</p>
+            </li>
+            <li className="flex items-start">
+              <div className="mt-1 mr-2 text-gray-400">•</div>
+              <p>Clear background check</p>
+            </li>
+            <li className="flex items-start">
+              <div className="mt-1 mr-2 text-gray-400">•</div>
+              <p>Smartphone with Android 8.0+ or iOS 13+</p>
+            </li>
+          </ul>
+        </div>
         
-        <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
-          <h3 className="text-lg font-medium mb-4 flex items-center">
-            <CheckCircle className="mr-2 text-green-500" size={20} />
-            Documents Required
-          </h3>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="p-4 rounded-lg border border-gray-100 bg-gray-50">
-              <div className="flex items-center mb-2">
-                <div className="h-6 w-6 rounded-full bg-green-100 flex items-center justify-center text-green-700 mr-2">✓</div>
-                <p className="font-medium">National ID Card (CNIC)</p>
-              </div>
-              <p className="text-sm text-gray-500 ml-8">Front and back photos of your valid CNIC</p>
-            </div>
-            
-            <div className="p-4 rounded-lg border border-gray-100 bg-gray-50">
-              <div className="flex items-center mb-2">
-                <div className="h-6 w-6 rounded-full bg-green-100 flex items-center justify-center text-green-700 mr-2">✓</div>
-                <p className="font-medium">Driver's License</p>
-              </div>
-              <p className="text-sm text-gray-500 ml-8">Front and back photos of your valid driver's license</p>
-            </div>
-            
-            <div className="p-4 rounded-lg border border-gray-100 bg-gray-50">
-              <div className="flex items-center mb-2">
-                <div className="h-6 w-6 rounded-full bg-green-100 flex items-center justify-center text-green-700 mr-2">✓</div>
-                <p className="font-medium">Vehicle Registration</p>
-              </div>
-              <p className="text-sm text-gray-500 ml-8">Photo of your vehicle registration document</p>
-            </div>
-            
-            <div className="p-4 rounded-lg border border-gray-100 bg-gray-50">
-              <div className="flex items-center mb-2">
-                <div className="h-6 w-6 rounded-full bg-green-100 flex items-center justify-center text-green-700 mr-2">✓</div>
-                <p className="font-medium">Profile Photo</p>
-              </div>
-              <p className="text-sm text-gray-500 ml-8">Clear photo of yourself</p>
-            </div>
-            
-            <div className="p-4 rounded-lg border border-gray-100 bg-gray-50">
-              <div className="flex items-center mb-2">
-                <div className="h-6 w-6 rounded-full bg-green-100 flex items-center justify-center text-green-700 mr-2">✓</div>
-                <p className="font-medium">Vehicle Photo</p>
-              </div>
-              <p className="text-sm text-gray-500 ml-8">Clear photo of your vehicle</p>
-            </div>
-            
-            <div className="p-4 rounded-lg border border-gray-100 bg-amber-50 border-amber-100">
-              <div className="flex items-center mb-2">
-                <div className="h-6 w-6 rounded-full bg-amber-200 flex items-center justify-center text-amber-700 mr-2">
-                  <Wallet size={12} />
-                </div>
-                <p className="font-medium text-amber-800">Security Deposit: Rs 3,000</p>
-              </div>
-              <p className="text-sm text-amber-600 ml-8">Required after approval (refundable)</p>
-            </div>
+        <div>
+          <h2 className="text-xl font-bold mb-4">Vehicle Requirements</h2>
+          <ul className="space-y-3 pl-1">
+            <li className="flex items-start">
+              <div className="mt-1 mr-2 text-gray-400">•</div>
+              <p>Model year 2015 or newer</p>
+            </li>
+            <li className="flex items-start">
+              <div className="mt-1 mr-2 text-gray-400">•</div>
+              <p>4-door vehicle in excellent condition</p>
+            </li>
+            <li className="flex items-start">
+              <div className="mt-1 mr-2 text-gray-400">•</div>
+              <p>Valid registration and insurance</p>
+            </li>
+            <li className="flex items-start">
+              <div className="mt-1 mr-2 text-gray-400">•</div>
+              <p>Pass vehicle inspection</p>
+            </li>
+          </ul>
+        </div>
+      </div>
+    );
+  };
+
+  const renderRequiredDocuments = () => {
+    return (
+      <div className="mb-8">
+        <h2 className="text-xl font-bold mb-4">Required Documents</h2>
+        
+        <ul className="space-y-3 pl-1">
+          <li className="flex items-start">
+            <div className="mt-1 mr-2 text-gray-400">•</div>
+            <p>CNIC (front and back)</p>
+          </li>
+          <li className="flex items-start">
+            <div className="mt-1 mr-2 text-gray-400">•</div>
+            <p>Driving license (front and back)</p>
+          </li>
+          <li className="flex items-start">
+            <div className="mt-1 mr-2 text-gray-400">•</div>
+            <p>Vehicle registration certificate</p>
+          </li>
+          <li className="flex items-start">
+            <div className="mt-1 mr-2 text-gray-400">•</div>
+            <p>Vehicle photos (front, back, sides)</p>
+          </li>
+          <li className="flex items-start">
+            <div className="mt-1 mr-2 text-gray-400">•</div>
+            <p>Selfie photo holding CNIC</p>
+          </li>
+          <li className="flex items-start">
+            <div className="mt-1 mr-2 text-gray-400">•</div>
+            <p>Clear profile photo for your driver account</p>
+          </li>
+        </ul>
+        
+        <div className="mt-6 bg-amber-50 border border-amber-200 rounded-lg p-4">
+          <div className="flex items-start">
+            <AlertTriangle className="text-amber-600 mr-2 mt-1" size={16} />
+            <p className="text-amber-700 text-sm">
+              The application process takes approximately 3-5 business days. You'll need to visit our office for documentation verification and vehicle inspection.
+            </p>
           </div>
         </div>
       </div>
     );
   };
-  
+
   const renderRegistrationStatus = () => {
     if (loading) {
       return (
@@ -598,6 +572,13 @@ const OfficialDriver: React.FC = () => {
                   <p className="text-sm font-medium">Bike</p>
                 </div>
               </div>
+              
+              <Button
+                className="w-full bg-black text-white hover:bg-gray-800 py-3 text-lg rounded-xl"
+                onClick={() => navigate('/')}
+              >
+                Start Accepting Rides
+              </Button>
             </div>
             
             {hasDeposit ? renderAvailableRides() : (
@@ -611,7 +592,7 @@ const OfficialDriver: React.FC = () => {
                 </p>
                 <Button 
                   onClick={() => navigate('/wallet')} 
-                  className="bg-zerodrive-purple"
+                  className="bg-black text-white hover:bg-gray-800"
                 >
                   Go to Wallet
                 </Button>
@@ -652,21 +633,38 @@ const OfficialDriver: React.FC = () => {
       default:
         return (
           <div className="p-6">
+            <div className="bg-black text-white p-6 -mx-6 -mt-6 mb-8">
+              <h1 className="text-3xl font-bold">Official Driver Program</h1>
+              <p className="mt-2 text-gray-300">Join our certified driver program</p>
+            </div>
+            
+            <div className="mb-8">
+              <h2 className="text-2xl font-bold mb-4">Become an Official Driver</h2>
+              <p className="text-gray-600 mb-6">
+                The Official Driver Program gives you access to premium ride requests, higher earnings, and exclusive benefits.
+              </p>
+            </div>
+            
             {renderDriverBenefits()}
             {renderDriverRequirements()}
+            {renderRequiredDocuments()}
             
             <div className="text-center bg-white rounded-xl p-8 border border-gray-100 shadow-sm">
               <Button 
                 size="lg"
-                className="bg-black text-white hover:bg-gray-800 px-8 py-6 text-lg"
+                className="w-full bg-black text-white hover:bg-gray-800 px-8 py-6 text-lg flex items-center justify-center"
                 onClick={() => setShowRegistrationForm(true)}
+                disabled={hasSubmittedApplication}
               >
-                Submit Driver Application
+                <FileText className="mr-2" size={20} />
+                {hasSubmittedApplication ? 'Application Already Submitted' : 'Submit Documents'}
               </Button>
               
-              <p className="mt-4 text-sm text-gray-500">
-                Already submitted an application? <span className="text-blue-600 cursor-pointer" onClick={() => navigate('/')}>Return to Homepage</span>
-              </p>
+              {hasSubmittedApplication && (
+                <p className="mt-4 text-sm text-gray-500">
+                  You have already submitted an application. <span className="text-blue-600 cursor-pointer" onClick={() => navigate('/')}>Return to Homepage</span>
+                </p>
+              )}
             </div>
           </div>
         );
@@ -675,16 +673,12 @@ const OfficialDriver: React.FC = () => {
   
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="bg-zerodrive-purple text-white p-6">
-        <button onClick={() => navigate('/')} className="mb-4 flex items-center text-white">
-          <ArrowLeft size={20} className="mr-2" />
-          Back
-        </button>
-        <h1 className="text-3xl font-bold">Official Driver Registration</h1>
-        <p className="mt-2">Join our team of professional drivers and start earning today.</p>
-      </div>
+      <button onClick={() => navigate('/')} className="absolute top-4 left-4 flex items-center text-white z-10">
+        <ArrowLeft size={20} className="mr-2" />
+        Back
+      </button>
       
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-4 pb-8">
         {renderRegistrationStatus()}
       </div>
     </div>

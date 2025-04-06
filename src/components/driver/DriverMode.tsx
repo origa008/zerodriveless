@@ -12,7 +12,8 @@ import {
   subscribeToNewRideRequests,
   acceptRideRequest as acceptRide
 } from '@/lib/utils/rideUtils';
-import { getDriverRegistrationStatus } from '@/lib/utils/driverUtils';
+import { getDriverRegistrationStatus, isEligibleDriver } from '@/lib/utils/driverUtils';
+import { getWalletBalance, subscribeToWalletBalance } from '@/lib/utils/walletUtils';
 
 interface DriverModeProps {
   isOnline: boolean;
@@ -27,7 +28,8 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
     calculateBaseFare, 
     acceptRideRequest,
     setCurrentRide,
-    walletBalance,
+    walletBalance, 
+    setWalletBalance,
     pendingRideRequests, 
     setPendingRideRequests
   } = useRide();
@@ -39,23 +41,55 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [driverStatus, setDriverStatus] = useState<string | null>(null);
   const [hasDeposit, setHasDeposit] = useState(false);
+  const [isEligible, setIsEligible] = useState(false);
 
-  // Check driver registration status on component mount
+  // Check driver eligibility and registration status 
   useEffect(() => {
-    if (user?.id) {
-      const checkDriverStatus = async () => {
-        const { status, isApproved, details } = await getDriverRegistrationStatus(user.id);
-        console.log("Driver status check:", status, isApproved, details?.has_sufficient_deposit);
-        setDriverStatus(status);
-        setHasDeposit(details?.has_sufficient_deposit || false);
-      };
+    const checkDriverEligibility = async () => {
+      if (!user?.id) return;
       
-      checkDriverStatus();
-    }
-  }, [user?.id, walletBalance]);
+      setIsLoading(true);
+      try {
+        // Check driver status
+        const { status, isApproved, details } = await getDriverRegistrationStatus(user.id);
+        setDriverStatus(status);
+        
+        // Update has deposit status
+        const hasEnoughDeposit = details?.has_sufficient_deposit || false;
+        setHasDeposit(hasEnoughDeposit);
+        
+        // Check wallet balance
+        const { balance } = await getWalletBalance(user.id);
+        setWalletBalance(balance);
+        
+        // Set overall eligibility
+        setIsEligible(await isEligibleDriver(user.id));
+      } catch (error) {
+        console.error("Error checking driver eligibility:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    checkDriverEligibility();
+    
+    // Subscribe to wallet balance updates
+    const unsubscribeWallet = user?.id 
+      ? subscribeToWalletBalance(user.id, (newBalance) => {
+          setWalletBalance(newBalance);
+          // Re-check eligibility when balance changes
+          checkDriverEligibility();
+        })
+      : undefined;
+      
+    return () => {
+      if (unsubscribeWallet) unsubscribeWallet();
+    };
+  }, [user?.id, setWalletBalance]);
 
+  // Load available ride requests and subscribe to new ones when going online
   useEffect(() => {
-    if (isOnline && user?.id && driverStatus === 'approved' && hasDeposit) {
+    if (isOnline && user?.id && isEligible) {
       setIsLoading(true);
       
       const fetchRideRequests = async () => {
@@ -97,7 +131,7 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
           paymentMethod: newRide.payment_method
         };
         
-        setPendingRideRequests([...pendingRideRequests, formattedRide]);
+        setPendingRideRequests(prevRides => [...prevRides, formattedRide]);
         
         toast({
           title: "New Ride Request",
@@ -108,7 +142,7 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
       
       return () => unsubscribe();
     }
-  }, [isOnline, user?.id, driverStatus, hasDeposit, setPendingRideRequests, toast, pendingRideRequests]);
+  }, [isOnline, user?.id, isEligible, setPendingRideRequests, toast]);
 
   const handleGoOnline = () => {
     if (driverStatus !== 'approved') {
@@ -262,27 +296,27 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
           <Button 
             className="w-full bg-black text-white hover:bg-gray-800 py-6 text-xl rounded-xl"
             onClick={handleGoOnline}
-            disabled={user?.driverStatus !== 'approved' || !user?.hasDriverDeposit}
+            disabled={!isEligible}
           >
-            {user?.driverStatus === 'approved' && user?.hasDriverDeposit ? 'Go Online' : 
-             user?.driverStatus === 'approved' ? 'Add Deposit to Start' : 'Complete Driver Registration'}
+            {isEligible ? 'Go Online' : 
+             driverStatus === 'approved' ? 'Add Deposit to Start' : 'Complete Driver Registration'}
           </Button>
           
-          {(user?.driverStatus !== 'approved' || !user?.hasDriverDeposit) && (
+          {!isEligible && (
             <div className="mt-4 text-center">
               <p className="text-sm text-gray-600 mb-2">
-                {user?.driverStatus !== 'approved' 
+                {driverStatus !== 'approved' 
                   ? 'You need to complete driver registration first.' 
                   : 'You need to add the required deposit to your wallet.'}
               </p>
               <Button 
                 variant="outline" 
                 size="sm"
-                onClick={() => user?.driverStatus !== 'approved' 
+                onClick={() => driverStatus !== 'approved' 
                   ? navigate('/official-driver') 
                   : navigate('/wallet')}
               >
-                {user?.driverStatus !== 'approved' ? 'Register as Driver' : 'Add Funds'}
+                {driverStatus !== 'approved' ? 'Register as Driver' : 'Add Funds'}
               </Button>
             </div>
           )}
@@ -343,7 +377,7 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
                   
                   <div className="flex space-x-2">
                     <Button 
-                      className="flex-1"
+                      className="flex-1 bg-black hover:bg-gray-800"
                       onClick={() => handleShowBid(request)}
                     >
                       View & Accept
@@ -374,6 +408,7 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
               <p className="text-gray-600 mb-2">Vehicle: {selectedRide.rideOption.name}</p>
               <p className="text-gray-600 mb-2">Passenger Bid: {selectedRide.price} RS</p>
               <p className="text-gray-600 mb-2">Your Profit: ~{Math.round(selectedRide.price * 0.8)} RS</p>
+              <p className="text-gray-600 mb-2">Payment Method: {selectedRide.paymentMethod === 'wallet' ? 'Wallet (automatic)' : 'Cash'}</p>
             </div>
             
             <div className="mb-6">
