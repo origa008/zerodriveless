@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -11,6 +12,7 @@ import {
   subscribeToNewRideRequests,
   acceptRideRequest as acceptRide
 } from '@/lib/utils/rideUtils';
+import { getDriverRegistrationStatus } from '@/lib/utils/driverUtils';
 
 interface DriverModeProps {
   isOnline: boolean;
@@ -35,9 +37,25 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
   const [bidAmount, setBidAmount] = useState<number>(0);
   const [showContactModal, setShowContactModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [driverStatus, setDriverStatus] = useState<string | null>(null);
+  const [hasDeposit, setHasDeposit] = useState(false);
+
+  // Check driver registration status on component mount
+  useEffect(() => {
+    if (user?.id) {
+      const checkDriverStatus = async () => {
+        const { status, isApproved, details } = await getDriverRegistrationStatus(user.id);
+        console.log("Driver status check:", status, isApproved, details?.has_sufficient_deposit);
+        setDriverStatus(status);
+        setHasDeposit(details?.has_sufficient_deposit || false);
+      };
+      
+      checkDriverStatus();
+    }
+  }, [user?.id, walletBalance]);
 
   useEffect(() => {
-    if (isOnline && user?.id && user.driverStatus === 'approved' && user.hasDriverDeposit) {
+    if (isOnline && user?.id && driverStatus === 'approved' && hasDeposit) {
       setIsLoading(true);
       
       const fetchRideRequests = async () => {
@@ -79,8 +97,7 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
           paymentMethod: newRide.payment_method
         };
         
-        const updatedRides = [...pendingRideRequests, formattedRide];
-        setPendingRideRequests(updatedRides);
+        setPendingRideRequests([...pendingRideRequests, formattedRide]);
         
         toast({
           title: "New Ride Request",
@@ -91,15 +108,15 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
       
       return () => unsubscribe();
     }
-  }, [isOnline, user?.id, user?.driverStatus, user?.hasDriverDeposit, setPendingRideRequests, toast, pendingRideRequests]);
+  }, [isOnline, user?.id, driverStatus, hasDeposit, setPendingRideRequests, toast, pendingRideRequests]);
 
   const handleGoOnline = () => {
-    if (user?.driverStatus !== 'approved') {
+    if (driverStatus !== 'approved') {
       navigate('/official-driver');
       return;
     }
     
-    if (!user?.hasDriverDeposit) {
+    if (!hasDeposit) {
       toast({
         title: "Deposit required",
         description: "You need to add Rs. 3,000 to your wallet before going online",
@@ -194,7 +211,9 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
   };
 
   const renderDriverStatusMessage = () => {
-    if (!user?.isVerifiedDriver) {
+    if (!user) return null;
+    
+    if (driverStatus === null || driverStatus === undefined) {
       return (
         <div className="flex items-center mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
           <AlertTriangle className="text-amber-600 mr-2" />
@@ -203,7 +222,7 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
       );
     }
     
-    if (user?.driverStatus === 'pending') {
+    if (driverStatus === 'pending') {
       return (
         <div className="flex items-center mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
           <AlertTriangle className="text-blue-600 mr-2" />
@@ -212,7 +231,7 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
       );
     }
     
-    if (user?.driverStatus === 'approved' && !user?.hasDriverDeposit) {
+    if (driverStatus === 'approved' && !hasDeposit) {
       return (
         <div className="flex items-center mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
           <AlertTriangle className="text-amber-600 mr-2" />

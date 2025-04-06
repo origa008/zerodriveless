@@ -13,7 +13,11 @@ import {
 } from '@/lib/utils/driverUtils';
 import { getAvailableRideRequests, subscribeToNearbyRides } from '@/lib/utils/rideUtils';
 import { DriverDocument } from '@/lib/types';
-import { UserRound, CarFront, Bike, Search, MapPin, Loader2, ShieldCheck, Wallet, Calendar, Clock, DollarSign, ArrowLeft } from 'lucide-react';
+import { 
+  UserRound, CarFront, Bike, Search, MapPin, Loader2, 
+  ShieldCheck, Wallet, Calendar, Clock, DollarSign, 
+  ArrowLeft, Check, AlertTriangle, CheckCircle, Star
+} from 'lucide-react';
 
 const OfficialDriver: React.FC = () => {
   const navigate = useNavigate();
@@ -24,6 +28,8 @@ const OfficialDriver: React.FC = () => {
   const [nearbyRides, setNearbyRides] = useState<any[]>([]);
   const [hasDeposit, setHasDeposit] = useState(false);
   const [showRegistrationForm, setShowRegistrationForm] = useState(false);
+  const [walletBalance, setWalletBalance] = useState<number>(0);
+  const [depositAmount, setDepositAmount] = useState<number>(3000);
   
   const checkRegistrationStatus = useCallback(async () => {
     if (!user?.id) return;
@@ -36,11 +42,22 @@ const OfficialDriver: React.FC = () => {
     
     if (details) {
       setHasDeposit(details.has_sufficient_deposit || false);
+      setDepositAmount(details.deposit_amount_required || 3000);
+      
+      // If wallet balance status changes, refresh the page
+      if (details.has_sufficient_deposit !== hasDeposit && status === 'approved') {
+        toast({
+          title: "Deposit Verified",
+          description: "Your driver deposit has been verified. You can now go online and accept rides!",
+          duration: 5000
+        });
+      }
     }
     
     setLoading(false);
-  }, [user?.id]);
+  }, [user?.id, hasDeposit, toast]);
   
+  // Check driver status on load and set up real-time subscription
   useEffect(() => {
     if (!user?.id) {
       toast({
@@ -107,6 +124,7 @@ const OfficialDriver: React.FC = () => {
     }
   }, [user?.id, registrationStatus, hasDeposit, toast]);
   
+  // Handle registration form submission
   const handleSubmit = async (data: DriverDocument) => {
     if (!user?.id) {
       toast({
@@ -208,7 +226,10 @@ const OfficialDriver: React.FC = () => {
           fullName: data.fullName,
           cnicNumber: data.cnicNumber,
           vehicleRegistrationNumber: data.vehicleRegistrationNumber,
-          vehicleType: data.vehicleType || 'Bike'
+          vehicleType: data.vehicleType || 'Bike',
+          vehicleModel: data.vehicleModel,
+          vehicleColor: data.vehicleColor,
+          driverLicenseNumber: data.driverLicenseNumber
         }
       );
       
@@ -219,7 +240,7 @@ const OfficialDriver: React.FC = () => {
           duration: 5000
         });
         setRegistrationStatus('pending');
-        navigate('/');
+        setShowRegistrationForm(false);
       } else {
         throw new Error(error || "Failed to submit application");
       }
@@ -237,7 +258,6 @@ const OfficialDriver: React.FC = () => {
   
   const handleClose = () => {
     setShowRegistrationForm(false);
-    navigate('/');
   };
   
   const handleRideAccept = (rideId: string) => {
@@ -294,7 +314,7 @@ const OfficialDriver: React.FC = () => {
             
             <div className="flex justify-between items-center">
               <div className="text-sm text-gray-500">
-                {ride.distance.toFixed(1)} km • {Math.round(ride.duration / 60)} min
+                {ride.distance?.toFixed(1)} km • {Math.round(ride.duration / 60)} min
               </div>
               <Button 
                 size="sm" 
@@ -314,10 +334,23 @@ const OfficialDriver: React.FC = () => {
     if (registrationStatus === 'approved' && !hasDeposit) {
       return (
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
-          <h3 className="font-medium text-amber-800">Deposit Required</h3>
+          <h3 className="font-medium text-amber-800 flex items-center">
+            <AlertTriangle className="mr-2" size={18} />
+            Deposit Required
+          </h3>
           <p className="text-amber-700 text-sm mt-1">
-            You need to add at least Rs. 3,000 to your wallet to start accepting rides.
+            You need to add at least Rs. {depositAmount.toLocaleString()} to your wallet to start accepting rides.
           </p>
+          <div className="mt-2 bg-amber-100 rounded-lg p-2">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-amber-800">Current Balance:</span>
+              <span className="font-medium text-amber-800">Rs. {walletBalance.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-amber-800">Required:</span>
+              <span className="font-medium text-amber-800">Rs. {depositAmount.toLocaleString()}</span>
+            </div>
+          </div>
           <Button 
             className="mt-3 bg-amber-600 hover:bg-amber-700" 
             size="sm"
@@ -337,28 +370,94 @@ const OfficialDriver: React.FC = () => {
         <h2 className="text-2xl font-bold mb-6">Benefits of becoming a ZeroDrive Driver</h2>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="p-4 bg-white rounded-xl border border-gray-100 shadow-sm">
-            <DollarSign className="h-10 w-10 p-2 bg-green-100 text-green-700 rounded-full mb-3" />
-            <h3 className="text-lg font-medium mb-1">Competitive Earnings</h3>
-            <p className="text-gray-600 text-sm">Earn up to 80% of each fare with flexible working hours</p>
+          <div className="p-5 bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+            <div className="flex items-center mb-3">
+              <div className="h-12 w-12 rounded-xl bg-green-100 flex items-center justify-center mr-3">
+                <DollarSign className="h-6 w-6 text-green-600" />
+              </div>
+              <h3 className="text-lg font-medium">Competitive Earnings</h3>
+            </div>
+            <p className="text-gray-600">Earn up to 80% of each fare with flexible working hours and keep more of what you earn.</p>
+            <ul className="mt-3 space-y-1">
+              <li className="flex items-center text-sm text-gray-600">
+                <Check className="h-4 w-4 text-green-500 mr-2" /> Daily payouts available
+              </li>
+              <li className="flex items-center text-sm text-gray-600">
+                <Check className="h-4 w-4 text-green-500 mr-2" /> No hidden fees
+              </li>
+            </ul>
           </div>
           
-          <div className="p-4 bg-white rounded-xl border border-gray-100 shadow-sm">
-            <Calendar className="h-10 w-10 p-2 bg-blue-100 text-blue-700 rounded-full mb-3" />
-            <h3 className="text-lg font-medium mb-1">Flexible Schedule</h3>
-            <p className="text-gray-600 text-sm">Work whenever you want, no minimum hours required</p>
+          <div className="p-5 bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+            <div className="flex items-center mb-3">
+              <div className="h-12 w-12 rounded-xl bg-blue-100 flex items-center justify-center mr-3">
+                <Calendar className="h-6 w-6 text-blue-600" />
+              </div>
+              <h3 className="text-lg font-medium">Flexible Schedule</h3>
+            </div>
+            <p className="text-gray-600">Work whenever you want with no minimum hours required. Be your own boss.</p>
+            <ul className="mt-3 space-y-1">
+              <li className="flex items-center text-sm text-gray-600">
+                <Check className="h-4 w-4 text-green-500 mr-2" /> Drive when it works for you
+              </li>
+              <li className="flex items-center text-sm text-gray-600">
+                <Check className="h-4 w-4 text-green-500 mr-2" /> No schedules or shifts
+              </li>
+            </ul>
           </div>
           
-          <div className="p-4 bg-white rounded-xl border border-gray-100 shadow-sm">
-            <Clock className="h-10 w-10 p-2 bg-purple-100 text-purple-700 rounded-full mb-3" />
-            <h3 className="text-lg font-medium mb-1">Quick Payments</h3>
-            <p className="text-gray-600 text-sm">Get paid immediately after completing rides</p>
+          <div className="p-5 bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+            <div className="flex items-center mb-3">
+              <div className="h-12 w-12 rounded-xl bg-purple-100 flex items-center justify-center mr-3">
+                <Clock className="h-6 w-6 text-purple-600" />
+              </div>
+              <h3 className="text-lg font-medium">Quick Payments</h3>
+            </div>
+            <p className="text-gray-600">Get paid immediately after completing rides with our secure payment system.</p>
+            <ul className="mt-3 space-y-1">
+              <li className="flex items-center text-sm text-gray-600">
+                <Check className="h-4 w-4 text-green-500 mr-2" /> Instant payments
+              </li>
+              <li className="flex items-center text-sm text-gray-600">
+                <Check className="h-4 w-4 text-green-500 mr-2" /> Multiple withdrawal options
+              </li>
+            </ul>
           </div>
           
-          <div className="p-4 bg-white rounded-xl border border-gray-100 shadow-sm">
-            <ShieldCheck className="h-10 w-10 p-2 bg-amber-100 text-amber-700 rounded-full mb-3" />
-            <h3 className="text-lg font-medium mb-1">Safety & Support</h3>
-            <p className="text-gray-600 text-sm">24/7 support team and safety features</p>
+          <div className="p-5 bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+            <div className="flex items-center mb-3">
+              <div className="h-12 w-12 rounded-xl bg-amber-100 flex items-center justify-center mr-3">
+                <ShieldCheck className="h-6 w-6 text-amber-600" />
+              </div>
+              <h3 className="text-lg font-medium">Safety & Support</h3>
+            </div>
+            <p className="text-gray-600">24/7 support team and driver safety features to ensure a secure experience.</p>
+            <ul className="mt-3 space-y-1">
+              <li className="flex items-center text-sm text-gray-600">
+                <Check className="h-4 w-4 text-green-500 mr-2" /> Emergency assistance
+              </li>
+              <li className="flex items-center text-sm text-gray-600">
+                <Check className="h-4 w-4 text-green-500 mr-2" /> Dedicated driver support
+              </li>
+            </ul>
+          </div>
+          
+          <div className="p-5 bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+            <div className="flex items-center mb-3">
+              <div className="h-12 w-12 rounded-xl bg-indigo-100 flex items-center justify-center mr-3">
+                <Star className="h-6 w-6 text-indigo-600" />
+              </div>
+              <h3 className="text-lg font-medium">Build Your Reputation</h3>
+            </div>
+            <p className="text-gray-600">Increase your earnings with great ratings from passengers.</p>
+            <ul className="mt-3 space-y-1">
+              <li className="flex items-center text-sm text-gray-600">
+                <Check className="h-4 w-4 text-green-500 mr-2" /> Rating system
+              </li>
+              <li className="flex items-center text-sm text-gray-600">
+                <Check className="h-4 w-4 text-green-500 mr-2" /> Tips from satisfied passengers
+              </li>
+            </ul>
           </div>
         </div>
       </div>
@@ -371,54 +470,62 @@ const OfficialDriver: React.FC = () => {
         <h2 className="text-2xl font-bold mb-4">Requirements</h2>
         
         <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
-          <h3 className="text-lg font-medium mb-3">Documents Required</h3>
+          <h3 className="text-lg font-medium mb-4 flex items-center">
+            <CheckCircle className="mr-2 text-green-500" size={20} />
+            Documents Required
+          </h3>
           
-          <ul className="space-y-3">
-            <li className="flex items-start">
-              <div className="h-5 w-5 rounded-full bg-green-100 flex items-center justify-center text-green-700 mr-2 mt-0.5">✓</div>
-              <div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-4 rounded-lg border border-gray-100 bg-gray-50">
+              <div className="flex items-center mb-2">
+                <div className="h-6 w-6 rounded-full bg-green-100 flex items-center justify-center text-green-700 mr-2">✓</div>
                 <p className="font-medium">National ID Card (CNIC)</p>
-                <p className="text-sm text-gray-500">Front and back photos of your valid CNIC</p>
               </div>
-            </li>
-            <li className="flex items-start">
-              <div className="h-5 w-5 rounded-full bg-green-100 flex items-center justify-center text-green-700 mr-2 mt-0.5">✓</div>
-              <div>
+              <p className="text-sm text-gray-500 ml-8">Front and back photos of your valid CNIC</p>
+            </div>
+            
+            <div className="p-4 rounded-lg border border-gray-100 bg-gray-50">
+              <div className="flex items-center mb-2">
+                <div className="h-6 w-6 rounded-full bg-green-100 flex items-center justify-center text-green-700 mr-2">✓</div>
                 <p className="font-medium">Driver's License</p>
-                <p className="text-sm text-gray-500">Front and back photos of your valid driver's license</p>
               </div>
-            </li>
-            <li className="flex items-start">
-              <div className="h-5 w-5 rounded-full bg-green-100 flex items-center justify-center text-green-700 mr-2 mt-0.5">✓</div>
-              <div>
+              <p className="text-sm text-gray-500 ml-8">Front and back photos of your valid driver's license</p>
+            </div>
+            
+            <div className="p-4 rounded-lg border border-gray-100 bg-gray-50">
+              <div className="flex items-center mb-2">
+                <div className="h-6 w-6 rounded-full bg-green-100 flex items-center justify-center text-green-700 mr-2">✓</div>
                 <p className="font-medium">Vehicle Registration</p>
-                <p className="text-sm text-gray-500">Photo of your vehicle registration document</p>
               </div>
-            </li>
-            <li className="flex items-start">
-              <div className="h-5 w-5 rounded-full bg-green-100 flex items-center justify-center text-green-700 mr-2 mt-0.5">✓</div>
-              <div>
+              <p className="text-sm text-gray-500 ml-8">Photo of your vehicle registration document</p>
+            </div>
+            
+            <div className="p-4 rounded-lg border border-gray-100 bg-gray-50">
+              <div className="flex items-center mb-2">
+                <div className="h-6 w-6 rounded-full bg-green-100 flex items-center justify-center text-green-700 mr-2">✓</div>
                 <p className="font-medium">Profile Photo</p>
-                <p className="text-sm text-gray-500">Clear photo of yourself</p>
               </div>
-            </li>
-            <li className="flex items-start">
-              <div className="h-5 w-5 rounded-full bg-green-100 flex items-center justify-center text-green-700 mr-2 mt-0.5">✓</div>
-              <div>
+              <p className="text-sm text-gray-500 ml-8">Clear photo of yourself</p>
+            </div>
+            
+            <div className="p-4 rounded-lg border border-gray-100 bg-gray-50">
+              <div className="flex items-center mb-2">
+                <div className="h-6 w-6 rounded-full bg-green-100 flex items-center justify-center text-green-700 mr-2">✓</div>
                 <p className="font-medium">Vehicle Photo</p>
-                <p className="text-sm text-gray-500">Clear photo of your vehicle</p>
               </div>
-            </li>
-            <li className="flex items-start">
-              <div className="h-5 w-5 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 mr-2 mt-0.5">
-                <Wallet size={12} />
+              <p className="text-sm text-gray-500 ml-8">Clear photo of your vehicle</p>
+            </div>
+            
+            <div className="p-4 rounded-lg border border-gray-100 bg-amber-50 border-amber-100">
+              <div className="flex items-center mb-2">
+                <div className="h-6 w-6 rounded-full bg-amber-200 flex items-center justify-center text-amber-700 mr-2">
+                  <Wallet size={12} />
+                </div>
+                <p className="font-medium text-amber-800">Security Deposit: Rs 3,000</p>
               </div>
-              <div>
-                <p className="font-medium">Security Deposit: Rs 3,000</p>
-                <p className="text-sm text-gray-500">Required after approval (refundable)</p>
-              </div>
-            </li>
-          </ul>
+              <p className="text-sm text-amber-600 ml-8">Required after approval (refundable)</p>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -448,42 +555,63 @@ const OfficialDriver: React.FC = () => {
     switch (registrationStatus) {
       case 'pending':
         return (
-          <div className="p-8 text-center">
-            <h2 className="text-2xl font-bold mb-4">Application Under Review</h2>
-            <p className="text-gray-600 mb-6">
-              Your driver registration is being reviewed by our team. This process usually takes 1-2 business days.
-            </p>
-            <Button onClick={() => navigate('/')}>Return to Home</Button>
+          <div className="p-8">
+            <div className="bg-white rounded-xl p-8 border border-gray-100 shadow-sm text-center mb-6">
+              <div className="h-16 w-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Loader2 className="h-8 w-8 text-blue-600 animate-spin" />
+              </div>
+              <h2 className="text-2xl font-bold mb-4">Application Under Review</h2>
+              <p className="text-gray-600 mb-6">
+                Your driver registration is being reviewed by our team. This process usually takes 1-2 business days.
+              </p>
+              <div className="p-4 bg-blue-50 rounded-lg text-blue-700 mb-6">
+                <p className="font-medium">We'll notify you when your application is approved!</p>
+                <p className="text-sm mt-2">Meanwhile, you can continue using ZeroDrive as a passenger.</p>
+              </div>
+              <Button onClick={() => navigate('/')}>Return to Home</Button>
+            </div>
           </div>
         );
       case 'approved':
         return (
           <div className="p-6">
-            <h2 className="text-2xl font-bold mb-4 text-green-600">Driver Account Approved</h2>
-            
-            {renderDepositAlert()}
-            
-            <div className="flex gap-4 mb-6">
-              <div className="flex-1 bg-violet-50 rounded-xl p-4 text-center">
-                <CarFront size={32} className="mx-auto mb-2 text-violet-700" />
-                <p className="text-sm font-medium">Auto</p>
+            <div className="mb-6 bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
+              <div className="flex items-center mb-4">
+                <div className="h-12 w-12 rounded-full bg-green-100 flex items-center justify-center mr-3">
+                  <CheckCircle className="h-7 w-7 text-green-600" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-green-600">Driver Account Approved</h2>
+                  <p className="text-sm text-gray-600">Your application has been approved by our team</p>
+                </div>
               </div>
-              <div className="flex-1 bg-violet-50 rounded-xl p-4 text-center">
-                <Bike size={32} className="mx-auto mb-2 text-violet-700" />
-                <p className="text-sm font-medium">Bike</p>
+              
+              {renderDepositAlert()}
+              
+              <div className="flex gap-4 mb-6">
+                <div className="flex-1 bg-violet-50 rounded-xl p-4 text-center">
+                  <CarFront size={32} className="mx-auto mb-2 text-violet-700" />
+                  <p className="text-sm font-medium">Auto</p>
+                </div>
+                <div className="flex-1 bg-violet-50 rounded-xl p-4 text-center">
+                  <Bike size={32} className="mx-auto mb-2 text-violet-700" />
+                  <p className="text-sm font-medium">Bike</p>
+                </div>
               </div>
             </div>
             
-            {hasDeposit && renderAvailableRides()}
-            
-            {!hasDeposit && (
-              <div className="text-center py-6">
-                <p className="text-gray-600">
+            {hasDeposit ? renderAvailableRides() : (
+              <div className="text-center py-6 bg-white rounded-xl border border-gray-100 shadow-sm">
+                <Wallet className="h-12 w-12 mx-auto mb-3 text-amber-500" />
+                <p className="text-gray-600 font-medium">
                   Add the required deposit to start receiving ride requests.
+                </p>
+                <p className="text-sm text-gray-500 mb-4">
+                  Deposit is fully refundable when you leave the platform.
                 </p>
                 <Button 
                   onClick={() => navigate('/wallet')} 
-                  className="mt-4 bg-zerodrive-purple"
+                  className="bg-zerodrive-purple"
                 >
                   Go to Wallet
                 </Button>
@@ -494,11 +622,31 @@ const OfficialDriver: React.FC = () => {
       case 'rejected':
         return (
           <div className="p-8 text-center">
-            <h2 className="text-2xl font-bold mb-4 text-red-600">Application Rejected</h2>
-            <p className="text-gray-600 mb-6">
-              We're sorry, but your driver application has been rejected. Please contact our support team for more information.
-            </p>
-            <Button onClick={() => navigate('/')}>Return to Home</Button>
+            <div className="bg-white rounded-xl p-8 border border-gray-100 shadow-sm mb-6">
+              <div className="h-16 w-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <AlertTriangle className="h-8 w-8 text-red-600" />
+              </div>
+              <h2 className="text-2xl font-bold mb-4 text-red-600">Application Rejected</h2>
+              <p className="text-gray-600 mb-6">
+                We're sorry, but your driver application has been rejected. Please contact our support team for more information.
+              </p>
+              <div className="p-4 bg-red-50 rounded-lg text-red-700 mb-6">
+                <p className="font-medium">Common reasons for rejection:</p>
+                <ul className="text-sm mt-2 text-left list-disc pl-5">
+                  <li>Incomplete or incorrect documentation</li>
+                  <li>Vehicle does not meet our requirements</li>
+                  <li>Issues with your driving history</li>
+                </ul>
+              </div>
+              <div className="flex flex-col space-y-3 sm:flex-row sm:space-y-0 sm:space-x-3">
+                <Button onClick={() => setShowRegistrationForm(true)} variant="outline">
+                  Resubmit Application
+                </Button>
+                <Button onClick={() => navigate('/')}>
+                  Return to Home
+                </Button>
+              </div>
+            </div>
           </div>
         );
       default:
@@ -507,7 +655,7 @@ const OfficialDriver: React.FC = () => {
             {renderDriverBenefits()}
             {renderDriverRequirements()}
             
-            <div className="text-center">
+            <div className="text-center bg-white rounded-xl p-8 border border-gray-100 shadow-sm">
               <Button 
                 size="lg"
                 className="bg-black text-white hover:bg-gray-800 px-8 py-6 text-lg"

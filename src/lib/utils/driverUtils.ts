@@ -16,6 +16,9 @@ export const uploadDriverDocument = async (
   userEmail?: string
 ): Promise<{ url: string | null; error: string | null }> => {
   try {
+    // Ensure storage bucket exists (or it will be created via SQL migration)
+    console.log(`Uploading ${documentType} for user ${userId}`);
+    
     // Get user email from session if not provided
     let email = userEmail;
     if (!email) {
@@ -25,9 +28,10 @@ export const uploadDriverDocument = async (
     // Create a unique filename with user identifiers
     const timestamp = Date.now();
     const fileExtension = file.name.split('.').pop();
-    const filename = `${userId}_${email}/${documentType}-${timestamp}.${fileExtension}`;
+    const filename = `${userId}_${documentType}_${timestamp}.${fileExtension}`;
     
     // Upload file to storage bucket
+    console.log("Uploading document to bucket:", filename);
     const { data: uploadData, error: uploadError } = await supabase
       .storage
       .from('driver_documents')
@@ -36,7 +40,10 @@ export const uploadDriverDocument = async (
         upsert: true
       });
     
-    if (uploadError) throw uploadError;
+    if (uploadError) {
+      console.error("Upload error:", uploadError);
+      throw uploadError;
+    }
     
     // Get public URL
     const { data: urlData } = supabase
@@ -48,6 +55,7 @@ export const uploadDriverDocument = async (
       throw new Error("Failed to get public URL");
     }
     
+    console.log("Document uploaded successfully:", urlData.publicUrl);
     return { url: urlData.publicUrl, error: null };
   } catch (error: any) {
     console.error("Document upload error:", error.message);
@@ -73,6 +81,9 @@ export const submitDriverRegistration = async (
   }
 ): Promise<{ success: boolean; error: string | null }> => {
   try {
+    console.log("Submitting driver registration for user:", userId);
+    console.log("Document URLs:", documentUrls);
+    
     // Get user email from session if not provided in details
     const userEmail = details.email || (await supabase.auth.getUser()).data.user?.email || '';
     
@@ -103,11 +114,44 @@ export const submitDriverRegistration = async (
       email: userEmail
     };
     
-    const { error } = await supabase
+    // Check if an application already exists
+    const { data: existingApp, error: checkError } = await supabase
       .from('driver_details')
-      .upsert(insertData);
+      .select('id, status')
+      .eq('user_id', userId)
+      .maybeSingle();
+    
+    if (checkError) throw checkError;
+    
+    let error;
+    if (existingApp) {
+      // Update existing application
+      console.log("Updating existing application:", existingApp.id);
+      const { error: updateError } = await supabase
+        .from('driver_details')
+        .update(insertData)
+        .eq('id', existingApp.id);
+        
+      error = updateError;
+    } else {
+      // Create new application
+      console.log("Creating new driver application");
+      const { error: insertError } = await supabase
+        .from('driver_details')
+        .insert(insertData);
+        
+      error = insertError;
+    }
     
     if (error) throw error;
+    
+    // Update user profile to mark them as having applied
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .update({ is_verified_driver: false })
+      .eq('id', userId);
+      
+    if (profileError) console.error("Error updating profile:", profileError);
     
     return { success: true, error: null };
   } catch (error: any) {
@@ -126,6 +170,8 @@ export const getDriverRegistrationStatus = async (userId: string): Promise<{
   error: string | null 
 }> => {
   try {
+    console.log("Checking driver status for user:", userId);
+    
     // Query with explicit type for database response
     const { data, error } = await supabase
       .from('driver_details')
@@ -136,15 +182,46 @@ export const getDriverRegistrationStatus = async (userId: string): Promise<{
     if (error) throw error;
     
     if (!data) {
+      console.log("No driver application found");
       return { status: null, isApproved: false, details: null, error: null };
     }
     
-    // Check deposit status in real-time
-    const hasDeposit = data.has_sufficient_deposit || false;
+    console.log("Driver application found, status:", data.status);
+    console.log("Deposit status:", data.has_sufficient_deposit);
+    
+    // Check if the user's wallet balance meets the deposit requirement
+    if (data.status === 'approved' && !data.has_sufficient_deposit) {
+      const { data: walletData } = await supabase
+        .from('wallets')
+        .select('balance')
+        .eq('user_id', userId)
+        .single();
+        
+      if (walletData && walletData.balance >= data.deposit_amount_required) {
+        // Update the has_sufficient_deposit flag
+        console.log("User has sufficient deposit, updating flag");
+        await supabase
+          .from('driver_details')
+          .update({ has_sufficient_deposit: true })
+          .eq('user_id', userId);
+          
+        data.has_sufficient_deposit = true;
+      }
+    }
+    
+    // If status is approved, update the user profile
+    if (data.status === 'approved') {
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({ is_verified_driver: true })
+        .eq('id', userId);
+        
+      if (profileError) console.error("Error updating profile:", profileError);
+    }
     
     return { 
       status: data.status, 
-      isApproved: data.status === 'approved' && hasDeposit,
+      isApproved: data.status === 'approved' && data.has_sufficient_deposit,
       details: data, 
       error: null 
     };
