@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -80,8 +79,8 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
           paymentMethod: newRide.payment_method
         };
         
-        // Fix the type error by using a proper setter function
-        setPendingRideRequests((prev: Ride[]) => [...prev, formattedRide]);
+        const updatedRides = [...pendingRideRequests, formattedRide];
+        setPendingRideRequests(updatedRides);
         
         toast({
           title: "New Ride Request",
@@ -92,7 +91,7 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
       
       return () => unsubscribe();
     }
-  }, [isOnline, user?.id, user?.driverStatus, user?.hasDriverDeposit, setPendingRideRequests, toast]);
+  }, [isOnline, user?.id, user?.driverStatus, user?.hasDriverDeposit, setPendingRideRequests, toast, pendingRideRequests]);
 
   const handleGoOnline = () => {
     if (user?.driverStatus !== 'approved') {
