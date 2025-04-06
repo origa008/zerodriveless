@@ -130,20 +130,39 @@ const AddFundsForm: React.FC<{ onSuccess: () => void }> = ({ onSuccess }) => {
         throw new Error("Failed to upload screenshot");
       }
       
-      // Use the REST API directly rather than the typed client to bypass type checking
-      // This allows us to insert into tables not yet reflected in the TypeScript types
-      const { error } = await supabase.rest.from('deposit_requests').insert({
-        user_id: user.id,
-        amount: bankDetails.amount,
-        bank_name: bankDetails.bankName,
-        account_title: bankDetails.accountTitle,
-        account_number: bankDetails.accountNumber,
-        receipt_url: screenshotUrl,
-        transaction_reference: bankDetails.transactionReference,
-        status: 'pending'
+      // Use a direct fetch call to the Supabase API to insert the data
+      // This bypasses TypeScript type checking issues
+      const supabaseUrl = "https://oiurdrlibohoaruehrzz.supabase.co";
+      const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pdXJkcmxpYm9ob2FydWVocnp6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDM0OTE3MjEsImV4cCI6MjA1OTA2NzcyMX0.Cr2Tum3zzUXolmLZGGbUeGD014YYm1WC2VXr__US5JI";
+      
+      // Get the auth token for the current session
+      const { data: { session } } = await supabase.auth.getSession();
+      const authToken = session?.access_token || '';
+      
+      const response = await fetch(`${supabaseUrl}/rest/v1/deposit_requests`, {
+        method: 'POST',
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify({
+          user_id: user.id,
+          amount: bankDetails.amount,
+          bank_name: bankDetails.bankName,
+          account_title: bankDetails.accountTitle,
+          account_number: bankDetails.accountNumber,
+          receipt_url: screenshotUrl,
+          transaction_reference: bankDetails.transactionReference,
+          status: 'pending'
+        })
       });
       
-      if (error) throw error;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to submit deposit request");
+      }
       
       toast({
         title: "Deposit request submitted",
