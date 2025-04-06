@@ -3,7 +3,11 @@ import React from 'react';
 import { useRide } from '@/lib/context/RideContext';
 import { Button } from '@/components/ui/button';
 
-const ModeSwitcher: React.FC = () => {
+interface ModeSwitcherProps {
+  isDriverEligible?: boolean;
+}
+
+const ModeSwitcher: React.FC<ModeSwitcherProps> = ({ isDriverEligible = false }) => {
   const { isDriverMode, setDriverMode } = useRide();
 
   return (

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -43,26 +42,21 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
   const [hasDeposit, setHasDeposit] = useState(false);
   const [isEligible, setIsEligible] = useState(false);
 
-  // Check driver eligibility and registration status 
   useEffect(() => {
     const checkDriverEligibility = async () => {
       if (!user?.id) return;
       
       setIsLoading(true);
       try {
-        // Check driver status
         const { status, isApproved, details } = await getDriverRegistrationStatus(user.id);
         setDriverStatus(status);
         
-        // Update has deposit status
         const hasEnoughDeposit = details?.has_sufficient_deposit || false;
         setHasDeposit(hasEnoughDeposit);
         
-        // Check wallet balance
         const { balance } = await getWalletBalance(user.id);
         setWalletBalance(balance);
         
-        // Set overall eligibility
         setIsEligible(await isEligibleDriver(user.id));
       } catch (error) {
         console.error("Error checking driver eligibility:", error);
@@ -73,11 +67,9 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
     
     checkDriverEligibility();
     
-    // Subscribe to wallet balance updates
     const unsubscribeWallet = user?.id 
       ? subscribeToWalletBalance(user.id, (newBalance) => {
           setWalletBalance(newBalance);
-          // Re-check eligibility when balance changes
           checkDriverEligibility();
         })
       : undefined;
@@ -87,7 +79,6 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
     };
   }, [user?.id, setWalletBalance]);
 
-  // Load available ride requests and subscribe to new ones when going online
   useEffect(() => {
     if (isOnline && user?.id && isEligible) {
       setIsLoading(true);
@@ -131,7 +122,7 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
           paymentMethod: newRide.payment_method
         };
         
-        setPendingRideRequests(prevRides => [...prevRides, formattedRide]);
+        setPendingRideRequests((prevRides: any[]) => [...prevRides, formattedRide]);
         
         toast({
           title: "New Ride Request",

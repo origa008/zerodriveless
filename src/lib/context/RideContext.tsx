@@ -16,7 +16,7 @@ type RideContextType = {
   isDriverMode: boolean;
   setDriverMode: (isDriver: boolean) => void;
   pendingRideRequests: any[];
-  setPendingRideRequests: (requests: any[]) => void;
+  setPendingRideRequests: (requests: any[] | ((prev: any[]) => any[])) => void;
   
   pickupLocation: Location | null;
   dropoffLocation: Location | null;
@@ -45,6 +45,7 @@ type RideContextType = {
   rideTimer: number;
   isRideTimerActive: boolean;
   walletBalance: number;
+  setWalletBalance: (balance: number | ((prev: number) => number)) => void;
   
   acceptRideRequest: (rideId: string) => void;
   startRide: () => void;
@@ -313,6 +314,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
         rideTimer,
         isRideTimerActive,
         walletBalance,
+        setWalletBalance,
         acceptRideRequest,
         startRide,
         completeRide,
