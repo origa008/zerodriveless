@@ -11,7 +11,6 @@ import {
   subscribeToNewRideRequests,
   acceptRideRequest as acceptRide
 } from '@/lib/utils/rideUtils';
-import { getDriverRegistrationStatus } from '@/lib/utils/driverUtils';
 
 interface DriverModeProps {
   isOnline: boolean;
@@ -36,23 +35,9 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
   const [bidAmount, setBidAmount] = useState<number>(0);
   const [showContactModal, setShowContactModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [driverStatus, setDriverStatus] = useState<string | null>(null);
-  const [hasDeposit, setHasDeposit] = useState(false);
 
   useEffect(() => {
-    if (user?.id) {
-      const checkStatus = async () => {
-        const { status, details } = await getDriverRegistrationStatus(user.id);
-        setDriverStatus(status);
-        setHasDeposit(details?.has_sufficient_deposit || false);
-      };
-      
-      checkStatus();
-    }
-  }, [user?.id]);
-
-  useEffect(() => {
-    if (isOnline && user?.id && driverStatus === 'approved' && hasDeposit) {
+    if (isOnline && user?.id && user.driverStatus === 'approved' && user.hasDriverDeposit) {
       setIsLoading(true);
       
       const fetchRideRequests = async () => {
@@ -94,7 +79,7 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
           paymentMethod: newRide.payment_method
         };
         
-        setPendingRideRequests([...pendingRideRequests, formattedRide]);
+        setPendingRideRequests(prev => [...prev, formattedRide]);
         
         toast({
           title: "New Ride Request",
@@ -105,15 +90,15 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
       
       return () => unsubscribe();
     }
-  }, [isOnline, user?.id, driverStatus, hasDeposit, setPendingRideRequests, toast, pendingRideRequests]);
+  }, [isOnline, user?.id, user?.driverStatus, user?.hasDriverDeposit, setPendingRideRequests, toast]);
 
   const handleGoOnline = () => {
-    if (driverStatus !== 'approved') {
+    if (user?.driverStatus !== 'approved') {
       navigate('/official-driver');
       return;
     }
     
-    if (!hasDeposit) {
+    if (!user?.hasDriverDeposit) {
       toast({
         title: "Deposit required",
         description: "You need to add Rs. 3,000 to your wallet before going online",
@@ -217,7 +202,7 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
       );
     }
     
-    if (driverStatus === 'pending') {
+    if (user?.driverStatus === 'pending') {
       return (
         <div className="flex items-center mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
           <AlertTriangle className="text-blue-600 mr-2" />
@@ -226,7 +211,7 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
       );
     }
     
-    if (driverStatus === 'approved' && !hasDeposit) {
+    if (user?.driverStatus === 'approved' && !user?.hasDriverDeposit) {
       return (
         <div className="flex items-center mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
           <AlertTriangle className="text-amber-600 mr-2" />
@@ -257,27 +242,27 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
           <Button 
             className="w-full bg-black text-white hover:bg-gray-800 py-6 text-xl rounded-xl"
             onClick={handleGoOnline}
-            disabled={driverStatus !== 'approved' || !hasDeposit}
+            disabled={user?.driverStatus !== 'approved' || !user?.hasDriverDeposit}
           >
-            {driverStatus === 'approved' && hasDeposit ? 'Go Online' : 
-             driverStatus === 'approved' ? 'Add Deposit to Start' : 'Complete Driver Registration'}
+            {user?.driverStatus === 'approved' && user?.hasDriverDeposit ? 'Go Online' : 
+             user?.driverStatus === 'approved' ? 'Add Deposit to Start' : 'Complete Driver Registration'}
           </Button>
           
-          {(driverStatus !== 'approved' || !hasDeposit) && (
+          {(user?.driverStatus !== 'approved' || !user?.hasDriverDeposit) && (
             <div className="mt-4 text-center">
               <p className="text-sm text-gray-600 mb-2">
-                {driverStatus !== 'approved' 
+                {user?.driverStatus !== 'approved' 
                   ? 'You need to complete driver registration first.' 
                   : 'You need to add the required deposit to your wallet.'}
               </p>
               <Button 
                 variant="outline" 
                 size="sm"
-                onClick={() => driverStatus !== 'approved' 
+                onClick={() => user?.driverStatus !== 'approved' 
                   ? navigate('/official-driver') 
                   : navigate('/wallet')}
               >
-                {driverStatus !== 'approved' ? 'Register as Driver' : 'Add Funds'}
+                {user?.driverStatus !== 'approved' ? 'Register as Driver' : 'Add Funds'}
               </Button>
             </div>
           )}

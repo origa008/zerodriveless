@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { Skeleton } from '@/components/ui/skeleton';
+import { getReferralInfo } from '@/lib/utils/profileUtils';
 
 type ReferralInfo = {
   code: string;
@@ -35,7 +36,7 @@ const ReferralSystem: React.FC = () => {
       
       // Subscribe to referral table changes
       const channel = supabase
-        .channel('public:referrals')
+        .channel(`referrals:${user.id}`)
         .on('postgres_changes', 
           { 
             event: '*', 
@@ -44,6 +45,24 @@ const ReferralSystem: React.FC = () => {
             filter: `referrer_id=eq.${user.id}`
           }, 
           () => {
+            console.log('Referral data changed, refreshing');
+            fetchReferralInfo();
+          }
+        )
+        .subscribe();
+      
+      // Subscribe to transaction table changes for referral earnings
+      const txChannel = supabase
+        .channel(`transactions:${user.id}:referrals`)
+        .on('postgres_changes', 
+          { 
+            event: 'INSERT', 
+            schema: 'public', 
+            table: 'transactions',
+            filter: `user_id=eq.${user.id} AND type=eq.referral`
+          }, 
+          () => {
+            console.log('New referral transaction, refreshing');
             fetchReferralInfo();
           }
         )
@@ -51,6 +70,7 @@ const ReferralSystem: React.FC = () => {
       
       return () => {
         supabase.removeChannel(channel);
+        supabase.removeChannel(txChannel);
       };
     }
   }, [user?.id]);
@@ -61,31 +81,29 @@ const ReferralSystem: React.FC = () => {
     try {
       setLoading(true);
       
-      // Fetch the user's referral code
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('referral_code')
-        .eq('id', user.id)
-        .single();
+      // Get referral info using the utility function
+      const { referralCode, referrals, error } = await getReferralInfo(user.id);
       
-      const referralCode = profileData?.referral_code || '';
+      if (error) {
+        throw new Error(error);
+      }
       
-      // Fetch referrals data
-      const { data: referralsData } = await supabase
-        .from('referrals')
-        .select('*')
-        .eq('referrer_id', user.id);
+      // Get transactions for this user to calculate earnings
+      const { data: transactions } = await supabase
+        .from('transactions')
+        .select('amount')
+        .eq('user_id', user.id)
+        .eq('type', 'referral');
       
       // Calculate statistics
-      const totalInvited = referralsData?.length || 0;
-      const pending = referralsData?.filter(r => r.status === 'pending').length || 0;
-      const completed = referralsData?.filter(r => r.status === 'completed').length || 0;
-      const earned = referralsData
-        ?.filter(r => r.status === 'completed')
-        .reduce((sum, r) => sum + (r.amount || 0), 0) || 0;
+      const totalInvited = referrals?.length || 0;
+      const pending = referrals?.filter(r => r.status === 'pending').length || 0;
+      const completed = referrals?.filter(r => r.status === 'completed').length || 0;
+      const earned = transactions
+        ?.reduce((sum, tx) => sum + Number(tx.amount), 0) || 0;
       
       setReferralInfo({
-        code: referralCode,
+        code: referralCode || '',
         totalInvited,
         pending,
         completed,
@@ -93,6 +111,12 @@ const ReferralSystem: React.FC = () => {
       });
     } catch (error) {
       console.error('Error fetching referral info:', error);
+      toast({
+        title: "Error fetching referral info",
+        description: "Please try again later",
+        variant: "destructive",
+        duration: 3000
+      });
     } finally {
       setLoading(false);
     }

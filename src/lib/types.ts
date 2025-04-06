@@ -1,4 +1,3 @@
-
 export type User = {
   id: string;
   name: string;
@@ -10,6 +9,8 @@ export type User = {
   isVerifiedDriver?: boolean;
   referralCode?: string;
   referralEarnings?: number;
+  driverStatus?: string; // 'pending', 'approved', 'rejected'
+  hasDriverDeposit?: boolean;
 };
 
 export type Location = {

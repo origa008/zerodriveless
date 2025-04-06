@@ -31,7 +31,7 @@ export const fetchUserProfile = async (userId: string): Promise<{ profile: User 
         console.log("No profile found, attempting to retrieve user from auth");
         
         // Try to get user data from auth
-        const { data: userData, error: userError } = await supabase.auth.admin.getUserById(userId);
+        const { data: userData, error: userError } = await supabase.auth.getUser();
         
         if (userError || !userData.user) {
           console.error("Could not retrieve user data:", userError || "No user data");
@@ -57,6 +57,13 @@ export const fetchUserProfile = async (userId: string): Promise<{ profile: User 
       return { profile: null, error: "Profile not found" };
     }
     
+    // Check driver registration status
+    const { data: driverData } = await supabase
+      .from('driver_details')
+      .select('status, has_sufficient_deposit')
+      .eq('user_id', userId)
+      .maybeSingle();
+    
     // Map database profile to User type
     const profile: User = {
       id: data.id,
@@ -68,6 +75,8 @@ export const fetchUserProfile = async (userId: string): Promise<{ profile: User 
       isLoggedIn: true,
       isVerifiedDriver: data.is_verified_driver || false,
       referralCode: data.referral_code || undefined,
+      driverStatus: driverData?.status,
+      hasDriverDeposit: driverData?.has_sufficient_deposit || false,
     };
     
     console.log("Profile fetched successfully:", profile.name);
@@ -162,5 +171,71 @@ export const updateUserAvatar = async (
   } catch (error: any) {
     console.error("Avatar update error:", error.message);
     return { url: null, error: error.message };
+  }
+};
+
+/**
+ * Process a referral code
+ */
+export const processReferralCode = async (
+  referrerCode: string, 
+  referredUserId: string
+): Promise<{ success: boolean; error: string | null }> => {
+  try {
+    console.log(`Processing referral code ${referrerCode} for user ${referredUserId}`);
+    
+    // Call the create_referral function
+    const { error } = await supabase.rpc(
+      'create_referral',
+      { referrer_code: referrerCode, referred_id: referredUserId }
+    );
+    
+    if (error) throw error;
+    
+    console.log("Referral processed successfully");
+    return { success: true, error: null };
+  } catch (error: any) {
+    console.error("Referral processing error:", error.message);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Get referral information for a user
+ */
+export const getReferralInfo = async (userId: string): Promise<{ 
+  referralCode: string | null; 
+  referrals: any[]; 
+  error: string | null 
+}> => {
+  try {
+    console.log(`Getting referral info for user ${userId}`);
+    
+    // Get user's referral code
+    const { data: profileData, error: profileError } = await supabase
+      .from('profiles')
+      .select('referral_code')
+      .eq('id', userId)
+      .single();
+    
+    if (profileError) throw profileError;
+    
+    // Get referrals made with this code
+    const { data: referralsData, error: referralsError } = await supabase
+      .from('referrals')
+      .select('*, referred_profiles:referred_id(name, email)')
+      .eq('referrer_id', userId);
+    
+    if (referralsError) throw referralsError;
+    
+    console.log(`Retrieved referral info: code=${profileData?.referral_code}, referrals=${referralsData?.length || 0}`);
+    return { 
+      referralCode: profileData?.referral_code || null, 
+      referrals: referralsData || [], 
+      error: null 
+    };
+  } catch (error: any) {
+    console.error("Get referral info error:", error.message);
+    return { referralCode: null, referrals: [], error: error.message };
   }
 };

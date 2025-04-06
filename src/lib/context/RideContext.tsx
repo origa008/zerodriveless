@@ -4,9 +4,9 @@ import { createRideRequest, updateRideStatus, getRideDetails } from '../utils/ri
 import { useAuth } from './AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { getMockRideOptions } from '../utils/mockData';
+import { getWalletBalance, getTransactionHistory, subscribeToWalletBalance } from '../utils/walletUtils';
 
 type RideContextType = {
-  // Original properties
   pickup: Location | null;
   setPickup: (pickup: Location | null) => void;
   dropoff: Location | null;
@@ -18,8 +18,6 @@ type RideContextType = {
   pendingRideRequests: any[];
   setPendingRideRequests: (requests: any[]) => void;
   
-  // New properties needed by components
-  // For PassengerPanel
   pickupLocation: Location | null;
   dropoffLocation: Location | null;
   setPickupLocation: (location: Location | null) => void;
@@ -42,41 +40,34 @@ type RideContextType = {
   isPanelOpen: boolean;
   setPanelOpen: (isOpen: boolean) => void;
   
-  // For RideDetails and RideProgress
   currentRide: Ride | null;
   setCurrentRide: (ride: Ride | null) => void;
   rideTimer: number;
   isRideTimerActive: boolean;
   walletBalance: number;
   
-  // For Driver mode
   acceptRideRequest: (rideId: string) => void;
-  
-  // For Ride progress
   startRide: () => void;
   completeRide: () => void;
   cancelRide: () => void;
   
-  // For Wallet
   updateWalletBalance: (amount: number) => void;
   rideHistory: Ride[];
+  transactions: any[];
 };
 
-// Create the context with a default undefined value
 const RideContext = createContext<RideContextType | undefined>(undefined);
 
 export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { toast } = useToast();
   const { user } = useAuth();
   
-  // Original state values
   const [pickup, setPickup] = useState<Location | null>(null);
   const [dropoff, setDropoff] = useState<Location | null>(null);
   const [selectedOption, setSelectedOption] = useState<RideOption | null>(null);
   const [isDriverMode, setDriverMode] = useState<boolean>(false);
   const [pendingRideRequests, setPendingRideRequests] = useState<any[]>([]);
   
-  // New state values
   const [pickupLocation, setPickupLocation] = useState<Location | null>(null);
   const [dropoffLocation, setDropoffLocation] = useState<Location | null>(null);
   const [availableRideOptions, setAvailableRideOptions] = useState<RideOption[]>([]);
@@ -86,23 +77,45 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [estimatedDuration, setEstimatedDuration] = useState<number | null>(null);
   const [userBid, setUserBid] = useState<number | null>(null);
   const [isWaitingForDriverAcceptance, setWaitingForDriverAcceptance] = useState<boolean>(false);
-  const [driverAcceptanceTimer, setDriverAcceptanceTimer] = useState<number>(60); // 60 seconds
+  const [driverAcceptanceTimer, setDriverAcceptanceTimer] = useState<number>(60);
   const [isPanelOpen, setPanelOpen] = useState<boolean>(false);
   const [currentRide, setCurrentRide] = useState<Ride | null>(null);
   const [rideTimer, setRideTimer] = useState<number>(0);
   const [isRideTimerActive, setIsRideTimerActive] = useState<boolean>(false);
-  const [walletBalance, setWalletBalance] = useState<number>(500); // Initial wallet balance
+  const [walletBalance, setWalletBalance] = useState<number>(0);
   const [rideHistory, setRideHistory] = useState<Ride[]>([]);
+  const [transactions, setTransactions] = useState<any[]>([]);
   
-  // Function to find rides
+  useEffect(() => {
+    if (user?.id) {
+      getWalletBalance(user.id).then(({ balance, error }) => {
+        if (!error) {
+          setWalletBalance(balance);
+        }
+      });
+      
+      getTransactionHistory(user.id).then(({ transactions, error }) => {
+        if (!error) {
+          setTransactions(transactions);
+        }
+      });
+      
+      const unsubscribe = subscribeToWalletBalance(user.id, (newBalance) => {
+        setWalletBalance(newBalance);
+      });
+      
+      return () => {
+        if (unsubscribe) unsubscribe();
+      };
+    }
+  }, [user?.id]);
+  
   const findRides = () => {
     if (!pickupLocation || !dropoffLocation) return;
     
     setIsSearchingRides(true);
     
-    // Simulate API call delay
     setTimeout(() => {
-      // Mock data
       setEstimatedDistance(5.2);
       setEstimatedDuration(12);
       setAvailableRideOptions(getMockRideOptions());
@@ -111,13 +124,11 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, 1500);
   };
   
-  // Function to calculate base fare based on distance and vehicle type
   const calculateBaseFare = (distance: number, vehicleType: string): number => {
-    const baseRate = vehicleType === 'Bike' ? 20 : 35; // Base rate per km
+    const baseRate = vehicleType === 'Bike' ? 20 : 35;
     return Math.round(baseRate * distance);
   };
   
-  // Function to confirm ride
   const confirmRide = (paymentMethod: PaymentMethod) => {
     if (!user?.id || !pickupLocation || !dropoffLocation || !selectedRideOption || !userBid) {
       toast({
@@ -150,7 +161,6 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
   
-  // Timer for driver acceptance countdown
   useEffect(() => {
     let timer: NodeJS.Timeout | null = null;
     if (isWaitingForDriverAcceptance && driverAcceptanceTimer > 0) {
@@ -164,17 +174,14 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [isWaitingForDriverAcceptance, driverAcceptanceTimer]);
   
-  // Reset driver acceptance timer
   const resetDriverAcceptanceTimer = () => {
-    setDriverAcceptanceTimer(60); // Reset to 60 seconds
+    setDriverAcceptanceTimer(60);
   };
   
-  // Function to accept ride request (for drivers)
   const acceptRideRequest = (rideId: string) => {
     setPendingRideRequests(prev => prev.filter(request => request.id !== rideId));
   };
   
-  // Ride timer for active rides
   useEffect(() => {
     let timer: NodeJS.Timeout | null = null;
     if (isRideTimerActive) {
@@ -188,7 +195,6 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [isRideTimerActive]);
   
-  // Functions for ride lifecycle
   const startRide = () => {
     if (!currentRide) return;
     
@@ -228,12 +234,9 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setCurrentRide(completedRide);
           setRideHistory(prev => [completedRide, ...prev]);
           
-          // Update wallet based on driver/passenger role
           if (isDriverMode && currentRide.price) {
-            // Driver earns money
             updateWalletBalance(Math.round(currentRide.price * 0.8));
           } else if (!isDriverMode && currentRide.price) {
-            // Passenger pays if not already paid from wallet
             if (currentRide.paymentMethod !== 'wallet') {
               updateWalletBalance(-currentRide.price);
             }
@@ -254,7 +257,6 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
             duration: 3000
           });
         } else {
-          // Reset states
           setCurrentRide(null);
           setIsRideTimerActive(false);
           setRideTimer(0);
@@ -267,7 +269,6 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
   };
   
-  // Function to update wallet balance
   const updateWalletBalance = (amount: number) => {
     setWalletBalance(prev => prev + amount);
   };
@@ -275,7 +276,6 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return (
     <RideContext.Provider
       value={{
-        // Original values
         pickup,
         setPickup,
         dropoff,
@@ -287,7 +287,6 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
         pendingRideRequests,
         setPendingRideRequests,
         
-        // New values
         pickupLocation,
         dropoffLocation,
         setPickupLocation,
@@ -319,7 +318,8 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
         completeRide,
         cancelRide,
         updateWalletBalance,
-        rideHistory
+        rideHistory,
+        transactions
       }}
     >
       {children}

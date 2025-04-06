@@ -3,25 +3,54 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import BottomNavigation from '@/components/layout/BottomNavigation';
 import { Button } from '@/components/ui/button';
-import { CreditCard, ArrowLeft, Plus, Wallet as WalletIcon, Gift } from 'lucide-react';
+import { CreditCard, ArrowLeft, Plus, Wallet as WalletIcon, Gift, ArrowDownRight, ArrowUpRight } from 'lucide-react';
 import WithdrawForm, { WithdrawFormData } from '@/components/wallet/WithdrawForm';
 import { useToast } from '@/hooks/use-toast';
 import { useRide } from '@/lib/context/RideContext';
 import { useAuth } from '@/lib/context/AuthContext';
+import { addFundsToWallet, requestWithdrawal, getTransactionHistory } from '@/lib/utils/walletUtils';
+import { format } from 'date-fns';
 
 const Wallet: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { walletBalance, updateWalletBalance, rideHistory } = useRide();
+  const { walletBalance, updateWalletBalance } = useRide();
   const { user } = useAuth();
   const [showWithdrawForm, setShowWithdrawForm] = useState(false);
   const [showAddMoneyForm, setShowAddMoneyForm] = useState(false);
   const [addAmount, setAddAmount] = useState('');
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Referral earnings (in a real app, this would come from an API)
-  const referralEarnings = user?.referralEarnings || 50;
+  // Referral earnings (will be updated from transactions)
+  const [referralEarnings, setReferralEarnings] = useState(0);
 
-  const handleWithdraw = (data: WithdrawFormData) => {
+  // Fetch transaction history when component mounts
+  useEffect(() => {
+    if (user?.id) {
+      setIsLoading(true);
+      getTransactionHistory(user.id)
+        .then(({ transactions, error }) => {
+          if (!error && transactions) {
+            setTransactions(transactions);
+            
+            // Calculate referral earnings
+            const referralTotal = transactions
+              .filter(tx => tx.type === 'referral')
+              .reduce((sum, tx) => sum + Number(tx.amount), 0);
+            
+            setReferralEarnings(referralTotal);
+          } else {
+            console.error("Error fetching transactions:", error);
+          }
+        })
+        .finally(() => {
+          setIsLoading(false);
+        });
+    }
+  }, [user?.id]);
+
+  const handleWithdraw = async (data: WithdrawFormData) => {
     if (Number(data.amount) > walletBalance) {
       toast({
         title: "Insufficient Balance",
@@ -30,17 +59,55 @@ const Wallet: React.FC = () => {
       });
       return;
     }
+    
+    if (!user?.id) {
+      toast({
+        title: "Authentication Required",
+        description: "Please log in to withdraw funds.",
+        duration: 5000
+      });
+      return;
+    }
 
-    updateWalletBalance(-Number(data.amount));
-    setShowWithdrawForm(false);
-    toast({
-      title: "Withdrawal Request Submitted",
-      description: `RS ${data.amount} will be transferred to your account within 24-48 hours.`,
-      duration: 5000
-    });
+    const bankDetails = {
+      bankName: data.bankName,
+      accountNumber: data.accountNumber,
+      accountTitle: data.accountTitle,
+      phone: data.phone || '',
+    };
+
+    const { success, error } = await requestWithdrawal(
+      user.id,
+      Number(data.amount),
+      bankDetails
+    );
+
+    if (success) {
+      updateWalletBalance(-Number(data.amount));
+      setShowWithdrawForm(false);
+      
+      // Update transactions list
+      getTransactionHistory(user.id).then(({ transactions }) => {
+        if (transactions) {
+          setTransactions(transactions);
+        }
+      });
+      
+      toast({
+        title: "Withdrawal Request Submitted",
+        description: `RS ${data.amount} will be transferred to your account within 24-48 hours.`,
+        duration: 5000
+      });
+    } else {
+      toast({
+        title: "Withdrawal Failed",
+        description: error || "An error occurred while processing your withdrawal.",
+        duration: 5000
+      });
+    }
   };
 
-  const handleAddMoney = () => {
+  const handleAddMoney = async () => {
     const amount = Number(addAmount);
     if (isNaN(amount) || amount <= 0) {
       toast({
@@ -50,15 +117,62 @@ const Wallet: React.FC = () => {
       });
       return;
     }
+    
+    if (!user?.id) {
+      toast({
+        title: "Authentication Required",
+        description: "Please log in to add funds.",
+        duration: 3000
+      });
+      return;
+    }
 
-    updateWalletBalance(amount);
-    setShowAddMoneyForm(false);
-    setAddAmount('');
-    toast({
-      title: "Money Added Successfully",
-      description: `RS ${amount} has been added to your wallet.`,
-      duration: 3000
-    });
+    const { success, error } = await addFundsToWallet(
+      user.id,
+      amount,
+      'credit_card'
+    );
+
+    if (success) {
+      updateWalletBalance(amount);
+      setShowAddMoneyForm(false);
+      setAddAmount('');
+      
+      // Update transactions list
+      getTransactionHistory(user.id).then(({ transactions }) => {
+        if (transactions) {
+          setTransactions(transactions);
+        }
+      });
+      
+      toast({
+        title: "Money Added Successfully",
+        description: `RS ${amount} has been added to your wallet.`,
+        duration: 3000
+      });
+    } else {
+      toast({
+        title: "Transaction Failed",
+        description: error || "An error occurred while processing your payment.",
+        duration: 3000
+      });
+    }
+  };
+
+  const formatTransactionDate = (dateString: string) => {
+    try {
+      return format(new Date(dateString), 'MMM d, h:mm a');
+    } catch (e) {
+      return 'Unknown date';
+    }
+  };
+
+  const renderTransactionIcon = (type: string, amount: number) => {
+    if (amount > 0) {
+      return <ArrowDownRight className="text-green-600" size={18} />;
+    } else {
+      return <ArrowUpRight className="text-red-600" size={18} />;
+    }
   };
 
   return (
@@ -115,34 +229,37 @@ const Wallet: React.FC = () => {
         <h2 className="mb-4 text-2xl font-bold">Transaction History</h2>
         
         <div className="space-y-4 bg-transparent my-[20px]">
-          {rideHistory.length > 0 ? (
-            rideHistory.map((ride, index) => {
-              const isDriverEarning = ride.driver?.id === '1'; // If driver ID matches the user's ID
-              const amount = isDriverEarning ? ride.price : -ride.price;
-              const formattedDate = ride.endTime ? new Date(ride.endTime).toLocaleString('en-US', {
-                month: 'short',
-                day: 'numeric',
-                hour: 'numeric',
-                minute: 'numeric',
-                hour12: true
-              }) : 'Unknown date';
-
-              return (
-                <div key={ride.id || index} className="border-b border-gray-100 pb-4">
-                  <div className="flex justify-between py-[15px]">
-                    <div>
-                      <h3 className="font-medium text-gray-500">
-                        {isDriverEarning ? 'Drive To ' : 'Ride To '}{ride.dropoff.name}
-                      </h3>
-                      <p className="text-gray-500 text-sm">{formattedDate}</p>
+          {isLoading ? (
+            <div className="flex justify-center py-8">
+              <p className="text-gray-500">Loading transactions...</p>
+            </div>
+          ) : transactions.length > 0 ? (
+            transactions.map((tx) => (
+              <div key={tx.id} className="border-b border-gray-100 pb-4">
+                <div className="flex justify-between py-[15px]">
+                  <div className="flex items-center">
+                    <div className={`mr-3 p-2 rounded-full ${tx.amount > 0 ? 'bg-green-50' : 'bg-red-50'}`}>
+                      {renderTransactionIcon(tx.type, tx.amount)}
                     </div>
-                    <p className={`font-medium ${amount > 0 ? 'text-green-600' : ''}`}>
-                      {amount > 0 ? '+' : ''}{ride.currency} {Math.abs(amount)}
-                    </p>
+                    <div>
+                      <h3 className="font-medium text-gray-800">
+                        {tx.type === 'deposit' ? 'Added to Wallet' : 
+                         tx.type === 'withdrawal' ? 'Withdrawal' : 
+                         tx.type === 'ride_payment' ? 'Ride Payment' :
+                         tx.type === 'ride_earning' ? 'Ride Earning' :
+                         tx.type === 'referral' ? 'Referral Bonus' : 
+                         'Transaction'}
+                      </h3>
+                      <p className="text-gray-500 text-sm">{formatTransactionDate(tx.created_at)}</p>
+                      {tx.description && <p className="text-gray-500 text-xs mt-1">{tx.description}</p>}
+                    </div>
                   </div>
+                  <p className={`font-medium ${tx.amount > 0 ? 'text-green-600' : ''}`}>
+                    {tx.amount > 0 ? '+' : ''} RS {Math.abs(tx.amount)}
+                  </p>
                 </div>
-              );
-            })
+              </div>
+            ))
           ) : (
             <div className="text-center py-8">
               <p className="text-gray-500">No transaction history yet.</p>

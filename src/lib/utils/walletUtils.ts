@@ -1,6 +1,6 @@
 
 import { supabase } from "@/integrations/supabase/client";
-import { toast } from "@/hooks/use-toast";
+import { useToast } from "@/hooks/use-toast";
 import { Database } from "@/integrations/supabase/types";
 
 /**
@@ -8,14 +8,20 @@ import { Database } from "@/integrations/supabase/types";
  */
 export const getWalletBalance = async (userId: string): Promise<{ balance: number; error: string | null }> => {
   try {
+    console.log("Fetching wallet balance for user:", userId);
+    
     const { data, error } = await supabase
       .from('wallets')
       .select('balance')
       .eq('user_id', userId)
       .maybeSingle();
     
-    if (error) throw error;
+    if (error) {
+      console.error("Get wallet balance error:", error.message);
+      throw error;
+    }
     
+    console.log("Wallet balance retrieved:", data?.balance || 0);
     return { balance: data?.balance || 0, error: null };
   } catch (error: any) {
     console.error("Get wallet balance error:", error.message);
@@ -32,6 +38,8 @@ export const addFundsToWallet = async (
   paymentMethod: string
 ): Promise<{ success: boolean; error: string | null }> => {
   try {
+    console.log(`Adding ${amount} to wallet for user ${userId}`);
+    
     // First create transaction record
     const { error: txError } = await supabase
       .from('transactions')
@@ -44,7 +52,10 @@ export const addFundsToWallet = async (
         description: `Added ${amount} RS to wallet`
       });
     
-    if (txError) throw txError;
+    if (txError) {
+      console.error("Transaction creation error:", txError);
+      throw txError;
+    }
     
     // Then update wallet balance
     const { error: walletError } = await supabase.rpc(
@@ -52,8 +63,12 @@ export const addFundsToWallet = async (
       { user_id: userId, amount }
     );
     
-    if (walletError) throw walletError;
+    if (walletError) {
+      console.error("Wallet update error:", walletError);
+      throw walletError;
+    }
     
+    console.log(`Successfully added ${amount} to wallet for user ${userId}`);
     return { success: true, error: null };
   } catch (error: any) {
     console.error("Add funds error:", error.message);
@@ -75,10 +90,14 @@ export const requestWithdrawal = async (
   }
 ): Promise<{ success: boolean; error: string | null }> => {
   try {
+    console.log(`Requesting withdrawal of ${amount} for user ${userId}`);
+    
     // First check if user has sufficient balance
     const { balance, error: balanceError } = await getWalletBalance(userId);
     
-    if (balanceError) throw new Error(balanceError);
+    if (balanceError) {
+      throw new Error(balanceError);
+    }
     
     if (balance < amount) {
       throw new Error('Insufficient balance');
@@ -96,7 +115,10 @@ export const requestWithdrawal = async (
         bank_details: bankDetails
       });
     
-    if (txError) throw txError;
+    if (txError) {
+      console.error("Transaction creation error:", txError);
+      throw txError;
+    }
     
     // Deduct from wallet balance
     const { error: walletError } = await supabase.rpc(
@@ -104,8 +126,12 @@ export const requestWithdrawal = async (
       { user_id: userId, amount }
     );
     
-    if (walletError) throw walletError;
+    if (walletError) {
+      console.error("Wallet update error:", walletError);
+      throw walletError;
+    }
     
+    console.log(`Successfully processed withdrawal of ${amount} for user ${userId}`);
     return { success: true, error: null };
   } catch (error: any) {
     console.error("Withdrawal request error:", error.message);
@@ -121,14 +147,20 @@ export const getTransactionHistory = async (userId: string): Promise<{
   error: string | null 
 }> => {
   try {
+    console.log(`Fetching transaction history for user ${userId}`);
+    
     const { data, error } = await supabase
       .from('transactions')
       .select('*')
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
     
-    if (error) throw error;
+    if (error) {
+      console.error("Get transaction history error:", error);
+      throw error;
+    }
     
+    console.log(`Retrieved ${data?.length || 0} transactions for user ${userId}`);
     return { transactions: data || [], error: null };
   } catch (error: any) {
     console.error("Get transaction history error:", error.message);
@@ -143,6 +175,8 @@ export const subscribeToWalletBalance = (
   userId: string,
   callback: (balance: number) => void
 ) => {
+  console.log(`Setting up wallet balance subscription for user ${userId}`);
+  
   const channel = supabase
     .channel(`wallet:${userId}`)
     .on(
@@ -154,13 +188,16 @@ export const subscribeToWalletBalance = (
         filter: `user_id=eq.${userId}`
       },
       (payload) => {
+        console.log("Wallet balance updated:", payload);
         const updatedWallet = payload.new as any;
         callback(updatedWallet.balance);
       }
     )
     .subscribe();
-    
+  
+  console.log("Wallet balance subscription set up successfully");
   return () => {
+    console.log("Cleaning up wallet balance subscription");
     supabase.removeChannel(channel);
   };
 };
@@ -172,6 +209,8 @@ export const subscribeToTransactions = (
   userId: string,
   callback: (transaction: any) => void
 ) => {
+  console.log(`Setting up transactions subscription for user ${userId}`);
+  
   const channel = supabase
     .channel(`transactions:${userId}`)
     .on(
@@ -183,12 +222,15 @@ export const subscribeToTransactions = (
         filter: `user_id=eq.${userId}`
       },
       (payload) => {
+        console.log("New transaction received:", payload);
         callback(payload.new);
       }
     )
     .subscribe();
-    
+  
+  console.log("Transactions subscription set up successfully");
   return () => {
+    console.log("Cleaning up transactions subscription");
     supabase.removeChannel(channel);
   };
 };
