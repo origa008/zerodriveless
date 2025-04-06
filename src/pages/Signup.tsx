@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/lib/context/AuthContext';
 import { toast } from '@/hooks/use-toast';
-import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, Gift } from 'lucide-react';
 
 const Signup: React.FC = () => {
   const [name, setName] = useState('');
@@ -15,6 +15,7 @@ const Signup: React.FC = () => {
   const [referralCode, setReferralCode] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [hasReferral, setHasReferral] = useState(false);
   
   const navigate = useNavigate();
   const location = useLocation();
@@ -33,6 +34,7 @@ const Signup: React.FC = () => {
     const code = params.get('ref');
     if (code) {
       setReferralCode(code);
+      setHasReferral(true);
     }
   }, [location]);
 
@@ -83,6 +85,16 @@ const Signup: React.FC = () => {
         
         <h1 className="text-3xl font-bold">CREATE ACCOUNT</h1>
       </div>
+      
+      {hasReferral && (
+        <div className="mb-6 bg-green-50 p-4 rounded-xl border border-green-200 flex items-center">
+          <Gift className="text-green-500 mr-3" size={24} />
+          <div>
+            <p className="font-medium text-green-800">Referral Applied!</p>
+            <p className="text-sm text-green-700">You're joining with a referral code</p>
+          </div>
+        </div>
+      )}
       
       <form onSubmit={handleSignup} className="flex-1 flex flex-col">
         <div className="mb-6">
@@ -143,16 +155,21 @@ const Signup: React.FC = () => {
           />
         </div>
         
-        <div className="mb-6">
-          <label className="block text-gray-700 text-lg mb-2">Referral Code (Optional)</label>
-          <Input 
-            type="text" 
-            value={referralCode} 
-            onChange={e => setReferralCode(e.target.value)} 
-            placeholder="Enter referral code" 
-            className="w-full p-4 text-lg rounded-xl py-[30px]" 
-          />
-        </div>
+        {!hasReferral && (
+          <div className="mb-6">
+            <label className="block text-gray-700 text-lg mb-2 flex items-center">
+              <span>Referral Code</span>
+              <span className="text-sm ml-2 text-gray-500">(Optional)</span>
+            </label>
+            <Input 
+              type="text" 
+              value={referralCode} 
+              onChange={e => setReferralCode(e.target.value)} 
+              placeholder="Enter referral code" 
+              className="w-full p-4 text-lg rounded-xl py-[30px]" 
+            />
+          </div>
+        )}
         
         <Button 
           type="submit" 

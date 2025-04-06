@@ -6,6 +6,18 @@ import { Database } from "@/integrations/supabase/types";
 type ProfileRow = Database['public']['Tables']['profiles']['Row'];
 
 /**
+ * Generate a unique 7-digit referral code
+ */
+const generateReferralCode = (): string => {
+  const characters = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  let code = 'ZD-';
+  for (let i = 0; i < 7; i++) {
+    code += characters.charAt(Math.floor(Math.random() * characters.length));
+  }
+  return code;
+};
+
+/**
  * Retrieves the user profile from Supabase
  */
 export const fetchUserProfile = async (userId: string): Promise<{ profile: User | null; error: string | null }> => {
@@ -38,11 +50,23 @@ export const fetchUserProfile = async (userId: string): Promise<{ profile: User 
           return { profile: null, error: "User not found" };
         }
         
+        // Generate a unique referral code for new user
+        const referralCode = generateReferralCode();
+        
+        // Create a basic profile entry
+        await supabase.from('profiles').insert({
+          id: userId,
+          name: userData.user.user_metadata.name || "New User",
+          email: userData.user.email || "",
+          referral_code: referralCode
+        });
+        
         // Return basic profile from auth data
         const basicProfile: User = {
           id: userId,
           name: userData.user.user_metadata.name || "New User",
           email: userData.user.email || "",
+          referralCode: referralCode,
           isLoggedIn: true
         };
         
@@ -55,6 +79,18 @@ export const fetchUserProfile = async (userId: string): Promise<{ profile: User 
     if (!data) {
       console.warn("No profile found for user:", userId);
       return { profile: null, error: "Profile not found" };
+    }
+    
+    // Check if profile has referral code, generate if missing
+    if (!data.referral_code) {
+      const referralCode = generateReferralCode();
+      
+      await supabase
+        .from('profiles')
+        .update({ referral_code: referralCode })
+        .eq('id', userId);
+        
+      data.referral_code = referralCode;
     }
     
     // Check driver registration status
@@ -70,7 +106,7 @@ export const fetchUserProfile = async (userId: string): Promise<{ profile: User 
       name: data.name,
       email: data.email,
       phone: data.phone || undefined,
-      avatar: data.avatar || undefined,
+      avatar: data.avatar || "/lovable-uploads/0c126268-4d6a-4fa5-852d-ef7350f99f87.png", // Default profile image
       address: data.address || undefined,
       isLoggedIn: true,
       isVerifiedDriver: data.is_verified_driver || false,
@@ -184,15 +220,38 @@ export const processReferralCode = async (
   try {
     console.log(`Processing referral code ${referrerCode} for user ${referredUserId}`);
     
-    // Call the create_referral function
-    const { error } = await supabase.rpc(
-      'create_referral',
-      { referrer_code: referrerCode, referred_id: referredUserId }
-    );
+    // Check if referrer code exists
+    const { data: referrerData, error: referrerError } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('referral_code', referrerCode)
+      .single();
+      
+    if (referrerError || !referrerData) {
+      return { success: false, error: "Invalid referral code" };
+    }
     
-    if (error) throw error;
+    // Check if referral already exists
+    const { data: existingReferral } = await supabase
+      .from('referrals')
+      .select('id')
+      .eq('referred_id', referredUserId)
+      .maybeSingle();
+      
+    if (existingReferral) {
+      return { success: false, error: "Referral already exists" };
+    }
     
-    console.log("Referral processed successfully");
+    // Create new referral
+    await supabase
+      .from('referrals')
+      .insert({
+        referrer_id: referrerData.id,
+        referred_id: referredUserId,
+        status: 'pending',
+        amount: 50 // Default bonus amount
+      });
+    
     return { success: true, error: null };
   } catch (error: any) {
     console.error("Referral processing error:", error.message);

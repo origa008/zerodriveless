@@ -61,7 +61,13 @@ const Index: React.FC = () => {
       
       try {
         const eligible = await isEligibleDriver(user.id);
+        console.log("Driver eligibility check:", eligible);
         setIsDriverEligible(eligible);
+        
+        // If user has previously selected driver mode and is eligible, don't show prompt
+        if (isDriverMode && eligible) {
+          setShowDriverRegistrationPrompt(false);
+        }
       } catch (error) {
         console.error("Error checking driver eligibility:", error);
       }
@@ -70,7 +76,7 @@ const Index: React.FC = () => {
     if (user?.id) {
       checkDriverEligibility();
     }
-  }, [user?.id]);
+  }, [user?.id, isDriverMode]);
 
   // Effect to handle driver mode switch
   useEffect(() => {

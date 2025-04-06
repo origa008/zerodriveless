@@ -348,39 +348,29 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
                       <Map className="text-gray-500 mr-2" size={16} />
                       <p className="font-medium">{request.pickup.name} → {request.dropoff.name}</p>
                     </div>
-                    <p className="font-bold">{request.price} {request.currency}</p>
-                  </div>
-                  
-                  <div className="grid grid-cols-3 gap-2 mb-3 text-sm text-gray-600">
-                    <div className="flex items-center">
-                      <Map className="mr-1" size={14} />
-                      <span>{request.distance} km</span>
-                    </div>
-                    <div className="flex items-center">
-                      <Clock className="mr-1" size={14} />
-                      <span>{request.duration} min</span>
-                    </div>
-                    <div className="flex items-center">
-                      <DollarSign className="mr-1" size={14} />
-                      <span>~{Math.round(request.price * 0.8)} profit</span>
+                    <div className="text-right">
+                      <p className="text-gray-500 text-sm">Distance</p>
+                      <p className="font-medium">{request.distance} km</p>
                     </div>
                   </div>
                   
-                  <div className="flex space-x-2">
-                    <Button 
-                      className="flex-1 bg-black hover:bg-gray-800"
-                      onClick={() => handleShowBid(request)}
-                    >
-                      View & Accept
-                    </Button>
-                    <Button 
-                      variant="outline"
-                      className="w-10"
-                      onClick={() => setShowContactModal(true)}
-                    >
-                      <PhoneCall size={16} />
-                    </Button>
+                  <div className="flex justify-between mb-3">
+                    <div>
+                      <p className="text-gray-500 text-sm">Price</p>
+                      <p className="font-bold text-xl">{request.price} {request.currency}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-gray-500 text-sm">Your Earning</p>
+                      <p className="font-medium text-green-600">~{Math.round(request.price * 0.8)} {request.currency}</p>
+                    </div>
                   </div>
+                  
+                  <Button 
+                    className="w-full bg-black hover:bg-gray-800 text-white py-2 rounded-full"
+                    onClick={() => handleShowBid(request)}
+                  >
+                    Accept
+                  </Button>
                 </div>
               ))}
             </div>

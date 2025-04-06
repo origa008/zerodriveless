@@ -166,9 +166,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Process referral if provided
         if (referralCode && newUser.id) {
           try {
-            await supabase.functions.invoke('create-referral', {
-              body: { referrerCode: referralCode, referredId: newUser.id }
-            });
+            const { success, error } = await processReferralCode(referralCode, newUser.id);
+            
+            if (success) {
+              toast({
+                title: "Referral applied",
+                description: "Referral code has been applied successfully!",
+              });
+            } else if (error) {
+              console.error('Referral processing error:', error);
+            }
           } catch (referralError) {
             console.error('Referral processing error:', referralError);
           }
