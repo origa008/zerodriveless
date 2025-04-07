@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User } from '../types';
 import { useToast } from '@/hooks/use-toast';
@@ -11,7 +10,11 @@ import {
   updatePassword,
   getCurrentSession
 } from '../utils/authUtils';
-import { fetchUserProfile, updateUserProfile } from '../utils/profileUtils';
+import { 
+  fetchUserProfile, 
+  updateUserProfile, 
+  processReferralCode 
+} from '../utils/profileUtils';
 
 type AuthContextType = {
   user: User | null;
@@ -31,18 +34,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const { toast } = useToast();
 
-  // Initialize auth and set up listeners
   useEffect(() => {
     console.log("Auth provider initializing...");
     setIsLoading(true);
     
-    // Set up auth state change listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         console.log("Auth state changed:", event, session ? "session exists" : "no session");
         
         if (session) {
-          // Use setTimeout to prevent deadlocks
           setTimeout(async () => {
             try {
               const { profile, error } = await fetchUserProfile(session.user.id);
@@ -68,7 +68,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     );
     
-    // Then check for existing session
     const checkSession = async () => {
       try {
         console.log("Checking for existing session...");
@@ -106,7 +105,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     checkSession();
     
-    // Cleanup
     return () => {
       console.log("Auth provider cleanup");
       subscription.unsubscribe();
@@ -163,7 +161,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           description: "Your account has been created successfully.",
         });
         
-        // Process referral if provided
         if (referralCode && newUser.id) {
           try {
             const { success, error } = await processReferralCode(referralCode, newUser.id);
@@ -283,7 +280,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error(error || "Profile update failed");
       }
       
-      // Update local user state
       setUser(prev => prev ? { ...prev, ...updates } : null);
       
       toast({
