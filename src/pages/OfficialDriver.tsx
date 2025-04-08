@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -16,8 +17,7 @@ import { DriverDocument } from '@/lib/types';
 import { 
   UserRound, CarFront, Bike, Search, MapPin, Loader2, 
   ShieldCheck, Wallet, Calendar, Clock, DollarSign, 
-  ArrowLeft, Check, AlertTriangle, CheckCircle, Star, FileText,
-  Phone, CreditCard, Mail, MapPinned
+  ArrowLeft, Check, AlertTriangle, CheckCircle, Star, FileText
 } from 'lucide-react';
 
 const OfficialDriver: React.FC = () => {
@@ -32,8 +32,6 @@ const OfficialDriver: React.FC = () => {
   const [showRegistrationForm, setShowRegistrationForm] = useState(false);
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [depositAmount, setDepositAmount] = useState<number>(3000);
-  const [formPhase, setFormPhase] = useState<number>(1);
-  const [formData, setFormData] = useState<Partial<DriverDocument>>({});
   
   const checkRegistrationStatus = useCallback(async () => {
     if (!user?.id) return;
@@ -108,20 +106,34 @@ const OfficialDriver: React.FC = () => {
     return () => unsubscribe();
   }, [user?.id, navigate, toast, checkRegistrationStatus]);
   
-  // Handle form phase navigation
-  const nextPhase = () => {
-    setFormPhase(prev => Math.min(prev + 1, 5));
-  };
+  // Subscribe to nearby ride requests if driver is approved and has deposit
+  useEffect(() => {
+    if (user?.id && registrationStatus === 'approved' && hasDeposit) {
+      // Initial fetch of available rides
+      const loadRides = async () => {
+        const { rides } = await getAvailableRideRequests();
+        setNearbyRides(rides);
+      };
+      
+      loadRides();
+      
+      // Subscribe to new ride requests
+      const unsubscribe = subscribeToNearbyRides(user.id, (rides) => {
+        setNearbyRides(rides);
+        
+        if (rides.length > 0) {
+          toast({
+            title: "New ride request!",
+            description: "A new ride request is available nearby",
+            duration: 5000
+          });
+        }
+      });
+      
+      return () => unsubscribe();
+    }
+  }, [user?.id, registrationStatus, hasDeposit, toast]);
   
-  const prevPhase = () => {
-    setFormPhase(prev => Math.max(prev - 1, 1));
-  };
-  
-  // Handle form field changes
-  const handleFormChange = (field: string, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-  };
-
   // Handle registration form submission
   const handleSubmit = async (data: DriverDocument) => {
     if (!user?.id) {
@@ -257,7 +269,76 @@ const OfficialDriver: React.FC = () => {
   
   const handleClose = () => {
     setShowRegistrationForm(false);
-    setFormPhase(1);
+  };
+  
+  const handleRideAccept = (rideId: string) => {
+    navigate(`/ride-progress?id=${rideId}`);
+  };
+  
+  const renderAvailableRides = () => {
+    if (nearbyRides.length === 0) {
+      return (
+        <div className="text-center py-10">
+          <Search className="mx-auto mb-3 text-gray-400" size={40} />
+          <h3 className="font-medium text-gray-600">No ride requests available</h3>
+          <p className="text-gray-500 text-sm mt-1">Check back later for new requests</p>
+        </div>
+      );
+    }
+    
+    return (
+      <div className="space-y-4">
+        <h3 className="font-medium text-lg">Nearby Ride Requests</h3>
+        {nearbyRides.map((ride) => (
+          <div key={ride.id} className="border border-gray-200 rounded-xl p-4 bg-white">
+            <div className="flex justify-between items-center mb-3">
+              <div className="flex items-center">
+                <UserRound className="mr-2 text-gray-600" size={18} />
+                <span className="font-medium">{ride.passengers?.name || 'Passenger'}</span>
+              </div>
+              <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">
+                {ride.price} {ride.currency}
+              </span>
+            </div>
+            
+            <div className="space-y-2 mb-3">
+              <div className="flex items-start">
+                <div className="mt-1 mr-2 bg-emerald-100 p-1 rounded-full">
+                  <MapPin className="text-emerald-700" size={14} />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium">Pickup</p>
+                  <p className="text-xs text-gray-500">{ride.pickup_location.name}</p>
+                </div>
+              </div>
+              
+              <div className="flex items-start">
+                <div className="mt-1 mr-2 bg-red-100 p-1 rounded-full">
+                  <MapPin className="text-red-700" size={14} />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium">Dropoff</p>
+                  <p className="text-xs text-gray-500">{ride.dropoff_location.name}</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex justify-between items-center">
+              <div className="text-sm text-gray-500">
+                {ride.distance?.toFixed(1)} km • {Math.round(ride.duration / 60)} min
+              </div>
+              <Button 
+                size="sm" 
+                className="bg-black hover:bg-gray-800 text-white" 
+                onClick={() => handleRideAccept(ride.id)}
+              >
+                Accept
+              </Button>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
   };
   
   const renderDepositAlert = () => {
@@ -294,51 +375,36 @@ const OfficialDriver: React.FC = () => {
     return null;
   };
 
-  // UI for benefits and requirements sections
+  // NEW UI based on the provided images
   const renderDriverBenefits = () => {
     return (
       <div className="mb-8">
         <h2 className="text-2xl font-bold mb-6">Benefits of becoming a ZeroDrive Driver</h2>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="p-5 border-l-4 border-violet-500 bg-white rounded-lg shadow-sm">
-            <div className="flex items-center mb-2">
-              <div className="h-10 w-10 rounded-full bg-violet-100 flex items-center justify-center mr-3">
-                <DollarSign className="h-5 w-5 text-violet-600" />
-              </div>
-              <h3 className="font-bold text-lg">Higher Earnings</h3>
-            </div>
-            <p className="text-gray-600 ml-13">Priority access to high-value ride requests with lower platform fees (20% vs 25% for regular drivers)</p>
+        <div className="space-y-4">
+          <div className="p-4 border-l-4 border-green-500 bg-white rounded-lg flex items-center">
+            <Check className="text-green-500 mr-3" size={24} />
+            <p className="font-medium">Priority access to high-value ride requests</p>
           </div>
           
-          <div className="p-5 border-l-4 border-violet-500 bg-white rounded-lg shadow-sm">
-            <div className="flex items-center mb-2">
-              <div className="h-10 w-10 rounded-full bg-violet-100 flex items-center justify-center mr-3">
-                <ShieldCheck className="h-5 w-5 text-violet-600" />
-              </div>
-              <h3 className="font-bold text-lg">Insurance Coverage</h3>
-            </div>
-            <p className="text-gray-600 ml-13">Exclusive driver insurance coverage for accidents and health emergencies</p>
+          <div className="p-4 border-l-4 border-green-500 bg-white rounded-lg flex items-center">
+            <Check className="text-green-500 mr-3" size={24} />
+            <p className="font-medium">Lower platform fees (0.5% vs 1% for regular drivers)</p>
           </div>
           
-          <div className="p-5 border-l-4 border-violet-500 bg-white rounded-lg shadow-sm">
-            <div className="flex items-center mb-2">
-              <div className="h-10 w-10 rounded-full bg-violet-100 flex items-center justify-center mr-3">
-                <Clock className="h-5 w-5 text-violet-600" />
-              </div>
-              <h3 className="font-bold text-lg">Daily Payments</h3>
-            </div>
-            <p className="text-gray-600 ml-13">Get paid daily directly to your wallet with instant withdrawal options</p>
+          <div className="p-4 border-l-4 border-green-500 bg-white rounded-lg flex items-center">
+            <Check className="text-green-500 mr-3" size={24} />
+            <p className="font-medium">Exclusive driver insurance coverage</p>
           </div>
           
-          <div className="p-5 border-l-4 border-violet-500 bg-white rounded-lg shadow-sm">
-            <div className="flex items-center mb-2">
-              <div className="h-10 w-10 rounded-full bg-violet-100 flex items-center justify-center mr-3">
-                <Star className="h-5 w-5 text-violet-600" />
-              </div>
-              <h3 className="font-bold text-lg">Premium Status</h3>
-            </div>
-            <p className="text-gray-600 ml-13">Official ZeroDrive uniform and merchandise to enhance customer trust</p>
+          <div className="p-4 border-l-4 border-green-500 bg-white rounded-lg flex items-center">
+            <Check className="text-green-500 mr-3" size={24} />
+            <p className="font-medium">Daily payment settlement</p>
+          </div>
+          
+          <div className="p-4 border-l-4 border-green-500 bg-white rounded-lg flex items-center">
+            <Check className="text-green-500 mr-3" size={24} />
+            <p className="font-medium">Official Zero Drive uniform and merchandise</p>
           </div>
         </div>
       </div>
@@ -347,47 +413,47 @@ const OfficialDriver: React.FC = () => {
 
   const renderDriverRequirements = () => {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-        <div className="bg-white p-6 rounded-lg shadow-sm">
-          <h2 className="text-xl font-bold mb-4 pb-2 border-b border-gray-200">Driver Requirements</h2>
-          <ul className="space-y-3">
-            <li className="flex items-center">
-              <Check className="mr-3 text-green-500" size={18} />
-              <span>Valid Pakistani driving license (2+ years)</span>
+      <div className="mb-8 space-y-6">
+        <div>
+          <h2 className="text-xl font-bold mb-4">Driver Requirements</h2>
+          <ul className="space-y-3 pl-1">
+            <li className="flex items-start">
+              <div className="mt-1 mr-2 text-gray-400">•</div>
+              <p>Valid Pakistani driving license (at least 2 years old)</p>
             </li>
-            <li className="flex items-center">
-              <Check className="mr-3 text-green-500" size={18} />
-              <span>Minimum age of 21 years</span>
+            <li className="flex items-start">
+              <div className="mt-1 mr-2 text-gray-400">•</div>
+              <p>Minimum age of 21 years</p>
             </li>
-            <li className="flex items-center">
-              <Check className="mr-3 text-green-500" size={18} />
-              <span>Clear background check</span>
+            <li className="flex items-start">
+              <div className="mt-1 mr-2 text-gray-400">•</div>
+              <p>Clear background check</p>
             </li>
-            <li className="flex items-center">
-              <Check className="mr-3 text-green-500" size={18} />
-              <span>Smartphone with Android 8.0+ or iOS 13+</span>
+            <li className="flex items-start">
+              <div className="mt-1 mr-2 text-gray-400">•</div>
+              <p>Smartphone with Android 8.0+ or iOS 13+</p>
             </li>
           </ul>
         </div>
         
-        <div className="bg-white p-6 rounded-lg shadow-sm">
-          <h2 className="text-xl font-bold mb-4 pb-2 border-b border-gray-200">Vehicle Requirements</h2>
-          <ul className="space-y-3">
-            <li className="flex items-center">
-              <Check className="mr-3 text-green-500" size={18} />
-              <span>Model year 2015 or newer</span>
+        <div>
+          <h2 className="text-xl font-bold mb-4">Vehicle Requirements</h2>
+          <ul className="space-y-3 pl-1">
+            <li className="flex items-start">
+              <div className="mt-1 mr-2 text-gray-400">•</div>
+              <p>Model year 2015 or newer</p>
             </li>
-            <li className="flex items-center">
-              <Check className="mr-3 text-green-500" size={18} />
-              <span>4-door vehicle in excellent condition</span>
+            <li className="flex items-start">
+              <div className="mt-1 mr-2 text-gray-400">•</div>
+              <p>4-door vehicle in excellent condition</p>
             </li>
-            <li className="flex items-center">
-              <Check className="mr-3 text-green-500" size={18} />
-              <span>Valid registration and insurance</span>
+            <li className="flex items-start">
+              <div className="mt-1 mr-2 text-gray-400">•</div>
+              <p>Valid registration and insurance</p>
             </li>
-            <li className="flex items-center">
-              <Check className="mr-3 text-green-500" size={18} />
-              <span>Pass vehicle inspection</span>
+            <li className="flex items-start">
+              <div className="mt-1 mr-2 text-gray-400">•</div>
+              <p>Pass vehicle inspection</p>
             </li>
           </ul>
         </div>
@@ -397,40 +463,35 @@ const OfficialDriver: React.FC = () => {
 
   const renderRequiredDocuments = () => {
     return (
-      <div className="bg-white p-6 rounded-lg shadow-sm mb-8">
-        <h2 className="text-xl font-bold mb-4 pb-2 border-b border-gray-200">Required Documents</h2>
+      <div className="mb-8">
+        <h2 className="text-xl font-bold mb-4">Required Documents</h2>
         
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <ul className="space-y-3">
-            <li className="flex items-center">
-              <Check className="mr-3 text-green-500" size={18} />
-              <span>CNIC (front and back)</span>
-            </li>
-            <li className="flex items-center">
-              <Check className="mr-3 text-green-500" size={18} />
-              <span>Driving license (front and back)</span>
-            </li>
-            <li className="flex items-center">
-              <Check className="mr-3 text-green-500" size={18} />
-              <span>Vehicle registration certificate</span>
-            </li>
-          </ul>
-          
-          <ul className="space-y-3">
-            <li className="flex items-center">
-              <Check className="mr-3 text-green-500" size={18} />
-              <span>Vehicle photos</span>
-            </li>
-            <li className="flex items-center">
-              <Check className="mr-3 text-green-500" size={18} />
-              <span>Selfie photo holding CNIC</span>
-            </li>
-            <li className="flex items-center">
-              <Check className="mr-3 text-green-500" size={18} />
-              <span>Clear profile photo</span>
-            </li>
-          </ul>
-        </div>
+        <ul className="space-y-3 pl-1">
+          <li className="flex items-start">
+            <div className="mt-1 mr-2 text-gray-400">•</div>
+            <p>CNIC (front and back)</p>
+          </li>
+          <li className="flex items-start">
+            <div className="mt-1 mr-2 text-gray-400">•</div>
+            <p>Driving license (front and back)</p>
+          </li>
+          <li className="flex items-start">
+            <div className="mt-1 mr-2 text-gray-400">•</div>
+            <p>Vehicle registration certificate</p>
+          </li>
+          <li className="flex items-start">
+            <div className="mt-1 mr-2 text-gray-400">•</div>
+            <p>Vehicle photos (front, back, sides)</p>
+          </li>
+          <li className="flex items-start">
+            <div className="mt-1 mr-2 text-gray-400">•</div>
+            <p>Selfie photo holding CNIC</p>
+          </li>
+          <li className="flex items-start">
+            <div className="mt-1 mr-2 text-gray-400">•</div>
+            <p>Clear profile photo for your driver account</p>
+          </li>
+        </ul>
         
         <div className="mt-6 bg-amber-50 border border-amber-200 rounded-lg p-4">
           <div className="flex items-start">
@@ -438,375 +499,6 @@ const OfficialDriver: React.FC = () => {
             <p className="text-amber-700 text-sm">
               The application process takes approximately 3-5 business days. You'll need to visit our office for documentation verification and vehicle inspection.
             </p>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  // Render 5-phased form
-  const renderPhasedForm = () => {
-    if (!showRegistrationForm) return null;
-    
-    return (
-      <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
-          <div className="border-b border-gray-200 p-4 flex justify-between items-center sticky top-0 bg-white z-10">
-            <h2 className="text-xl font-bold">Driver Registration</h2>
-            <button onClick={handleClose} className="text-gray-500">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-          
-          <div className="p-6">
-            {/* Progress bar */}
-            <div className="mb-8">
-              <div className="flex justify-between mb-2">
-                {[1, 2, 3, 4, 5].map((step) => (
-                  <div 
-                    key={step} 
-                    className={`flex items-center justify-center h-8 w-8 rounded-full ${
-                      step === formPhase ? 'bg-violet-600 text-white' : 
-                      step < formPhase ? 'bg-green-500 text-white' : 'bg-gray-200'
-                    }`}
-                  >
-                    {step < formPhase ? <Check size={16} /> : step}
-                  </div>
-                ))}
-              </div>
-              <div className="overflow-hidden rounded-full bg-gray-200">
-                <div 
-                  className="h-2 bg-violet-600 transition-all" 
-                  style={{ width: `${(formPhase / 5) * 100}%` }}
-                ></div>
-              </div>
-              <div className="flex justify-between mt-2 text-xs text-gray-500">
-                <span>Personal Info</span>
-                <span>Identification</span>
-                <span>Vehicle</span>
-                <span>Documents</span>
-                <span>Verification</span>
-              </div>
-            </div>
-            
-            <form>
-              {formPhase === 1 && (
-                <div className="space-y-4">
-                  <h3 className="text-lg font-medium">Personal Information</h3>
-                  
-                  <div className="space-y-2">
-                    <label className="block text-sm font-medium">Full Name</label>
-                    <input 
-                      type="text" 
-                      className="w-full p-2 border border-gray-300 rounded-md" 
-                      value={formData.fullName || ''}
-                      onChange={(e) => handleFormChange('fullName', e.target.value)}
-                      required
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <label className="block text-sm font-medium">Phone Number</label>
-                    <input 
-                      type="tel" 
-                      className="w-full p-2 border border-gray-300 rounded-md" 
-                      value={formData.phoneNumber || ''}
-                      onChange={(e) => handleFormChange('phoneNumber', e.target.value)}
-                      required
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <label className="block text-sm font-medium">Address</label>
-                    <textarea 
-                      className="w-full p-2 border border-gray-300 rounded-md" 
-                      value={formData.address || ''}
-                      onChange={(e) => handleFormChange('address', e.target.value)}
-                      rows={3}
-                      required
-                    ></textarea>
-                  </div>
-                </div>
-              )}
-              
-              {formPhase === 2 && (
-                <div className="space-y-4">
-                  <h3 className="text-lg font-medium">Identification</h3>
-                  
-                  <div className="space-y-2">
-                    <label className="block text-sm font-medium">CNIC Number</label>
-                    <input 
-                      type="text" 
-                      className="w-full p-2 border border-gray-300 rounded-md" 
-                      value={formData.cnicNumber || ''}
-                      onChange={(e) => handleFormChange('cnicNumber', e.target.value)}
-                      placeholder="00000-0000000-0"
-                      required
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <label className="block text-sm font-medium">Driver License Number</label>
-                    <input 
-                      type="text" 
-                      className="w-full p-2 border border-gray-300 rounded-md" 
-                      value={formData.driverLicenseNumber || ''}
-                      onChange={(e) => handleFormChange('driverLicenseNumber', e.target.value)}
-                      required
-                    />
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <label className="block text-sm font-medium">CNIC Front</label>
-                      <input 
-                        type="file" 
-                        className="w-full p-2 border border-gray-300 rounded-md" 
-                        accept="image/*"
-                        onChange={(e) => {
-                          if (e.target.files && e.target.files[0]) {
-                            handleFormChange('cnicFrontPhoto', e.target.files[0]);
-                          }
-                        }}
-                        required
-                      />
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <label className="block text-sm font-medium">CNIC Back</label>
-                      <input 
-                        type="file" 
-                        className="w-full p-2 border border-gray-300 rounded-md" 
-                        accept="image/*"
-                        onChange={(e) => {
-                          if (e.target.files && e.target.files[0]) {
-                            handleFormChange('cnicBackPhoto', e.target.files[0]);
-                          }
-                        }}
-                        required
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-              
-              {formPhase === 3 && (
-                <div className="space-y-4">
-                  <h3 className="text-lg font-medium">Vehicle Information</h3>
-                  
-                  <div className="space-y-2">
-                    <label className="block text-sm font-medium">Vehicle Type</label>
-                    <select 
-                      className="w-full p-2 border border-gray-300 rounded-md"
-                      value={formData.vehicleType || 'Bike'}
-                      onChange={(e) => handleFormChange('vehicleType', e.target.value)}
-                      required
-                    >
-                      <option value="Bike">Bike</option>
-                      <option value="Auto">Auto Rickshaw</option>
-                      <option value="Car">Car</option>
-                    </select>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <label className="block text-sm font-medium">Vehicle Registration Number</label>
-                    <input 
-                      type="text" 
-                      className="w-full p-2 border border-gray-300 rounded-md" 
-                      value={formData.vehicleRegistrationNumber || ''}
-                      onChange={(e) => handleFormChange('vehicleRegistrationNumber', e.target.value)}
-                      placeholder="ABC-123"
-                      required
-                    />
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <label className="block text-sm font-medium">Vehicle Model</label>
-                      <input 
-                        type="text" 
-                        className="w-full p-2 border border-gray-300 rounded-md" 
-                        value={formData.vehicleModel || ''}
-                        onChange={(e) => handleFormChange('vehicleModel', e.target.value)}
-                        placeholder="e.g. Honda 125"
-                      />
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <label className="block text-sm font-medium">Vehicle Color</label>
-                      <input 
-                        type="text" 
-                        className="w-full p-2 border border-gray-300 rounded-md" 
-                        value={formData.vehicleColor || ''}
-                        onChange={(e) => handleFormChange('vehicleColor', e.target.value)}
-                        placeholder="e.g. Black"
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-              
-              {formPhase === 4 && (
-                <div className="space-y-4">
-                  <h3 className="text-lg font-medium">Documents Upload</h3>
-                  
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <label className="block text-sm font-medium">Driver License Front</label>
-                      <input 
-                        type="file" 
-                        className="w-full p-2 border border-gray-300 rounded-md" 
-                        accept="image/*"
-                        onChange={(e) => {
-                          if (e.target.files && e.target.files[0]) {
-                            handleFormChange('driverLicenseFrontPhoto', e.target.files[0]);
-                          }
-                        }}
-                        required
-                      />
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <label className="block text-sm font-medium">Driver License Back</label>
-                      <input 
-                        type="file" 
-                        className="w-full p-2 border border-gray-300 rounded-md" 
-                        accept="image/*"
-                        onChange={(e) => {
-                          if (e.target.files && e.target.files[0]) {
-                            handleFormChange('driverLicenseBackPhoto', e.target.files[0]);
-                          }
-                        }}
-                        required
-                      />
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <label className="block text-sm font-medium">Vehicle Registration</label>
-                    <input 
-                      type="file" 
-                      className="w-full p-2 border border-gray-300 rounded-md" 
-                      accept="image/*"
-                      onChange={(e) => {
-                        if (e.target.files && e.target.files[0]) {
-                          handleFormChange('vehicleRegistrationPhoto', e.target.files[0]);
-                        }
-                      }}
-                      required
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <label className="block text-sm font-medium">Vehicle Photo</label>
-                    <input 
-                      type="file" 
-                      className="w-full p-2 border border-gray-300 rounded-md" 
-                      accept="image/*"
-                      onChange={(e) => {
-                        if (e.target.files && e.target.files[0]) {
-                          handleFormChange('vehiclePhoto', e.target.files[0]);
-                        }
-                      }}
-                      required
-                    />
-                  </div>
-                </div>
-              )}
-              
-              {formPhase === 5 && (
-                <div className="space-y-4">
-                  <h3 className="text-lg font-medium">Verification</h3>
-                  
-                  <div className="space-y-2">
-                    <label className="block text-sm font-medium">Selfie Photo</label>
-                    <input 
-                      type="file" 
-                      className="w-full p-2 border border-gray-300 rounded-md" 
-                      accept="image/*"
-                      onChange={(e) => {
-                        if (e.target.files && e.target.files[0]) {
-                          handleFormChange('selfiePhoto', e.target.files[0]);
-                        }
-                      }}
-                      required
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <label className="block text-sm font-medium">Selfie with CNIC</label>
-                    <input 
-                      type="file" 
-                      className="w-full p-2 border border-gray-300 rounded-md" 
-                      accept="image/*"
-                      onChange={(e) => {
-                        if (e.target.files && e.target.files[0]) {
-                          handleFormChange('selfieWithCNIC', e.target.files[0]);
-                        }
-                      }}
-                      required
-                    />
-                  </div>
-                  
-                  <div className="bg-blue-50 p-4 rounded-lg">
-                    <p className="text-blue-800 text-sm">
-                      By submitting this application, you agree to our terms and conditions for drivers. 
-                      Your application will be reviewed within 3-5 business days.
-                    </p>
-                  </div>
-                  
-                  <div className="flex items-center">
-                    <input 
-                      type="checkbox" 
-                      id="agree" 
-                      className="mr-2" 
-                      checked={formData.agreedToTerms || false}
-                      onChange={(e) => handleFormChange('agreedToTerms', e.target.checked)}
-                      required
-                    />
-                    <label htmlFor="agree" className="text-sm">
-                      I agree to the <a href="#" className="text-blue-600">Terms and Conditions</a>
-                    </label>
-                  </div>
-                </div>
-              )}
-              
-              <div className="flex justify-between mt-8">
-                <Button 
-                  type="button" 
-                  variant="outline" 
-                  onClick={formPhase > 1 ? prevPhase : handleClose}
-                >
-                  {formPhase > 1 ? 'Previous' : 'Cancel'}
-                </Button>
-                
-                {formPhase < 5 ? (
-                  <Button 
-                    type="button" 
-                    onClick={nextPhase}
-                  >
-                    Next
-                  </Button>
-                ) : (
-                  <Button 
-                    type="button"
-                    onClick={() => handleSubmit(formData as DriverDocument)}
-                    disabled={loading || !formData.agreedToTerms}
-                  >
-                    {loading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Submitting...
-                      </>
-                    ) : (
-                      'Submit Application'
-                    )}
-                  </Button>
-                )}
-              </div>
-            </form>
           </div>
         </div>
       </div>
@@ -826,7 +518,12 @@ const OfficialDriver: React.FC = () => {
     }
     
     if (showRegistrationForm) {
-      return renderPhasedForm();
+      return (
+        <DriverRegistration 
+          onClose={handleClose}
+          onSubmit={handleSubmit}
+        />
+      );
     }
     
     switch (registrationStatus) {
@@ -878,38 +575,13 @@ const OfficialDriver: React.FC = () => {
               
               <Button
                 className="w-full bg-black text-white hover:bg-gray-800 py-3 text-lg rounded-xl"
-                onClick={() => navigate('/driver-dashboard')}
+                onClick={() => navigate('/')}
               >
-                Go to Driver Dashboard
+                Start Accepting Rides
               </Button>
             </div>
             
-            {hasDeposit ? (
-              <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm mb-6">
-                <h3 className="text-xl font-bold mb-4">Ready to Drive!</h3>
-                <div className="space-y-4">
-                  <div className="flex items-center">
-                    <div className="h-10 w-10 bg-green-100 rounded-full flex items-center justify-center mr-3">
-                      <Check className="h-5 w-5 text-green-600" />
-                    </div>
-                    <div>
-                      <p className="font-medium">Your account is fully verified</p>
-                      <p className="text-sm text-gray-500">You can start accepting ride requests</p>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center">
-                    <div className="h-10 w-10 bg-green-100 rounded-full flex items-center justify-center mr-3">
-                      <Wallet className="h-5 w-5 text-green-600" />
-                    </div>
-                    <div>
-                      <p className="font-medium">Security deposit confirmed</p>
-                      <p className="text-sm text-gray-500">RS {walletBalance.toFixed(0)} available in your wallet</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
+            {hasDeposit ? renderAvailableRides() : (
               <div className="text-center py-6 bg-white rounded-xl border border-gray-100 shadow-sm">
                 <Wallet className="h-12 w-12 mx-auto mb-3 text-amber-500" />
                 <p className="text-gray-600 font-medium">
@@ -985,7 +657,7 @@ const OfficialDriver: React.FC = () => {
                 disabled={hasSubmittedApplication}
               >
                 <FileText className="mr-2" size={20} />
-                {hasSubmittedApplication ? 'Application Already Submitted' : 'Submit Application'}
+                {hasSubmittedApplication ? 'Application Already Submitted' : 'Submit Documents'}
               </Button>
               
               {hasSubmittedApplication && (
@@ -1008,7 +680,6 @@ const OfficialDriver: React.FC = () => {
       
       <div className="container mx-auto px-4 pb-8">
         {renderRegistrationStatus()}
-        {renderPhasedForm()}
       </div>
     </div>
   );

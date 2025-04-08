@@ -25,7 +25,6 @@ import Policies from "./pages/Policies";
 import OfficialDriver from "./pages/OfficialDriver";
 import NotFound from "./pages/NotFound";
 import ResetPassword from "./pages/ResetPassword";
-import DriverDashboard from "./pages/DriverDashboard";
 
 const queryClient = new QueryClient();
 
@@ -54,7 +53,6 @@ const App = () => (
               <Route path="/about" element={<AboutUs />} />
               <Route path="/policies" element={<Policies />} />
               <Route path="/official-driver" element={<OfficialDriver />} />
-              <Route path="/driver-dashboard" element={<DriverDashboard />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>
