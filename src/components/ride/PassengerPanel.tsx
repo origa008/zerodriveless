@@ -1,8 +1,7 @@
-
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import LocationInput from './LocationInput';
+import LocationSearch from './LocationSearch';
 import RideOptionCard from './RideOptionCard';
 import { useRide } from '@/lib/context/RideContext';
 import { useAuth } from '@/lib/context/AuthContext';
@@ -154,17 +153,21 @@ const PassengerPanel: React.FC = () => {
       case 'locations':
         return (
           <div className="space-y-4 py-2">
-            <LocationInput 
+            <LocationSearch 
               label="Pickup Location"
               placeholder="Current Location"
-              value={pickupLocation}
-              onChange={setPickupLocation}
+              value={pickupLocation ? pickupLocation.name : ""}
+              onChange={(value) => {}}
+              onSelect={setPickupLocation}
+              icon={undefined}
             />
-            <LocationInput 
+            <LocationSearch 
               label="Dropoff Location"
               placeholder="Where to?"
-              value={dropoffLocation}
-              onChange={setDropoffLocation}
+              value={dropoffLocation ? dropoffLocation.name : ""}
+              onChange={(value) => {}}
+              onSelect={setDropoffLocation}
+              icon={undefined}
             />
           </div>
         );
