@@ -12,8 +12,9 @@ import {
   acceptRideRequest as acceptRide
 } from '@/lib/utils/rideUtils';
 import { getDriverRegistrationStatus } from '@/lib/utils/driverUtils';
-import { AlertTriangle, Map, MapPin, RefreshCw, Star, Wallet } from 'lucide-react';
+import { AlertTriangle, MapPin, RefreshCw, Star, Wallet } from 'lucide-react';
 import { Ride } from '@/lib/types';
+import RideOptionCard from '@/components/ride/RideOptionCard';
 
 const RideRequests: React.FC = () => {
   const navigate = useNavigate();
@@ -58,23 +59,34 @@ const RideRequests: React.FC = () => {
 
   // Fetch ride requests
   const fetchRideRequests = async () => {
-    if (!user?.id || driverStatus !== 'approved' || showDepositAlert) {
+    if (!user?.id) {
       setIsLoading(false);
       return;
     }
     
     setIsRefreshing(true);
     try {
-      const { rides, error } = await getAvailableRideRequests();
+      console.log("Fetching available ride requests...");
+      const { rides, error } = await getAvailableRideRequests(user.email);
       
       if (!error) {
         console.log("Fetched rides:", rides);
         setPendingRideRequests(rides || []);
       } else {
         console.error("Error fetching rides:", error);
+        toast({
+          title: "Error",
+          description: "Failed to fetch ride requests. Please try again.",
+          duration: 3000
+        });
       }
     } catch (err) {
       console.error("Exception fetching rides:", err);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred.",
+        duration: 3000
+      });
     } finally {
       setIsRefreshing(false);
       setIsLoading(false);
@@ -83,7 +95,7 @@ const RideRequests: React.FC = () => {
 
   // Fetch and subscribe to nearby ride requests
   useEffect(() => {
-    if (!user?.id || driverStatus !== 'approved' || showDepositAlert) return;
+    if (!user?.id) return;
     
     fetchRideRequests();
     
@@ -95,7 +107,7 @@ const RideRequests: React.FC = () => {
         if (prevRides.some(ride => ride.id === newRide.id)) {
           return prevRides;
         }
-        return [...prevRides, newRide];
+        return [newRide, ...prevRides];
       });
       
       toast({
@@ -106,7 +118,7 @@ const RideRequests: React.FC = () => {
     });
     
     return () => unsubscribe();
-  }, [user?.id, driverStatus, showDepositAlert, toast]);
+  }, [user?.id, toast]);
 
   // Handle refreshing ride requests
   const handleRefresh = () => {
@@ -138,14 +150,14 @@ const RideRequests: React.FC = () => {
         rideOption: ride.ride_option,
         driver: {
           id: user.id,
-          name: user.name,
+          name: user.name || 'Driver',
           rating: user.rating || 5.0,
           licensePlate: "Default",
           avatar: user.avatar || "/lovable-uploads/498e0bf1-4c8a-4cad-8ee2-6f43fdccc511.png"
         },
         status: 'confirmed',
         price: ride.price,
-        currency: ride.currency,
+        currency: ride.currency || 'RS',
         distance: ride.distance,
         duration: ride.duration,
         paymentMethod: ride.payment_method
@@ -281,59 +293,17 @@ const RideRequests: React.FC = () => {
         ) : (
           <div className="space-y-4">
             {pendingRideRequests.map((request) => (
-              <div key={request.id} className="bg-white rounded-lg shadow-sm overflow-hidden">
-                <div className="p-5">
-                  <div className="flex justify-between">
-                    <div className="flex items-center space-x-2">
-                      <Map className="text-gray-500" size={16} />
-                      <span className="font-medium">{request.distance?.toFixed(1)} km</span>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-gray-500 text-sm">Estimate</div>
-                      <div className="font-bold">{Math.round(request.duration / 60)} mins</div>
-                    </div>
-                  </div>
-                  
-                  <div className="border-t border-b border-gray-200 py-4 my-4 space-y-4">
-                    <div className="flex items-start">
-                      <div className="mt-1 mr-3 bg-emerald-100 p-1 rounded-full">
-                        <MapPin className="text-emerald-700" size={14} />
-                      </div>
-                      <div>
-                        <div className="text-sm font-medium">Pickup</div>
-                        <div className="text-gray-600">{request.pickup_location.name}</div>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-start">
-                      <div className="mt-1 mr-3 bg-red-100 p-1 rounded-full">
-                        <MapPin className="text-red-700" size={14} />
-                      </div>
-                      <div>
-                        <div className="text-sm font-medium">Dropoff</div>
-                        <div className="text-gray-600">{request.dropoff_location.name}</div>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="flex justify-between items-center mt-4">
-                    <div>
-                      <div className="text-gray-500">Fare</div>
-                      <div className="text-2xl font-bold">{request.price} {request.currency}</div>
-                      <div className="text-xs text-green-600">
-                        Earn {Math.round(request.price * 0.8)} {request.currency}
-                      </div>
-                    </div>
-                    
-                    <Button 
-                      className="bg-black text-white px-6 py-2 rounded-full"
-                      onClick={() => handleAcceptRide(request)}
-                    >
-                      Accept
-                    </Button>
-                  </div>
-                </div>
-              </div>
+              <RideOptionCard
+                key={request.id}
+                option={request.ride_option}
+                distance={request.distance}
+                duration={request.duration}
+                pickupLocation={request.pickup_location.name}
+                dropoffLocation={request.dropoff_location.name}
+                price={request.price}
+                currency={request.currency}
+                onSelect={() => handleAcceptRide(request)}
+              />
             ))}
           </div>
         )}

@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -99,6 +100,17 @@ const PassengerPanel: React.FC = () => {
     setIsCreatingRide(true);
     
     try {
+      console.log("Creating ride request with:", {
+        userId: user.id,
+        pickup: pickupLocation,
+        dropoff: dropoffLocation,
+        option: selectedRideOption,
+        price: userBid,
+        distance: estimatedDistance || 0,
+        duration: estimatedDuration || 0,
+        payment: selectedPayment
+      });
+      
       const { rideId, error } = await createRideRequest(
         user.id,
         pickupLocation,
@@ -113,6 +125,8 @@ const PassengerPanel: React.FC = () => {
       if (error) {
         throw new Error(error);
       }
+      
+      console.log("Ride request created with ID:", rideId);
       
       toast({
         title: "Ride request created",
