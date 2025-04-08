@@ -5,17 +5,13 @@ import { User, Users } from 'lucide-react';
 
 interface RideOptionCardProps {
   option: RideOption;
-  isSelected?: boolean;
-  distance?: number;
-  duration?: number;
+  isSelected: boolean;
   onSelect: (option: RideOption) => void;
 }
 
 const RideOptionCard: React.FC<RideOptionCardProps> = ({ 
   option, 
-  isSelected = false, 
-  distance,
-  duration,
+  isSelected, 
   onSelect 
 }) => {
   return (
@@ -41,7 +37,7 @@ const RideOptionCard: React.FC<RideOptionCardProps> = ({
           </div>
           <div className="flex items-center text-gray-500">
             <div className="flex items-center mr-6">
-              <span className="text-lg">{duration ? `${Math.round(duration / 60)} min` : `${option.duration} min`}</span>
+              <span className="text-lg">{option.duration} min</span>
             </div>
             <div className="flex items-center gap-1">
               <Users size={16} />
