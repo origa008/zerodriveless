@@ -1,4 +1,3 @@
-
 import { supabase } from "@/integrations/supabase/client";
 import { Ride, Location, RideOption, PaymentMethod } from "@/lib/types";
 import { Database } from "@/integrations/supabase/types";
@@ -34,20 +33,14 @@ export const createRideRequest = async (
       passenger_email: email
     };
     
-    console.log("Creating ride with data:", rideData);
-    
     const { data, error } = await supabase
       .from('rides')
       .insert(rideData)
       .select('id')
       .single();
     
-    if (error) {
-      console.error("Database error creating ride:", error);
-      throw error;
-    }
+    if (error) throw error;
     
-    console.log("Ride created successfully with ID:", data.id);
     return { rideId: data.id, error: null };
   } catch (error: any) {
     console.error("Create ride request error:", error.message);
