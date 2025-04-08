@@ -1,4 +1,3 @@
-
 import { supabase } from "@/integrations/supabase/client";
 import { Ride, Location, RideOption, PaymentMethod } from "@/lib/types";
 import { Database } from "@/integrations/supabase/types";
@@ -54,21 +53,22 @@ export const createRideRequest = async (
  */
 export const getAvailableRideRequests = async (driverEmail?: string): Promise<{ rides: any[]; error: string | null }> => {
   try {
+    console.log("Fetching available rides...");
     const { data, error } = await supabase
       .from('rides')
       .select(`
         *,
-        passengers:passenger_id (
-          name,
-          email,
-          avatar
-        )
+        passengers:profiles(*)
       `)
       .eq('status', 'searching')
       .order('created_at', { ascending: false });
     
-    if (error) throw error;
+    if (error) {
+      console.error("Database error fetching rides:", error);
+      throw error;
+    }
     
+    console.log(`Found ${data?.length || 0} available rides`);
     return { rides: data || [], error: null };
   } catch (error: any) {
     console.error("Get available rides error:", error.message);
@@ -86,6 +86,13 @@ export const acceptRideRequest = async (
   try {
     const { data: { user } } = await supabase.auth.getUser();
     const email = user?.email;
+    
+    // Get driver details
+    const { data: driverData } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', driverId)
+      .single();
     
     const { error } = await supabase
       .from('rides')
@@ -239,6 +246,8 @@ export const subscribeToRideUpdates = (
 export const subscribeToNewRideRequests = (
   callback: (ride: any) => void
 ) => {
+  console.log("Subscribing to new ride requests...");
+  
   const channel = supabase
     .channel('new_rides')
     .on(
@@ -247,15 +256,32 @@ export const subscribeToNewRideRequests = (
         event: 'INSERT',
         schema: 'public',
         table: 'rides',
-        filter: `status=eq.searching`
+        filter: 'status=eq.searching'
       },
       (payload) => {
-        callback(payload.new);
+        console.log("New ride created:", payload.new);
+        
+        // Get full ride details including passenger info
+        supabase
+          .from('rides')
+          .select(`*, passengers:profiles(*)`)
+          .eq('id', payload.new.id)
+          .single()
+          .then(({ data, error }) => {
+            if (!error && data) {
+              callback(data);
+            } else {
+              console.error("Error fetching complete ride data:", error);
+            }
+          });
       }
     )
-    .subscribe();
+    .subscribe((status) => {
+      console.log("Subscription status:", status);
+    });
     
   return () => {
+    console.log("Unsubscribing from new ride requests");
     supabase.removeChannel(channel);
   };
 };

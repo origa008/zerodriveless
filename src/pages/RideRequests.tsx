@@ -12,7 +12,7 @@ import {
   acceptRideRequest as acceptRide
 } from '@/lib/utils/rideUtils';
 import { getDriverRegistrationStatus } from '@/lib/utils/driverUtils';
-import { AlertTriangle, Map, MapPin, Star, Wallet } from 'lucide-react';
+import { AlertTriangle, Map, MapPin, RefreshCw, Star, Wallet } from 'lucide-react';
 import { Ride } from '@/lib/types';
 
 const RideRequests: React.FC = () => {
@@ -23,6 +23,7 @@ const RideRequests: React.FC = () => {
   
   const [pendingRideRequests, setPendingRideRequests] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [driverStatus, setDriverStatus] = useState<string | null>(null);
   const [showDriverRegistrationAlert, setShowDriverRegistrationAlert] = useState(false);
   const [showDepositAlert, setShowDepositAlert] = useState(false);
@@ -55,23 +56,47 @@ const RideRequests: React.FC = () => {
     checkDriverStatus();
   }, [user?.id]);
 
-  // Fetch and subscribe to nearby ride requests
-  useEffect(() => {
-    if (!user?.id || driverStatus !== 'approved' || showDepositAlert) return;
+  // Fetch ride requests
+  const fetchRideRequests = async () => {
+    if (!user?.id || driverStatus !== 'approved' || showDepositAlert) {
+      setIsLoading(false);
+      return;
+    }
     
-    const fetchRideRequests = async () => {
+    setIsRefreshing(true);
+    try {
       const { rides, error } = await getAvailableRideRequests();
       
       if (!error) {
+        console.log("Fetched rides:", rides);
         setPendingRideRequests(rides || []);
+      } else {
+        console.error("Error fetching rides:", error);
       }
-    };
+    } catch (err) {
+      console.error("Exception fetching rides:", err);
+    } finally {
+      setIsRefreshing(false);
+      setIsLoading(false);
+    }
+  };
+
+  // Fetch and subscribe to nearby ride requests
+  useEffect(() => {
+    if (!user?.id || driverStatus !== 'approved' || showDepositAlert) return;
     
     fetchRideRequests();
     
     // Subscribe to real-time ride request updates
     const unsubscribe = subscribeToNewRideRequests((newRide) => {
-      setPendingRideRequests(prevRides => [...prevRides, newRide]);
+      console.log("New ride request received:", newRide);
+      setPendingRideRequests(prevRides => {
+        // Check if ride already exists
+        if (prevRides.some(ride => ride.id === newRide.id)) {
+          return prevRides;
+        }
+        return [...prevRides, newRide];
+      });
       
       toast({
         title: "New Ride Request",
@@ -82,6 +107,11 @@ const RideRequests: React.FC = () => {
     
     return () => unsubscribe();
   }, [user?.id, driverStatus, showDepositAlert, toast]);
+
+  // Handle refreshing ride requests
+  const handleRefresh = () => {
+    fetchRideRequests();
+  };
 
   // Handle accepting a ride
   const handleAcceptRide = async (ride: any) => {
@@ -106,6 +136,13 @@ const RideRequests: React.FC = () => {
         pickup: ride.pickup_location,
         dropoff: ride.dropoff_location,
         rideOption: ride.ride_option,
+        driver: {
+          id: user.id,
+          name: user.name,
+          rating: user.rating || 5.0,
+          licensePlate: "Default",
+          avatar: user.avatar || "/lovable-uploads/498e0bf1-4c8a-4cad-8ee2-6f43fdccc511.png"
+        },
         status: 'confirmed',
         price: ride.price,
         currency: ride.currency,
@@ -201,6 +238,32 @@ const RideRequests: React.FC = () => {
       
       <div className="p-4">
         {renderAlerts()}
+        
+        <div className="flex justify-between items-center mb-4">
+          <p className="text-gray-700">
+            {!isLoading && !showDriverRegistrationAlert && !showDepositAlert && 
+             `${pendingRideRequests.length} ride requests available`}
+          </p>
+          <Button 
+            size="sm"
+            variant="outline"
+            className="flex items-center"
+            onClick={handleRefresh}
+            disabled={isRefreshing || isLoading}
+          >
+            {isRefreshing ? (
+              <>
+                <RefreshCw className="mr-1 h-4 w-4 animate-spin" />
+                Refreshing...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="mr-1 h-4 w-4" />
+                Refresh
+              </>
+            )}
+          </Button>
+        </div>
         
         {isLoading ? (
           <div className="flex justify-center py-8">

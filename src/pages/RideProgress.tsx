@@ -6,7 +6,7 @@ import { useRide } from '@/lib/context/RideContext';
 import { useAuth } from '@/lib/context/AuthContext';
 import RideMap from '@/components/map/RideMap';
 import RideDetails from '@/components/ride/RideDetails';
-import { completeRideAndProcessPayment } from '@/lib/utils/rideUtils';
+import { completeRideAndProcessPayment, subscribeToRideUpdates } from '@/lib/utils/rideUtils';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 
@@ -18,32 +18,61 @@ const RideProgress: React.FC = () => {
     currentRide,
     startRide,
     completeRide,
-    cancelRide
+    cancelRide,
+    isDriverMode
   } = useRide();
   const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
-    // Start the ride automatically when the page loads
-    if (currentRide && currentRide.status === 'confirmed') {
+    // If no current ride, redirect back
+    if (!currentRide) {
+      navigate(isDriverMode ? '/ride-requests' : '/');
+      return;
+    }
+    
+    // Start the ride automatically when the page loads for drivers
+    if (currentRide && currentRide.status === 'confirmed' && isDriverMode) {
       startRide();
     }
-  }, [currentRide, startRide]);
+    
+    // Subscribe to ride updates
+    const unsubscribe = subscribeToRideUpdates(currentRide.id, (updatedRide) => {
+      console.log("Ride update received:", updatedRide);
+      
+      // Handle ride status changes
+      if (updatedRide.status === 'completed') {
+        toast({
+          title: "Ride Completed",
+          description: "The ride has been completed successfully",
+          duration: 3000
+        });
+        
+        setTimeout(() => {
+          navigate('/ride-completed');
+        }, 1500);
+      }
+    });
+    
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [currentRide, startRide, navigate, isDriverMode, toast]);
 
+  // If ride is completed, navigate to ride-completed
   useEffect(() => {
-    // If ride is completed, navigate to ride-completed
     if (currentRide && currentRide.status === 'completed') {
       navigate('/ride-completed');
     }
   }, [currentRide, navigate]);
 
   if (!currentRide) {
-    navigate('/');
+    navigate(isDriverMode ? '/ride-requests' : '/');
     return null;
   }
 
   const handleCancel = () => {
     cancelRide();
-    navigate('/');
+    navigate(isDriverMode ? '/ride-requests' : '/');
   };
 
   const handleComplete = async () => {
@@ -68,6 +97,10 @@ const RideProgress: React.FC = () => {
           : "Please collect cash payment from the passenger",
         duration: 5000
       });
+      
+      // Navigate to completed page
+      navigate('/ride-completed');
+      
     } catch (error: any) {
       console.error("Failed to complete ride:", error);
       toast({
@@ -93,61 +126,65 @@ const RideProgress: React.FC = () => {
       <div className="bg-white rounded-t-3xl -mt-6 relative z-10 p-6">
         {/* Vehicle image */}
         <div className="mb-4 flex justify-center">
-          {currentRide.rideOption.name === 'Bike' ? (
-            <img 
-              src={vehicleImages.Bike} 
-              alt="Bike" 
-              className="h-24 object-contain mx-auto"
-            />
-          ) : (
-            <img 
-              src={vehicleImages.Auto} 
-              alt="Auto" 
-              className="h-24 object-contain mx-auto"
-            />
+          {currentRide.rideOption && (
+            currentRide.rideOption.name === 'Bike' ? (
+              <img 
+                src={vehicleImages.Bike} 
+                alt="Bike" 
+                className="h-24 object-contain mx-auto"
+              />
+            ) : (
+              <img 
+                src={vehicleImages.Auto} 
+                alt="Auto" 
+                className="h-24 object-contain mx-auto"
+              />
+            )
           )}
         </div>
         
         <RideDetails />
         
-        <div className="p-6 bg-white">
-          {currentRide.status === 'in_progress' ? (
-            <Button 
-              className="w-full bg-black text-white hover:bg-gray-800 py-6 text-xl rounded-xl" 
-              onClick={handleComplete}
-              disabled={isProcessing}
-            >
-              {isProcessing ? (
-                <>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  Processing...
-                </>
-              ) : (
-                'Completed'
-              )}
-            </Button>
-          ) : (
-            <Button 
-              variant="outline" 
-              className="w-full border-gray-300 py-6 text-xl rounded-xl" 
-              onClick={handleCancel}
-              disabled={isProcessing}
-            >
-              Cancel
-            </Button>
-          )}
-          
-          {currentRide.paymentMethod === 'wallet' && (
-            <p className="text-center text-sm text-gray-500 mt-2">
-              Payment will be processed automatically from passenger's wallet
-            </p>
-          )}
-          {currentRide.paymentMethod === 'cash' && (
-            <p className="text-center text-sm text-gray-500 mt-2">
-              Please collect cash payment of {currentRide.price} RS from passenger
-            </p>
-          )}
-        </div>
+        {isDriverMode && (
+          <div className="p-6 bg-white">
+            {currentRide.status === 'in_progress' ? (
+              <Button 
+                className="w-full bg-black text-white hover:bg-gray-800 py-6 text-xl rounded-xl" 
+                onClick={handleComplete}
+                disabled={isProcessing}
+              >
+                {isProcessing ? (
+                  <>
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  'Complete Ride'
+                )}
+              </Button>
+            ) : (
+              <Button 
+                variant="outline" 
+                className="w-full border-gray-300 py-6 text-xl rounded-xl" 
+                onClick={handleCancel}
+                disabled={isProcessing}
+              >
+                Cancel
+              </Button>
+            )}
+            
+            {currentRide.paymentMethod === 'wallet' && (
+              <p className="text-center text-sm text-gray-500 mt-2">
+                Payment will be processed automatically from passenger's wallet
+              </p>
+            )}
+            {currentRide.paymentMethod === 'cash' && (
+              <p className="text-center text-sm text-gray-500 mt-2">
+                Please collect cash payment of {currentRide.price} RS from passenger
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
