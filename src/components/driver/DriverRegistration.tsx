@@ -19,7 +19,9 @@ const DriverRegistration: React.FC<DriverRegistrationProps> = ({ onClose, onSubm
     vehicleRegistrationNumber: '',
     vehicleModel: '',  // Add this field
     vehicleColor: '',  // Add this field
-    driverLicenseNumber: ''  // Add this field
+    driverLicenseNumber: '',  // Add this field
+    address: '',  // Add this field
+    agreedToTerms: false  // Add this field
   });
   
   const [documents, setDocuments] = useState<{

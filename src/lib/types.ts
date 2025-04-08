@@ -1,4 +1,3 @@
-
 export type User = {
   id: string;
   name: string;
@@ -88,6 +87,8 @@ export type DriverDocument = {
   vehicleModel?: string;
   vehicleColor?: string;
   driverLicenseNumber?: string;
+  address?: string;
+  agreedToTerms?: boolean;
 };
 
 export type Transaction = {
