@@ -51,7 +51,7 @@ const DriverDashboard: React.FC = () => {
   //}, [user?.id, navigate, toast]);
 
   // Fetch and subscribe to nearby ride requests
-  //useEffect(() => {
+  useEffect(() => {
     //if (!user?.id || driverStatus !== 'approved') return;
     
     //setIsLoading(true);
