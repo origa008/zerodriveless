@@ -25,48 +25,48 @@ const DriverDashboard: React.FC = () => {
   const [driverStatus, setDriverStatus] = useState<string | null>(null);
 
   // Check driver status on load
-  useEffect(() => {
-    const checkDriverStatus = async () => {
-      if (!user?.id) return;
+  //useEffect(() => {
+    //const checkDriverStatus = async () => {
+      //if (!user?.id) return;
       
-      try {
-        const { status } = await getDriverRegistrationStatus(user.id);
-        setDriverStatus(status);
+      //try {
+        //const { status } = await getDriverRegistrationStatus(user.id);
+        //setDriverStatus(status);
         
         // If status is not approved, redirect to driver registration
-        if (status !== 'approved') {
-          toast({
-            title: "Driver Registration Required",
-            description: "Your application needs to be approved before accepting rides.",
-            duration: 3000
-          });
-          navigate('/official-driver');
-        }
-      } catch (error) {
-        console.error("Error checking driver status:", error);
-      }
-    };
+        //if (status !== 'approved') {
+          //toast({
+            //title: "Driver Registration Required",
+            //description: "Your application needs to be approved before accepting rides.",
+            //duration: 3000
+          //});
+          //navigate('/official-driver');
+        //}
+      //} catch (error) {
+        //console.error("Error checking driver status:", error);
+      //}
+    //};
     
-    checkDriverStatus();
-  }, [user?.id, navigate, toast]);
+    //checkDriverStatus();
+  //}, [user?.id, navigate, toast]);
 
   // Fetch and subscribe to nearby ride requests
-  useEffect(() => {
-    if (!user?.id || driverStatus !== 'approved') return;
+  //useEffect(() => {
+    //if (!user?.id || driverStatus !== 'approved') return;
     
-    setIsLoading(true);
+    //setIsLoading(true);
     
-    const fetchRideRequests = async () => {
-      const { rides, error } = await getAvailableRideRequests();
+    //const fetchRideRequests = async () => {
+      //const { rides, error } = await getAvailableRideRequests();
       
-      if (!error) {
-        setPendingRideRequests(rides || []);
-      }
+      //if (!error) {
+        //setPendingRideRequests(rides || []);
+      //}
       
-      setIsLoading(false);
-    };
+      //setIsLoading(false);
+    //};
     
-    fetchRideRequests();
+    //fetchRideRequests();
     
     // Subscribe to real-time ride request updates
     const unsubscribe = subscribeToNewRideRequests((newRide) => {
