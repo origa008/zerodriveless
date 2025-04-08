@@ -6,30 +6,17 @@ import { useRide } from '@/lib/context/RideContext';
 import RideMap from '@/components/map/RideMap';
 import BottomNavigation from '@/components/layout/BottomNavigation';
 import ModeSwitcher from '@/components/shared/ModeSwitcher';
-import DriverMode from '@/components/driver/DriverMode';
 import Sidebar from '@/components/layout/Sidebar';
 import PassengerPanel from '@/components/ride/PassengerPanel';
 import { useToast } from '@/hooks/use-toast';
-import { Button } from '@/components/ui/button';
-import { AlertTriangle } from 'lucide-react';
 import { isEligibleDriver } from '@/lib/utils/driverUtils';
 
 const Index: React.FC = () => {
   const navigate = useNavigate();
-  const {
-    toast
-  } = useToast();
-  const {
-    user,
-    isLoading: authLoading
-  } = useAuth();
-  const {
-    isDriverMode,
-    setDriverMode
-  } = useRide();
+  const { toast } = useToast();
+  const { user, isLoading: authLoading } = useAuth();
+  const { isDriverMode, setDriverMode } = useRide();
   
-  const [isDriverOnline, setIsDriverOnline] = useState(false);
-  const [showDriverRegistrationPrompt, setShowDriverRegistrationPrompt] = useState(false);
   const [isDriverEligible, setIsDriverEligible] = useState(false);
   const [pageLoaded, setPageLoaded] = useState(false);
   const [initComplete, setInitComplete] = useState(false);
@@ -64,9 +51,9 @@ const Index: React.FC = () => {
         console.log("Driver eligibility check:", eligible);
         setIsDriverEligible(eligible);
         
-        // If user has previously selected driver mode and is eligible, don't show prompt
-        if (isDriverMode && eligible) {
-          setShowDriverRegistrationPrompt(false);
+        // If user is in driver mode, redirect to ride requests
+        if (isDriverMode) {
+          navigate('/ride-requests');
         }
       } catch (error) {
         console.error("Error checking driver eligibility:", error);
@@ -76,33 +63,7 @@ const Index: React.FC = () => {
     if (user?.id) {
       checkDriverEligibility();
     }
-  }, [user?.id, isDriverMode]);
-
-  // Effect to handle driver mode switch
-  useEffect(() => {
-    if (isDriverMode && user) {
-      if (!isDriverEligible) {
-        setShowDriverRegistrationPrompt(true);
-      } else {
-        setShowDriverRegistrationPrompt(false);
-      }
-    } else {
-      setShowDriverRegistrationPrompt(false);
-    }
-  }, [isDriverMode, user, isDriverEligible]);
-
-  // Handle toggle between passenger and driver modes
-  const handleModeToggle = (isDriver: boolean) => {
-    if (isDriver && user && !isDriverEligible) {
-      setShowDriverRegistrationPrompt(true);
-    }
-    setDriverMode(isDriver);
-  };
-
-  // Navigate to driver registration page
-  const handleRegisterAsDriver = () => {
-    navigate('/official-driver');
-  };
+  }, [user?.id, isDriverMode, navigate]);
 
   // Wait for auth to initialize, then check login status
   useEffect(() => {
@@ -141,51 +102,7 @@ const Index: React.FC = () => {
         <Sidebar />
       </div>
       
-      {showDriverRegistrationPrompt && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-lg p-6 max-w-md w-full">
-            <div className="flex items-start mb-4">
-              <div className="bg-amber-100 p-2 rounded-full mr-3">
-                <AlertTriangle className="text-amber-600" size={24} />
-              </div>
-              <div>
-                <h3 className="text-xl font-bold">Driver Registration Required</h3>
-                <p className="text-gray-600 mt-1">
-                  You need to complete the driver registration process before you can use driver mode.
-                </p>
-              </div>
-            </div>
-            
-            <div className="bg-gray-50 p-4 rounded-lg mb-5">
-              <p className="text-sm text-gray-600">
-                As a ZeroDrive driver, you'll earn competitive rates while enjoying flexible hours and quick payments.
-              </p>
-            </div>
-            
-            <div className="flex flex-col space-y-3 sm:flex-row sm:space-y-0 sm:space-x-3">
-              <Button 
-                variant="outline" 
-                className="flex-1"
-                onClick={() => {
-                  setShowDriverRegistrationPrompt(false);
-                  setDriverMode(false);
-                }}
-              >
-                Not Now
-              </Button>
-              
-              <Button 
-                className="flex-1 bg-black hover:bg-gray-800 text-white"
-                onClick={handleRegisterAsDriver}
-              >
-                Register as Driver
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-      
-      {isDriverMode ? <DriverMode isOnline={isDriverOnline} setIsOnline={setIsDriverOnline} /> : <PassengerPanel />}
+      <PassengerPanel />
       
       <BottomNavigation />
     </div>;

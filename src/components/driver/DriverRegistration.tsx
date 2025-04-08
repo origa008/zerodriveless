@@ -19,7 +19,9 @@ const DriverRegistration: React.FC<DriverRegistrationProps> = ({ onClose, onSubm
     vehicleRegistrationNumber: '',
     vehicleModel: '',  // Add this field
     vehicleColor: '',  // Add this field
-    driverLicenseNumber: ''  // Add this field
+    driverLicenseNumber: '',  // Add this field
+    address: '',       // Add this field
+    agreedToTerms: false // Add this field
   });
   
   const [documents, setDocuments] = useState<{
@@ -44,9 +46,12 @@ const DriverRegistration: React.FC<DriverRegistrationProps> = ({ onClose, onSubm
     selfiePhoto?: string;
   }>({});
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value, type } = e.target as HTMLInputElement;
+    setFormData(prev => ({ 
+      ...prev, 
+      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value 
+    }));
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, docType: string) => {
@@ -251,6 +256,19 @@ const DriverRegistration: React.FC<DriverRegistrationProps> = ({ onClose, onSubm
                 required
               />
             </div>
+            
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium mb-1">Address *</label>
+              <textarea
+                name="address"
+                value={formData.address}
+                onChange={handleInputChange}
+                className="w-full border border-gray-300 rounded-lg p-3"
+                placeholder="Your current residential address"
+                rows={3}
+                required
+              />
+            </div>
           </div>
           
           <div className="mt-6">
@@ -268,9 +286,21 @@ const DriverRegistration: React.FC<DriverRegistrationProps> = ({ onClose, onSubm
           </div>
           
           <div className="mt-6">
-            <p className="text-sm text-gray-500 mb-4">
-              By submitting this application, I confirm that all information provided is accurate and I agree to the terms and conditions of ZeroDrive.
-            </p>
+            <div className="flex items-start mb-4">
+              <input
+                type="checkbox"
+                id="agreedToTerms"
+                name="agreedToTerms"
+                checked={formData.agreedToTerms}
+                onChange={handleInputChange}
+                className="mt-1"
+                required
+              />
+              <label htmlFor="agreedToTerms" className="ml-2 text-sm text-gray-500">
+                By submitting this application, I confirm that all information provided is accurate and I agree to the terms and conditions of ZeroDrive.
+              </label>
+            </div>
+            
             <div className="flex justify-end space-x-3">
               <Button 
                 type="button" 

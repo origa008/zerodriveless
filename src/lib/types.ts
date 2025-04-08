@@ -1,4 +1,3 @@
-
 export type User = {
   id: string;
   name: string;
@@ -12,6 +11,7 @@ export type User = {
   referralEarnings?: number;
   driverStatus?: string; // 'pending', 'approved', 'rejected'
   hasDriverDeposit?: boolean;
+  rating?: number; // Add rating field for drivers
 };
 
 export type Location = {
@@ -88,6 +88,8 @@ export type DriverDocument = {
   vehicleModel?: string;
   vehicleColor?: string;
   driverLicenseNumber?: string;
+  address?: string; // Added address field
+  agreedToTerms?: boolean; // Added terms agreement field
 };
 
 export type Transaction = {

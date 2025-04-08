@@ -25,6 +25,7 @@ import Policies from "./pages/Policies";
 import OfficialDriver from "./pages/OfficialDriver";
 import NotFound from "./pages/NotFound";
 import ResetPassword from "./pages/ResetPassword";
+import RideRequests from "./pages/RideRequests"; // Add the new page
 
 const queryClient = new QueryClient();
 
@@ -53,6 +54,7 @@ const App = () => (
               <Route path="/about" element={<AboutUs />} />
               <Route path="/policies" element={<Policies />} />
               <Route path="/official-driver" element={<OfficialDriver />} />
+              <Route path="/ride-requests" element={<RideRequests />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>
