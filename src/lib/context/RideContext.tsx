@@ -4,7 +4,8 @@ import { createRideRequest, updateRideStatus, getRideDetails } from '../utils/ri
 import { useAuth } from './AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { getMockRideOptions } from '../utils/mockData';
-import { getWalletBalance, getTransactionHistory, subscribeToWalletBalance } from '../utils/walletUtils';
+import { getWalletBalance, getTransactionHistory, subscribeToWalletBalance, subscribeToRideUpdates } from '../utils/walletUtils';
+import { calculateDistance } from '../utils/mapsApi';
 
 type RideContextType = {
   pickup: Location | null;
@@ -111,18 +112,50 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [user?.id]);
   
-  const findRides = () => {
-    if (!pickupLocation || !dropoffLocation) return;
+  const findRides = async () => {
+    if (!pickupLocation || !dropoffLocation || !pickupLocation.coordinates || !dropoffLocation.coordinates) {
+      toast({
+        title: "Error",
+        description: "Please select both pickup and drop-off locations",
+        duration: 3000
+      });
+      return;
+    }
     
     setIsSearchingRides(true);
     
-    setTimeout(() => {
-      setEstimatedDistance(5.2);
-      setEstimatedDuration(12);
-      setAvailableRideOptions(getMockRideOptions());
+    try {
+      // Calculate real distance and duration using Maps API
+      const result = await calculateDistance(
+        pickupLocation.coordinates,
+        dropoffLocation.coordinates
+      );
+      
+      if (!result) {
+        throw new Error("Could not calculate distance and duration");
+      }
+      
+      setEstimatedDistance(result.distance);
+      setEstimatedDuration(result.duration);
+      
+      // Get available ride options with real ETAs
+      const options = getMockRideOptions().map(option => ({
+        ...option,
+        price: calculateBaseFare(result.distance, option.name)
+      }));
+      
+      setAvailableRideOptions(options);
       setIsSearchingRides(false);
       setPanelOpen(true);
-    }, 1500);
+    } catch (error) {
+      console.error("Error finding rides:", error);
+      toast({
+        title: "Error",
+        description: "Could not calculate ride details. Please try again.",
+        duration: 3000
+      });
+      setIsSearchingRides(false);
+    }
   };
   
   const calculateBaseFare = (distance: number, vehicleType: string): number => {
@@ -130,7 +163,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return Math.round(baseRate * distance);
   };
   
-  const confirmRide = (paymentMethod: PaymentMethod) => {
+  const confirmRide = async (paymentMethod: PaymentMethod) => {
     if (!user?.id || !pickupLocation || !dropoffLocation || !selectedRideOption || !userBid) {
       toast({
         title: "Error",
@@ -140,24 +173,88 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
     
-    if (estimatedDistance) {
-      createRideRequest(
+    if (!estimatedDistance || !estimatedDuration) {
+      toast({
+        title: "Error",
+        description: "Please wait for ride estimation to complete",
+        duration: 3000
+      });
+      return;
+    }
+    
+    try {
+      const { rideId, error } = await createRideRequest(
         user.id,
         pickupLocation,
         dropoffLocation,
         selectedRideOption,
         userBid,
         estimatedDistance,
-        estimatedDuration || 0,
+        estimatedDuration,
         paymentMethod
-      ).then(({ rideId, error }) => {
-        if (error) {
-          toast({
-            title: "Error",
-            description: error,
-            duration: 3000
-          });
-        }
+      );
+      
+      if (error) throw new Error(error);
+      
+      if (rideId) {
+        // Set current ride in waiting state
+        setCurrentRide({
+          id: rideId,
+          pickup: pickupLocation,
+          dropoff: dropoffLocation,
+          rideOption: selectedRideOption,
+          status: "searching",
+          price: userBid,
+          currency: "RS",
+          distance: estimatedDistance,
+          duration: estimatedDuration,
+          paymentMethod: paymentMethod
+        });
+        
+        setWaitingForDriverAcceptance(true);
+        resetDriverAcceptanceTimer();
+        
+        // Start a timer to check for ride acceptance
+        const timer = setTimeout(() => {
+          if (currentRide?.status === "searching") {
+            // Cancel the ride if no driver accepts
+            cancelRide(rideId, "No driver found");
+            setCurrentRide(null);
+            setWaitingForDriverAcceptance(false);
+            toast({
+              title: "No Driver Found",
+              description: "Please try requesting again",
+              duration: 3000
+            });
+          }
+        }, 60000); // 1 minute timeout
+        
+        // Subscribe to ride status updates
+        const unsubscribe = subscribeToRideUpdates(rideId, (updatedRide) => {
+          if (updatedRide.status === "confirmed") {
+            clearTimeout(timer);
+            setWaitingForDriverAcceptance(false);
+            setCurrentRide(updatedRide);
+            toast({
+              title: "Ride Confirmed",
+              description: "A driver has accepted your ride request",
+              duration: 3000
+            });
+          }
+        });
+        
+        // Clean up on component unmount
+        return () => {
+          clearTimeout(timer);
+          if (unsubscribe) unsubscribe();
+        };
+      }
+    } catch (error: any) {
+      console.error("Error confirming ride:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Could not create ride request",
+        duration: 3000
       });
     }
   };
