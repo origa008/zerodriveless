@@ -13,7 +13,6 @@ import {
   acceptRideRequest,
   updateRideStatus 
 } from '@/lib/utils/dbFunctions';
-import { supabase } from '@/lib/utils/supabase';
 
 const RideRequests: React.FC = () => {
   const navigate = useNavigate();
@@ -89,51 +88,33 @@ const RideRequests: React.FC = () => {
     if (!user?.id || driverStatus !== 'approved' || showDepositAlert || !driverLocation) return;
     
     const fetchRideRequests = async () => {
-      try {
-        const { data, error } = await getNearbyRideRequests(
-          driverLocation.latitude,
-          driverLocation.longitude,
-          5 // 5km radius
-        );
-        
-        if (error) throw error;
-        
-        if (data) {
-          // Filter out rides that are no longer in searching status
-          const activeRequests = data.filter(ride => ride.status === 'searching');
-          setPendingRideRequests(activeRequests);
-        }
-      } catch (error) {
-        console.error("Error fetching ride requests:", error);
-        toast({
-          title: "Error",
-          description: "Could not fetch ride requests",
-          duration: 3000
-        });
+      const { data, error } = await getNearbyRideRequests(
+        driverLocation.latitude,
+        driverLocation.longitude,
+        5 // 5km radius
+      );
+      
+      if (!error && data) {
+        setPendingRideRequests(data);
       }
     };
     
-    // Initial fetch
     fetchRideRequests();
     
     // Subscribe to real-time ride request updates
     const unsubscribe = subscribeToNearbyRides(
-      async (newRide) => {
-        // Add the new ride to the list if it's in searching status
-        if (newRide.status === 'searching') {
-          setPendingRideRequests(prevRides => {
-            // Remove any existing ride with the same ID
-            const filteredRides = prevRides.filter(r => r.id !== newRide.id);
-            return [...filteredRides, newRide];
-          });
-          
-          // Show notification for new ride
-          toast({
-            title: "New Ride Request",
-            description: `New ride request ${(newRide.distance_to_pickup || 0).toFixed(1)}km away`,
-            duration: 5000
-          });
-        }
+      (newRide) => {
+        setPendingRideRequests(prevRides => {
+          // Remove any existing ride with the same ID
+          const filteredRides = prevRides.filter(r => r.id !== newRide.id);
+          return [...filteredRides, newRide];
+        });
+        
+        toast({
+          title: "New Ride Request",
+          description: "A new ride request is available nearby",
+          duration: 3000
+        });
       },
       driverLocation,
       5 // 5km radius
@@ -142,30 +123,9 @@ const RideRequests: React.FC = () => {
     // Refresh ride requests every 30 seconds
     const refreshInterval = setInterval(fetchRideRequests, 30000);
     
-    // Update driver's location in the database
-    const locationInterval = setInterval(async () => {
-      if (user?.id && driverLocation) {
-        try {
-          await supabase
-            .from('drivers')
-            .update({
-              last_location: {
-                lat: driverLocation.latitude,
-                lng: driverLocation.longitude,
-                updated_at: new Date().toISOString()
-              }
-            })
-            .eq('id', user.id);
-        } catch (error) {
-          console.error("Error updating driver location:", error);
-        }
-      }
-    }, 10000); // Update every 10 seconds
-    
     return () => {
       unsubscribe();
       clearInterval(refreshInterval);
-      clearInterval(locationInterval);
     };
   }, [user?.id, driverStatus, showDepositAlert, driverLocation, toast]);
 
@@ -196,7 +156,7 @@ const RideRequests: React.FC = () => {
         id: ride.id,
         pickup: ride.pickup_location,
         dropoff: ride.dropoff_location,
-        status: 'confirmed' as const,
+        status: 'confirmed',
         price: ride.estimated_price,
         currency: 'RS',
         distance: ride.estimated_distance,
@@ -207,8 +167,8 @@ const RideRequests: React.FC = () => {
       
       setCurrentRide(formattedRide);
       
-      // Update ride status to confirmed
-      await updateRideStatus(ride.id, 'confirmed');
+      // Update ride status to in_progress
+      await updateRideStatus(ride.id, 'in_progress');
       
       toast({
         title: "Ride Accepted",
