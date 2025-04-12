@@ -51,7 +51,7 @@ type RideContextType = {
   acceptRideRequest: (rideId: string) => void;
   startRide: () => void;
   completeRide: () => void;
-  cancelRide: () => void;
+  cancelRide: (rideId?: string, reason?: string) => void;
   
   updateWalletBalance: (amount: number) => void;
   rideHistory: Ride[];
@@ -343,10 +343,11 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
   };
   
-  const cancelRide = () => {
-    if (!currentRide) return;
+  const cancelRide = (rideId?: string, reason?: string) => {
+    const targetRideId = rideId || currentRide?.id;
+    if (!targetRideId) return;
     
-    updateRideStatus(currentRide.id, 'cancelled')
+    updateRideStatus(targetRideId, 'cancelled', { cancellation_reason: reason })
       .then(({ success, error }) => {
         if (!success) {
           toast({

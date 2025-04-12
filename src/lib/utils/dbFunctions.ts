@@ -60,27 +60,50 @@ export const getNearbyRideRequests = async (
   radiusKm: number = 5
 ) => {
   try {
-    const { data, error } = await supabase
-      .rpc('get_nearby_ride_requests', {
-        driver_lat: driverLat,
-        driver_lng: driverLng,
-        radius_km: radiusKm
-      });
+    // First get all active ride requests
+    const { data: rides, error: ridesError } = await supabase
+      .from('rides')
+      .select('*')
+      .eq('status', 'searching')
+      .is('driver_id', null);
 
-    if (error) throw error;
+    if (ridesError) throw ridesError;
 
-    // Get passenger details for each ride
+    if (!rides || rides.length === 0) {
+      return { data: [], error: null };
+    }
+
+    // Filter rides by distance
+    const nearbyRides = rides.filter(ride => {
+      const distance = getDistanceFromLatLonInKm(
+        driverLat,
+        driverLng,
+        ride.pickup_lat,
+        ride.pickup_lng
+      );
+      return distance <= radiusKm;
+    });
+
+    // Get passenger details for nearby rides
     const ridesWithPassengers = await Promise.all(
-      (data || []).map(async (ride) => {
+      nearbyRides.map(async (ride) => {
         const { data: passenger } = await supabase
           .from('profiles')
           .select('name, avatar')
           .eq('id', ride.passenger_id)
           .single();
 
+        const distance = getDistanceFromLatLonInKm(
+          driverLat,
+          driverLng,
+          ride.pickup_lat,
+          ride.pickup_lng
+        );
+
         return {
           ...ride,
-          passenger: passenger || null
+          passenger: passenger || null,
+          distance_to_pickup: Number(distance.toFixed(1))
         };
       })
     );
@@ -173,13 +196,15 @@ export const subscribeToNearbyRides = (
     .on(
       'postgres_changes',
       {
-        event: 'INSERT',
+        event: '*', // Listen for all changes
         schema: 'public',
-        table: 'ride_requests',
-        filter: 'status=eq.searching'
+        table: 'rides',
+        filter: `status=eq.searching`
       },
       async (payload) => {
         try {
+          if (payload.eventType === 'DELETE') return;
+
           const newRide = payload.new;
           
           // Calculate distance to new ride
@@ -190,8 +215,8 @@ export const subscribeToNearbyRides = (
             newRide.pickup_lng
           );
           
-          // Only notify if ride is within radius
-          if (distance <= radiusKm) {
+          // Only notify if ride is within radius and not assigned to a driver
+          if (distance <= radiusKm && !newRide.driver_id) {
             // Get passenger details
             const { data: passenger } = await supabase
               .from('profiles')
@@ -201,12 +226,12 @@ export const subscribeToNearbyRides = (
             
             callback({
               ...newRide,
-              distance_to_pickup: distance,
+              distance_to_pickup: Number(distance.toFixed(1)),
               passenger
             });
           }
         } catch (error) {
-          console.error('Error processing new ride request:', error);
+          console.error('Error processing ride update:', error);
         }
       }
     )

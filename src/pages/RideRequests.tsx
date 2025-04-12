@@ -13,7 +13,7 @@ import {
   acceptRideRequest,
   updateRideStatus 
 } from '@/lib/utils/dbFunctions';
-import { supabase } from '@/lib/utils/supabase';
+import { supabase } from '@/integrations/supabase/client';
 
 const RideRequests: React.FC = () => {
   const navigate = useNavigate();
