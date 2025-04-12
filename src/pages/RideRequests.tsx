@@ -5,23 +5,20 @@ import { useAuth } from '@/lib/context/AuthContext';
 import { useRide } from '@/lib/context/RideContext';
 import { useToast } from '@/hooks/use-toast';
 import ModeSwitcher from '@/components/shared/ModeSwitcher';
-import { 
-  getAvailableRideRequests, 
-  subscribeToNewRideRequests,
-  acceptRideRequest as acceptRide,
-  getRideDetails,
-  updateRideStatus,
-  completeRideAndProcessPayment
-} from '@/lib/utils/rideUtils';
-import { getDriverRegistrationStatus } from '@/lib/utils/driverUtils';
 import { AlertTriangle, Map, MapPin, Star, Wallet } from 'lucide-react';
-import { Ride } from '@/lib/types';
+import { getDriverRegistrationStatus } from '@/lib/utils/driverUtils';
+import { 
+  getNearbyRideRequests, 
+  subscribeToNearbyRides, 
+  acceptRideRequest,
+  updateRideStatus 
+} from '@/lib/utils/dbFunctions';
 
 const RideRequests: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
-  const { acceptRideRequest, setCurrentRide, walletBalance } = useRide();
+  const { setCurrentRide, walletBalance } = useRide();
   
   const [pendingRideRequests, setPendingRideRequests] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -91,21 +88,21 @@ const RideRequests: React.FC = () => {
     if (!user?.id || driverStatus !== 'approved' || showDepositAlert || !driverLocation) return;
     
     const fetchRideRequests = async () => {
-      const { rides, error } = await getAvailableRideRequests(
+      const { data, error } = await getNearbyRideRequests(
         driverLocation.latitude,
         driverLocation.longitude,
         5 // 5km radius
       );
       
-      if (!error) {
-        setPendingRideRequests(rides || []);
+      if (!error && data) {
+        setPendingRideRequests(data);
       }
     };
     
     fetchRideRequests();
     
     // Subscribe to real-time ride request updates
-    const unsubscribe = subscribeToNewRideRequests(
+    const unsubscribe = subscribeToNearbyRides(
       (newRide) => {
         setPendingRideRequests(prevRides => {
           // Remove any existing ride with the same ID
@@ -168,6 +165,9 @@ const RideRequests: React.FC = () => {
       };
       
       setCurrentRide(formattedRide);
+      
+      // Update ride status to in_progress
+      await updateRideStatus(ride.id, 'in_progress');
       
       toast({
         title: "Ride Accepted",
