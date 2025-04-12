@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -9,7 +8,9 @@ import ModeSwitcher from '@/components/shared/ModeSwitcher';
 import { 
   getAvailableRideRequests, 
   subscribeToNewRideRequests,
-  acceptRideRequest as acceptRide
+  acceptRideRequest as acceptRide,
+  getRideDetails,
+  updateRideStatus
 } from '@/lib/utils/rideUtils';
 import { getDriverRegistrationStatus } from '@/lib/utils/driverUtils';
 import { AlertTriangle, Map, MapPin, Star, Wallet } from 'lucide-react';
@@ -26,6 +27,30 @@ const RideRequests: React.FC = () => {
   const [driverStatus, setDriverStatus] = useState<string | null>(null);
   const [showDriverRegistrationAlert, setShowDriverRegistrationAlert] = useState(false);
   const [showDepositAlert, setShowDepositAlert] = useState(false);
+  const [driverLocation, setDriverLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+
+  // Get driver's current location
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.watchPosition(
+        (position) => {
+          setDriverLocation({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
+          });
+        },
+        (error) => {
+          console.error('Error getting location:', error);
+          toast({
+            title: "Location Error",
+            description: "Unable to get your location. Some features may be limited.",
+            duration: 3000
+          });
+        },
+        { enableHighAccuracy: true }
+      );
+    }
+  }, [toast]);
 
   // Check driver status on load
   useEffect(() => {
@@ -36,7 +61,6 @@ const RideRequests: React.FC = () => {
         const { status, details } = await getDriverRegistrationStatus(user.id);
         setDriverStatus(status);
         
-        // Show alerts based on driver status and deposit
         if (!status || status === null) {
           setShowDriverRegistrationAlert(true);
         } else if (status === 'pending') {
@@ -63,7 +87,21 @@ const RideRequests: React.FC = () => {
       const { rides, error } = await getAvailableRideRequests();
       
       if (!error) {
-        setPendingRideRequests(rides || []);
+        // Filter rides based on distance if location is available
+        if (driverLocation) {
+          const filteredRides = rides.filter((ride: any) => {
+            const distance = calculateDistance(
+              driverLocation.latitude,
+              driverLocation.longitude,
+              ride.pickup_location.latitude,
+              ride.pickup_location.longitude
+            );
+            return distance <= 5; // 5km radius
+          });
+          setPendingRideRequests(filteredRides);
+        } else {
+          setPendingRideRequests(rides || []);
+        }
       }
     };
     
@@ -78,10 +116,10 @@ const RideRequests: React.FC = () => {
         description: "A new ride request is available nearby",
         duration: 3000
       });
-    });
+    }, driverLocation || undefined);
     
     return () => unsubscribe();
-  }, [user?.id, driverStatus, showDepositAlert, toast]);
+  }, [user?.id, driverStatus, showDepositAlert, toast, driverLocation]);
 
   // Handle accepting a ride
   const handleAcceptRide = async (ride: any) => {
@@ -95,6 +133,17 @@ const RideRequests: React.FC = () => {
     }
     
     try {
+      // First check if the ride is still available
+      const { ride: currentRide } = await getRideDetails(ride.id);
+      if (!currentRide || currentRide.status !== 'searching') {
+        toast({
+          title: "Ride Unavailable",
+          description: "This ride has already been accepted by another driver",
+          duration: 3000
+        });
+        return;
+      }
+      
       const { success, error } = await acceptRide(ride.id, user.id);
       
       if (!success) {
@@ -111,11 +160,15 @@ const RideRequests: React.FC = () => {
         currency: ride.currency,
         distance: ride.distance,
         duration: ride.duration,
-        paymentMethod: ride.payment_method
+        paymentMethod: ride.payment_method,
+        passengerId: ride.passenger_id
       };
       
       acceptRideRequest(ride.id);
       setCurrentRide(formattedRide);
+      
+      // Update the ride status to in_progress
+      await updateRideStatus(ride.id, 'in_progress');
       
       toast({
         title: "Ride accepted",

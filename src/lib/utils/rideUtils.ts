@@ -1,4 +1,3 @@
-
 import { supabase } from "@/integrations/supabase/client";
 import { Ride, Location, RideOption, PaymentMethod } from "@/lib/types";
 import { Database } from "@/integrations/supabase/types";
@@ -237,7 +236,8 @@ export const subscribeToRideUpdates = (
  * Subscribes to new ride requests (for drivers)
  */
 export const subscribeToNewRideRequests = (
-  callback: (ride: any) => void
+  callback: (ride: any) => void,
+  driverLocation?: { latitude: number; longitude: number }
 ) => {
   const channel = supabase
     .channel('new_rides')
@@ -249,8 +249,29 @@ export const subscribeToNewRideRequests = (
         table: 'rides',
         filter: `status=eq.searching`
       },
-      (payload) => {
-        callback(payload.new);
+      async (payload) => {
+        try {
+          const newRide = payload.new;
+          
+          // If driver location is provided, filter rides based on distance
+          if (driverLocation) {
+            const distance = calculateDistance(
+              driverLocation.latitude,
+              driverLocation.longitude,
+              newRide.pickup_location.latitude,
+              newRide.pickup_location.longitude
+            );
+            
+            // Only show rides within 5km radius
+            if (distance <= 5) {
+              callback(newRide);
+            }
+          } else {
+            callback(newRide);
+          }
+        } catch (error) {
+          console.error('Error processing new ride request:', error);
+        }
       }
     )
     .subscribe();
@@ -258,6 +279,25 @@ export const subscribeToNewRideRequests = (
   return () => {
     supabase.removeChannel(channel);
   };
+};
+
+/**
+ * Calculates distance between two points in kilometers
+ */
+const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+  const R = 6371; // Radius of the earth in km
+  const dLat = deg2rad(lat2 - lat1);
+  const dLon = deg2rad(lon2 - lon1);
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * 
+    Math.sin(dLon/2) * Math.sin(dLon/2); 
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+  return R * c;
+};
+
+const deg2rad = (deg: number): number => {
+  return deg * (Math.PI/180);
 };
 
 /**
