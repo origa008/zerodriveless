@@ -10,7 +10,8 @@ import {
   subscribeToNewRideRequests,
   acceptRideRequest as acceptRide,
   getRideDetails,
-  updateRideStatus
+  updateRideStatus,
+  completeRideAndProcessPayment
 } from '@/lib/utils/rideUtils';
 import { getDriverRegistrationStatus } from '@/lib/utils/driverUtils';
 import { AlertTriangle, Map, MapPin, Star, Wallet } from 'lucide-react';
@@ -167,16 +168,25 @@ const RideRequests: React.FC = () => {
       acceptRideRequest(ride.id);
       setCurrentRide(formattedRide);
       
-      // Update the ride status to in_progress
-      await updateRideStatus(ride.id, 'in_progress');
+      // Update the ride status to completed (since we're skipping the progress page)
+      await updateRideStatus(ride.id, 'completed', {
+        end_time: new Date().toISOString(),
+        completed_by_driver_id: user.id
+      });
+      
+      // Process payment if it's a wallet payment
+      if (ride.payment_method === 'wallet') {
+        await completeRideAndProcessPayment(ride.id);
+      }
       
       toast({
         title: "Ride accepted",
-        description: "You have accepted the ride. Navigating to passenger...",
+        description: "Ride completed successfully. Please provide feedback.",
         duration: 3000
       });
       
-      navigate('/ride-progress');
+      // Navigate directly to the completed page
+      navigate('/ride-completed');
     } catch (error: any) {
       console.error("Error accepting ride:", error);
       toast({
