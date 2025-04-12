@@ -161,7 +161,8 @@ const RideRequests: React.FC = () => {
         currency: 'RS',
         distance: ride.estimated_distance,
         duration: ride.estimated_duration,
-        paymentMethod: ride.payment_method || 'cash'
+        paymentMethod: ride.payment_method || 'cash',
+        rideOption: ride.vehicle_type
       };
       
       setCurrentRide(formattedRide);
