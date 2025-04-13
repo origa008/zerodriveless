@@ -8,12 +8,13 @@ import ModeSwitcher from '@/components/shared/ModeSwitcher';
 import { AlertTriangle, Map, MapPin, Star, Wallet } from 'lucide-react';
 import { getDriverRegistrationStatus } from '@/lib/utils/driverUtils';
 import { 
-  getNearbyRideRequests, 
-  subscribeToNearbyRides, 
+  getNearbyPendingRides,
+  subscribeToNearbyPendingRides,
   acceptRideRequest,
-  updateRideStatus 
+  updateRideStatus,
+  updateDriverStatus,
+  acceptRideRequestSafe
 } from '@/lib/utils/dbFunctions';
-import { supabase } from '@/integrations/supabase/client';
 
 const RideRequests: React.FC = () => {
   const navigate = useNavigate();
@@ -27,35 +28,44 @@ const RideRequests: React.FC = () => {
   const [showDriverRegistrationAlert, setShowDriverRegistrationAlert] = useState(false);
   const [showDepositAlert, setShowDepositAlert] = useState(false);
   const [driverLocation, setDriverLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [isOnline, setIsOnline] = useState(false);
 
-  // Get driver's current location
+  // Get driver's current location and update status
   useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.watchPosition(
-        (position) => {
-          setDriverLocation({
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude
-          });
-        },
-        (error) => {
-          console.error('Error getting location:', error);
-          toast({
-            title: "Location Error",
-            description: "Unable to get your location. Some features may be limited.",
-            duration: 3000
-          });
-        },
-        { enableHighAccuracy: true }
-      );
-    } else {
-      toast({
-        title: "Location Not Supported",
-        description: "Your browser doesn't support location services. Please use a modern browser.",
-        duration: 3000
-      });
-    }
-  }, [toast]);
+    if (!user?.id || driverStatus !== 'approved') return;
+
+    const watchId = navigator.geolocation.watchPosition(
+      async (position) => {
+        const newLocation = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude
+        };
+        
+        setDriverLocation(newLocation);
+
+        // Update driver's location and online status in database
+        if (isOnline) {
+          await updateDriverStatus(user.id, true, newLocation);
+        }
+      },
+      (error) => {
+        console.error('Error getting location:', error);
+        toast({
+          title: "Location Error",
+          description: "Unable to get your location. Some features may be limited.",
+          duration: 3000
+        });
+      },
+      { enableHighAccuracy: true }
+    );
+
+    return () => {
+      navigator.geolocation.clearWatch(watchId);
+      if (user?.id) {
+        updateDriverStatus(user.id, false);
+      }
+    };
+  }, [user?.id, driverStatus, isOnline, toast]);
 
   // Check driver status on load
   useEffect(() => {
@@ -86,104 +96,73 @@ const RideRequests: React.FC = () => {
 
   // Fetch and subscribe to nearby ride requests
   useEffect(() => {
-    if (!user?.id || driverStatus !== 'approved' || showDepositAlert || !driverLocation) return;
-    
+    if (!user?.id || driverStatus !== 'approved' || showDepositAlert || !driverLocation || !isOnline) return;
+
     const fetchRideRequests = async () => {
-      try {
-        const { data, error } = await getNearbyRideRequests(
-          driverLocation.latitude,
-          driverLocation.longitude,
-          5 // 5km radius
-        );
-        
-        if (error) throw error;
-        
-        if (data) {
-          // Filter out rides that are no longer in searching status
-          const activeRequests = data.filter(ride => ride.status === 'searching');
-          setPendingRideRequests(activeRequests);
-        }
-      } catch (error) {
+      const { data, error } = await getNearbyPendingRides(
+        user.id,
+        driverLocation,
+        5 // 5km radius
+      );
+
+      if (error) {
         console.error("Error fetching ride requests:", error);
         toast({
           title: "Error",
           description: "Could not fetch ride requests",
           duration: 3000
         });
+        return;
+      }
+
+      if (data) {
+        setPendingRideRequests(data);
       }
     };
-    
-    // Initial fetch
+
     fetchRideRequests();
-    
-    // Subscribe to real-time ride request updates
-    const unsubscribe = subscribeToNearbyRides(
-      async (newRide) => {
-        // Add the new ride to the list if it's in searching status
-        if (newRide.status === 'searching') {
-          setPendingRideRequests(prevRides => {
-            // Remove any existing ride with the same ID
-            const filteredRides = prevRides.filter(r => r.id !== newRide.id);
-            return [...filteredRides, newRide];
-          });
-          
-          // Show notification for new ride
+
+    // Subscribe to real-time updates
+    const unsubscribe = subscribeToNearbyPendingRides(
+      user.id,
+      driverLocation,
+      (rides) => {
+        setPendingRideRequests(rides);
+        if (rides.length > pendingRideRequests.length) {
           toast({
             title: "New Ride Request",
-            description: `New ride request ${(newRide.distance_to_pickup || 0).toFixed(1)}km away`,
-            duration: 5000
+            description: "New ride requests are available nearby",
+            duration: 3000
           });
         }
       },
-      driverLocation,
       5 // 5km radius
     );
-    
-    // Refresh ride requests every 30 seconds
-    const refreshInterval = setInterval(fetchRideRequests, 30000);
-    
-    // Update driver's location in the database
-    const locationInterval = setInterval(async () => {
-      if (user?.id && driverLocation) {
-        try {
-          await supabase
-            .from('drivers')
-            .update({
-              last_location: {
-                lat: driverLocation.latitude,
-                lng: driverLocation.longitude,
-                updated_at: new Date().toISOString()
-              }
-            })
-            .eq('id', user.id);
-        } catch (error) {
-          console.error("Error updating driver location:", error);
-        }
-      }
-    }, 10000); // Update every 10 seconds
-    
+
     return () => {
       unsubscribe();
-      clearInterval(refreshInterval);
-      clearInterval(locationInterval);
     };
-  }, [user?.id, driverStatus, showDepositAlert, driverLocation, toast]);
+  }, [user?.id, driverStatus, showDepositAlert, driverLocation, isOnline, toast]);
 
   // Handle accepting a ride
   const handleAcceptRide = async (ride: any) => {
-    if (!user?.id) {
+    if (!user?.id || !driverLocation) {
       toast({
         title: "Error",
-        description: "You must be logged in to accept rides",
+        description: "You must be logged in and have location enabled to accept rides",
         duration: 3000
       });
       return;
     }
     
     try {
-      const { success, error } = await acceptRideRequest(ride.id, user.id);
+      const { success, error, ride: acceptedRide } = await acceptRideRequestSafe(
+        ride.id,
+        user.id,
+        driverLocation
+      );
       
-      if (!success) {
+      if (!success || error) {
         throw new Error(error || "Failed to accept ride");
       }
       
@@ -193,22 +172,20 @@ const RideRequests: React.FC = () => {
       );
       
       const formattedRide = {
-        id: ride.id,
-        pickup: ride.pickup_location,
-        dropoff: ride.dropoff_location,
-        status: 'confirmed' as const,
-        price: ride.estimated_price,
+        id: acceptedRide.id,
+        pickup: acceptedRide.pickup_location,
+        dropoff: acceptedRide.dropoff_location,
+        status: 'confirmed' as 'confirmed' | 'in_progress' | 'completed' | 'cancelled' | 'searching',
+        price: acceptedRide.bid_amount,
         currency: 'RS',
-        distance: ride.estimated_distance,
-        duration: ride.estimated_duration,
-        paymentMethod: ride.payment_method || 'cash',
-        rideOption: ride.vehicle_type
+        distance: acceptedRide.estimated_distance,
+        duration: acceptedRide.estimated_duration,
+        paymentMethod: acceptedRide.payment_method || 'cash',
+        rideOption: acceptedRide.vehicle_type,
+        passenger: acceptedRide.passengers
       };
       
       setCurrentRide(formattedRide);
-      
-      // Update ride status to confirmed
-      await updateRideStatus(ride.id, 'confirmed');
       
       toast({
         title: "Ride Accepted",
@@ -222,6 +199,28 @@ const RideRequests: React.FC = () => {
       toast({
         title: "Error",
         description: error.message || "Failed to accept ride",
+        duration: 3000
+      });
+    }
+  };
+
+  const toggleOnlineStatus = async () => {
+    if (!user?.id) return;
+
+    const newStatus = !isOnline;
+    setIsOnline(newStatus);
+    
+    const { success, error } = await updateDriverStatus(
+      user.id,
+      newStatus,
+      driverLocation || undefined
+    );
+
+    if (!success) {
+      setIsOnline(!newStatus); // Revert on failure
+      toast({
+        title: "Error",
+        description: error || "Failed to update status",
         duration: 3000
       });
     }
@@ -290,6 +289,14 @@ const RideRequests: React.FC = () => {
             <div className="text-sm text-gray-500">Balance: RS {walletBalance}</div>
           </div>
         </div>
+        <div className="mt-4">
+          <Button
+            onClick={toggleOnlineStatus}
+            className={isOnline ? "bg-green-500" : "bg-gray-500"}
+          >
+            {isOnline ? "Online" : "Offline"}
+          </Button>
+        </div>
       </div>
       
       <div className="p-4">
@@ -302,6 +309,10 @@ const RideRequests: React.FC = () => {
         ) : showDriverRegistrationAlert || showDepositAlert ? (
           <div className="text-center py-10 bg-white rounded-lg shadow-sm">
             <p className="text-gray-700 text-lg">Complete the requirements to see ride requests</p>
+          </div>
+        ) : !isOnline ? (
+          <div className="text-center py-10 bg-white rounded-lg shadow-sm">
+            <p className="text-gray-700 text-lg">Go online to see ride requests</p>
           </div>
         ) : pendingRideRequests.length === 0 ? (
           <div className="text-center py-10 bg-white rounded-lg shadow-sm">
@@ -316,11 +327,11 @@ const RideRequests: React.FC = () => {
                   <div className="flex justify-between">
                     <div className="flex items-center space-x-2">
                       <Map className="text-gray-500" size={16} />
-                      <span className="font-medium">{request.distance?.toFixed(1)} km</span>
+                      <span className="font-medium">{request.distance_to_pickup.toFixed(1)} km away</span>
                     </div>
                     <div className="text-right">
                       <div className="text-gray-500 text-sm">Estimate</div>
-                      <div className="font-bold">{Math.round(request.duration / 60)} mins</div>
+                      <div className="font-bold">{Math.round(request.estimated_duration)} mins</div>
                     </div>
                   </div>
                   
@@ -348,10 +359,10 @@ const RideRequests: React.FC = () => {
                   
                   <div className="flex justify-between items-center mt-4">
                     <div>
-                      <div className="text-gray-500">Fare</div>
-                      <div className="text-2xl font-bold">{request.price} {request.currency}</div>
+                      <div className="text-gray-500">Bid Amount</div>
+                      <div className="text-2xl font-bold">RS {request.bid_amount}</div>
                       <div className="text-xs text-green-600">
-                        Earn {Math.round(request.price * 0.8)} {request.currency}
+                        Earn RS {Math.round(request.bid_amount * 0.8)}
                       </div>
                     </div>
                     
