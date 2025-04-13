@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -13,7 +12,8 @@ import {
 import { DriverDocument } from '@/lib/types';
 import { 
   UserRound, ArrowLeft, Check, AlertTriangle, CheckCircle, 
-  Car, Bike, FileText, Upload, Loader2, X, ArrowRight
+  Car, Bike, FileText, Upload, Loader2, X, ArrowRight,
+  Clock, ShieldAlert, ShieldCheck
 } from 'lucide-react';
 
 const OfficialDriver: React.FC = () => {
@@ -255,11 +255,11 @@ const OfficialDriver: React.FC = () => {
       if (success) {
         toast({
           title: "Application Submitted",
-          description: "Your driver application has been submitted for review.",
+          description: "Your driver application has been submitted successfully and is under review.",
           duration: 5000
         });
-        setRegistrationStatus('pending');
         setHasSubmittedApplication(true);
+        setRegistrationStatus('pending');
         setShowRegistrationForm(false);
       } else {
         throw new Error(error || "Failed to submit application");
@@ -267,8 +267,8 @@ const OfficialDriver: React.FC = () => {
     } catch (error: any) {
       console.error("Driver registration error:", error);
       toast({
-        title: "Registration Failed",
-        description: error.message || "Failed to submit driver registration",
+        title: "Submission Failed",
+        description: error.message || "An error occurred during submission",
         duration: 5000
       });
     } finally {
@@ -644,197 +644,180 @@ const OfficialDriver: React.FC = () => {
     );
   };
 
-  const renderRegistrationStatus = () => {
-    if (loading) {
-      return (
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <div className="text-center">
-            <Loader2 className="h-10 w-10 animate-spin mx-auto mb-4 text-violet-700" />
-            <p className="text-gray-600">Loading driver information...</p>
-          </div>
-        </div>
-      );
-    }
-    
-    if (showRegistrationForm) {
-      return renderMultiStepForm();
-    }
-    
+  // New function to render status badge
+  const renderStatusBadge = () => {
+    if (!registrationStatus) return null;
+
     switch (registrationStatus) {
       case 'pending':
         return (
-          <div className="bg-white rounded-xl p-6 shadow-sm text-center mb-6">
-            <div className="h-16 w-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Loader2 className="h-8 w-8 text-blue-600 animate-spin" />
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6 flex items-center">
+            <Clock className="h-6 w-6 text-amber-500 mr-3" />
+            <div>
+              <h3 className="font-medium text-amber-700">Application Under Review</h3>
+              <p className="text-sm text-amber-600">
+                Your driver application is being reviewed by our team. This typically takes 1-2 business days.
+              </p>
             </div>
-            <h2 className="text-2xl font-bold mb-4">Application Under Review</h2>
-            <p className="text-gray-600 mb-6">
-              Your driver registration is being reviewed by our team. This process usually takes 1-2 business days.
-            </p>
-            <div className="p-4 bg-blue-50 rounded-lg text-blue-700 mb-6">
-              <p className="font-medium">We'll notify you when your application is approved!</p>
-              <p className="text-sm mt-2">Meanwhile, you can continue using ZeroDrive as a passenger.</p>
-            </div>
-            <Button onClick={() => navigate('/')}>Return to Home</Button>
           </div>
         );
       case 'approved':
         return (
-          <div className="bg-white rounded-xl p-6 shadow-sm mb-6">
-            <div className="flex items-center mb-4">
-              <div className="h-12 w-12 rounded-full bg-green-100 flex items-center justify-center mr-3">
-                <CheckCircle className="h-7 w-7 text-green-600" />
-              </div>
-              <div>
-                <h2 className="text-2xl font-bold text-green-600">Driver Account Approved</h2>
-                <p className="text-sm text-gray-600">Your application has been approved by our team</p>
-              </div>
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6 flex items-center">
+            <ShieldCheck className="h-6 w-6 text-green-500 mr-3" />
+            <div>
+              <h3 className="font-medium text-green-700">Application Approved</h3>
+              <p className="text-sm text-green-600">
+                Congratulations! Your application has been approved. You can now start accepting ride requests.
+              </p>
             </div>
-            
-            <div className="flex gap-4 mb-6">
-              <div className="flex-1 bg-violet-50 rounded-xl p-4 text-center">
-                <Car size={32} className="mx-auto mb-2 text-violet-700" />
-                <p className="text-sm font-medium">Car</p>
-              </div>
-              <div className="flex-1 bg-violet-50 rounded-xl p-4 text-center">
-                <Bike size={32} className="mx-auto mb-2 text-violet-700" />
-                <p className="text-sm font-medium">Bike</p>
-              </div>
-            </div>
-            
-            <Button
-              className="w-full bg-black text-white hover:bg-gray-800 py-3 text-lg rounded-xl"
-              onClick={() => navigate('/ride-requests')}
-            >
-              Start Accepting Rides
-            </Button>
           </div>
         );
       case 'rejected':
         return (
-          <div className="bg-white rounded-xl p-6 shadow-sm text-center mb-6">
-            <div className="h-16 w-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <AlertTriangle className="h-8 w-8 text-red-600" />
-            </div>
-            <h2 className="text-2xl font-bold mb-4 text-red-600">Application Rejected</h2>
-            <p className="text-gray-600 mb-6">
-              We're sorry, but your driver application has been rejected. Please contact our support team for more information.
-            </p>
-            <div className="p-4 bg-red-50 rounded-lg text-red-700 mb-6">
-              <p className="font-medium">Common reasons for rejection:</p>
-              <ul className="text-sm mt-2 text-left list-disc pl-5">
-                <li>Incomplete or incorrect documentation</li>
-                <li>Vehicle does not meet our requirements</li>
-                <li>Issues with your driving history</li>
-              </ul>
-            </div>
-            <div className="flex flex-col space-y-3 sm:flex-row sm:space-y-0 sm:space-x-3">
-              <Button onClick={() => setShowRegistrationForm(true)} variant="outline">
-                Resubmit Application
-              </Button>
-              <Button onClick={() => navigate('/')}>
-                Return to Home
-              </Button>
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 flex items-center">
+            <ShieldAlert className="h-6 w-6 text-red-500 mr-3" />
+            <div>
+              <h3 className="font-medium text-red-700">Application Rejected</h3>
+              <p className="text-sm text-red-600">
+                Unfortunately, your application was not approved. Please review our requirements and consider reapplying.
+              </p>
             </div>
           </div>
         );
       default:
-        return (
-          <>
-            <div className="bg-gradient-to-br from-violet-500 to-violet-700 text-white p-6 rounded-t-xl">
-              <h1 className="text-3xl font-bold">Official Driver Program</h1>
-              <p className="mt-2 text-white/80">Join our certified driver program and earn more</p>
-            </div>
-            
-            <div className="bg-white rounded-b-xl shadow-sm p-6">
-              <h2 className="text-2xl font-bold mb-6">Become an Official Driver</h2>
-              
-              <div className="mb-8 bg-gray-50 p-6 rounded-xl">
-                <h3 className="text-xl font-semibold mb-4">Benefits</h3>
-                <div className="space-y-3">
-                  <div className="flex items-center">
-                    <Check className="text-green-500 mr-2" />
-                    <p>Priority access to high-value ride requests</p>
-                  </div>
-                  <div className="flex items-center">
-                    <Check className="text-green-500 mr-2" />
-                    <p>Lower platform fees (0.5% vs 1%)</p>
-                  </div>
-                  <div className="flex items-center">
-                    <Check className="text-green-500 mr-2" />
-                    <p>Exclusive driver insurance coverage</p>
-                  </div>
-                  <div className="flex items-center">
-                    <Check className="text-green-500 mr-2" />
-                    <p>Daily payment settlement</p>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="mb-8 bg-gray-50 p-6 rounded-xl">
-                <h3 className="text-xl font-semibold mb-4">Requirements</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <h4 className="font-medium mb-2">Driver</h4>
-                    <ul className="space-y-2 text-gray-600 text-sm">
-                      <li>• Valid Pakistani driving license (2+ years)</li>
-                      <li>• Minimum age of 21 years</li>
-                      <li>• Clear background check</li>
-                      <li>• Smartphone with Android 8.0+ or iOS 13+</li>
-                    </ul>
-                  </div>
-                  <div>
-                    <h4 className="font-medium mb-2">Vehicle</h4>
-                    <ul className="space-y-2 text-gray-600 text-sm">
-                      <li>• Model year 2015 or newer</li>
-                      <li>• Good vehicle condition</li>
-                      <li>• Valid registration and insurance</li>
-                      <li>• Pass vehicle inspection</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="mb-8 bg-gray-50 p-6 rounded-xl">
-                <h3 className="text-xl font-semibold mb-4">Required Documents</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2 text-gray-600 text-sm">
-                    <p>• CNIC (front and back)</p>
-                    <p>• Driving license (front and back)</p>
-                    <p>• Vehicle registration certificate</p>
-                  </div>
-                  <div className="space-y-2 text-gray-600 text-sm">
-                    <p>• Vehicle photos</p>
-                    <p>• Selfie photo holding CNIC</p>
-                    <p>• Clear profile photo</p>
-                  </div>
-                </div>
-              </div>
-              
-              <Button 
-                size="lg"
-                className="w-full bg-violet-600 hover:bg-violet-700 text-white py-6 text-lg"
-                onClick={() => setShowRegistrationForm(true)}
-                disabled={hasSubmittedApplication}
-              >
-                <FileText className="mr-2" size={20} />
-                {hasSubmittedApplication ? 'Application Already Submitted' : 'Start Registration'}
-              </Button>
-            </div>
-          </>
-        );
+        return null;
     }
   };
-  
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center">
+        <Loader2 className="h-12 w-12 animate-spin mb-4" />
+        <p className="text-gray-500">Loading...</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <button onClick={() => navigate('/')} className="absolute top-4 left-4 flex items-center p-2 z-10">
-        <ArrowLeft size={20} className="mr-1" />
+    <div className="min-h-screen bg-white p-6">
+      <Button 
+        variant="ghost" 
+        size="sm" 
+        className="mb-6" 
+        onClick={() => navigate(-1)}
+      >
+        <ArrowLeft className="h-4 w-4 mr-2" />
         Back
-      </button>
+      </Button>
       
-      <div className="container mx-auto px-4 py-8">
-        {renderRegistrationStatus()}
+      <div className="max-w-3xl mx-auto">
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold mb-2">ZeroDriveless Driver Program</h1>
+          <p className="text-gray-500">Join our network of professional drivers and earn money on your schedule</p>
+        </div>
+        
+        {/* Always show status badge if application has been submitted */}
+        {hasSubmittedApplication && renderStatusBadge()}
+        
+        {!hasSubmittedApplication && !showRegistrationForm && (
+          <div className="bg-gray-50 rounded-2xl p-8 mb-8 text-center">
+            <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mx-auto mb-6 shadow-md">
+              <UserRound className="h-10 w-10 text-primary" />
+            </div>
+            <h2 className="text-2xl font-bold mb-4">Become a Driver</h2>
+            <p className="text-gray-600 mb-6">
+              Drive with ZeroDriveless and earn money on your own schedule. 
+              Set your own hours and be your own boss.
+            </p>
+            <Button 
+              size="lg" 
+              className="bg-primary text-white hover:bg-primary/90 w-full md:w-auto"
+              onClick={() => setShowRegistrationForm(true)}
+            >
+              Apply Now
+              <ArrowRight className="ml-2 h-5 w-5" />
+            </Button>
+          </div>
+        )}
+        
+        {!hasSubmittedApplication && showRegistrationForm && renderMultiStepForm()}
+        
+        {hasSubmittedApplication && !showRegistrationForm && (
+          <div className="space-y-6">
+            <h2 className="text-2xl font-bold">Documents & Details</h2>
+            
+            <div className="grid md:grid-cols-2 gap-6">
+              <div className="bg-gray-50 rounded-xl p-6">
+                <h3 className="text-lg font-medium mb-4">Next Steps</h3>
+                <ul className="space-y-3">
+                  <li className="flex items-start">
+                    <Check className="h-5 w-5 text-green-500 mr-2 mt-0.5 flex-shrink-0" />
+                    <span>Application submitted for review</span>
+                  </li>
+                  <li className="flex items-start">
+                    {registrationStatus === 'approved' ? (
+                      <Check className="h-5 w-5 text-green-500 mr-2 mt-0.5 flex-shrink-0" />
+                    ) : (
+                      <Clock className="h-5 w-5 text-amber-500 mr-2 mt-0.5 flex-shrink-0" />
+                    )}
+                    <span>Background verification {registrationStatus === 'approved' ? 'completed' : 'in progress'}</span>
+                  </li>
+                  <li className="flex items-start">
+                    {registrationStatus === 'approved' ? (
+                      <Check className="h-5 w-5 text-green-500 mr-2 mt-0.5 flex-shrink-0" />
+                    ) : (
+                      <Clock className="h-5 w-5 text-amber-500 mr-2 mt-0.5 flex-shrink-0" />
+                    )}
+                    <span>Document verification {registrationStatus === 'approved' ? 'completed' : 'in progress'}</span>
+                  </li>
+                </ul>
+              </div>
+              
+              <div className="bg-gray-50 rounded-xl p-6">
+                <h3 className="text-lg font-medium mb-4">Account Status</h3>
+                <div className="flex items-center mb-4">
+                  {registrationStatus === 'approved' ? (
+                    <>
+                      <div className="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
+                      <span className="font-medium">Active</span>
+                    </>
+                  ) : registrationStatus === 'pending' ? (
+                    <>
+                      <div className="w-3 h-3 bg-amber-500 rounded-full mr-2"></div>
+                      <span className="font-medium">Pending</span>
+                    </>
+                  ) : (
+                    <>
+                      <div className="w-3 h-3 bg-red-500 rounded-full mr-2"></div>
+                      <span className="font-medium">Rejected</span>
+                    </>
+                  )}
+                </div>
+                <p className="text-sm text-gray-500">
+                  {registrationStatus === 'approved' 
+                    ? 'Your account is active. You can now start accepting ride requests.' 
+                    : registrationStatus === 'pending'
+                    ? 'Your application is currently under review. This typically takes 1-2 business days.'
+                    : 'Your application was rejected. Please contact support for more information.'}
+                </p>
+              </div>
+            </div>
+            
+            {registrationStatus === 'approved' && (
+              <div className="mt-8">
+                <Button
+                  size="lg"
+                  className="bg-primary text-white hover:bg-primary/90"
+                  onClick={() => navigate('/ride-requests')}
+                >
+                  View Available Rides
+                  <ArrowRight className="ml-2 h-5 w-5" />
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
