@@ -4,7 +4,7 @@ import { useAuth } from '@/lib/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2 } from 'lucide-react';
+import { Loader2, AlertCircle, Clock } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { acceptRideRequest } from '@/lib/utils/rideUtils';
 
@@ -52,7 +52,7 @@ interface Ride {
 interface DriverProfile {
   id: string;
   user_id: string;
-  status: string;
+  status: string; // 'pending', 'approved', 'rejected'
   vehicle_type: string;
   license_plate: string;
   created_at: string;
@@ -69,6 +69,8 @@ const RideRequests: React.FC = () => {
   const [driverProfile, setDriverProfile] = useState<DriverProfile | null>(null);
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [subscribed, setSubscribed] = useState(false);
+  const [isRegistered, setIsRegistered] = useState<boolean>(false);
+  const [registrationStatus, setRegistrationStatus] = useState<string>('');
 
   // Check driver registration status and wallet balance
   useEffect(() => {
@@ -83,11 +85,16 @@ const RideRequests: React.FC = () => {
           .eq('user_id', user.id)
           .single();
 
-        if (driverError && driverError.code !== 'PGRST116') {
-          throw driverError;
+        if (driverError) {
+          if (driverError.code !== 'PGRST116') { // Not found error
+            console.error("Error fetching driver profile:", driverError);
+          }
+          setIsRegistered(false);
+        } else {
+          setDriverProfile(driverData);
+          setIsRegistered(true);
+          setRegistrationStatus(driverData.status);
         }
-
-        setDriverProfile(driverData);
 
         // Get wallet balance
         const { data: walletData, error: walletError } = await supabase
@@ -96,8 +103,14 @@ const RideRequests: React.FC = () => {
           .eq('user_id', user.id)
           .single();
 
-        if (walletError) throw walletError;
-        setWalletBalance(walletData?.balance || 0);
+        if (walletError) {
+          if (walletError.code !== 'PGRST116') {
+            console.error("Error fetching wallet:", walletError);
+          }
+          setWalletBalance(0);
+        } else {
+          setWalletBalance(walletData?.balance || 0);
+        }
 
         // Get current location
         if (navigator.geolocation) {
@@ -116,6 +129,12 @@ const RideRequests: React.FC = () => {
               });
             }
           );
+        } else {
+          toast({
+            title: 'Location Error',
+            description: 'Geolocation is not supported by your browser.',
+            variant: 'destructive',
+          });
         }
       } catch (error: any) {
         toast({
@@ -133,7 +152,12 @@ const RideRequests: React.FC = () => {
 
   // Subscribe to and fetch nearby ride requests in real-time
   useEffect(() => {
-    if (!userLocation || !user?.id || !driverProfile || walletBalance < 3000 || subscribed) return;
+    // Only proceed if:
+    // 1. User location is available
+    // 2. User is registered (any status)
+    // 3. User has sufficient deposit
+    // 4. Not already subscribed
+    if (!userLocation || !isRegistered || walletBalance < 3000 || subscribed) return;
 
     const fetchNearbyRides = async () => {
       try {
@@ -145,7 +169,7 @@ const RideRequests: React.FC = () => {
           .from('rides')
           .select('*')
           .eq('status', 'searching')
-          .eq('vehicle_type', driverProfile.vehicle_type)
+          .eq('vehicle_type', driverProfile?.vehicle_type || 'car')
           .order('created_at', { ascending: false }) // Order by newest first
         
         if (error) throw error;
@@ -165,7 +189,7 @@ const RideRequests: React.FC = () => {
         event: '*',
         schema: 'public',
         table: 'rides',
-        filter: `status=eq.searching AND vehicle_type=eq.${driverProfile.vehicle_type}`
+        filter: `status=eq.searching AND vehicle_type=eq.${driverProfile?.vehicle_type || 'car'}`
       }, (payload) => {
         if (payload.eventType === 'INSERT') {
           // Add new ride request to the list if within range
@@ -202,10 +226,20 @@ const RideRequests: React.FC = () => {
       subscription.unsubscribe();
       setSubscribed(false);
     };
-  }, [userLocation, user?.id, driverProfile, walletBalance, subscribed]);
+  }, [userLocation, isRegistered, driverProfile, walletBalance, subscribed]);
 
   const handleAcceptRide = async (rideId: string) => {
-    if (!user?.id || !userLocation || !driverProfile) return;
+    if (!user?.id || !userLocation || !isRegistered) return;
+
+    // Additional check for registration status
+    if (registrationStatus !== 'approved') {
+      toast({
+        title: "Not Approved",
+        description: "You cannot accept rides until your registration is approved.",
+        variant: "destructive"
+      });
+      return;
+    }
 
     try {
       setLoading(true);
@@ -242,13 +276,13 @@ const RideRequests: React.FC = () => {
   }
 
   // Show registration prompt if user is not registered as a driver
-  if (!driverProfile) {
+  if (!isRegistered) {
     return (
       <Card className="m-4">
         <CardContent className="p-6">
           <h2 className="text-xl font-semibold mb-4">Driver Registration Required</h2>
           <p className="mb-4">You need to complete your driver registration before you can accept rides.</p>
-          <Button onClick={() => navigate('/driver/register')} className="w-full">
+          <Button onClick={() => navigate('/official-driver')} className="w-full">
             Register as Driver
           </Button>
         </CardContent>
@@ -266,6 +300,44 @@ const RideRequests: React.FC = () => {
           <p className="text-sm text-gray-500 mb-4">Your current balance: RS {walletBalance}</p>
           <Button onClick={() => navigate('/wallet')} className="w-full">
             Add Funds
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Show pending approval message if registration status is pending
+  if (registrationStatus === 'pending') {
+    return (
+      <Card className="m-4">
+        <CardContent className="p-6 flex flex-col items-center">
+          <Clock className="h-16 w-16 text-amber-500 mb-4" />
+          <h2 className="text-xl font-semibold mb-4">Application Under Review</h2>
+          <p className="mb-4 text-center">
+            Your driver registration is currently being reviewed by our team. 
+            You'll be able to accept rides once approved.
+          </p>
+          <p className="text-sm text-gray-500 mb-4">
+            While you wait, you can browse available ride requests below.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Show rejection message if registration status is rejected
+  if (registrationStatus === 'rejected') {
+    return (
+      <Card className="m-4">
+        <CardContent className="p-6 flex flex-col items-center">
+          <AlertCircle className="h-16 w-16 text-red-500 mb-4" />
+          <h2 className="text-xl font-semibold mb-4">Application Rejected</h2>
+          <p className="mb-4 text-center">
+            Unfortunately, your driver registration application was not approved. 
+            Please review our driver requirements and apply again.
+          </p>
+          <Button onClick={() => navigate('/official-driver')} className="w-full">
+            Update Application
           </Button>
         </CardContent>
       </Card>
@@ -316,8 +388,9 @@ const RideRequests: React.FC = () => {
                 <Button 
                   onClick={() => handleAcceptRide(ride.id)}
                   className="w-full rounded-none py-4"
+                  disabled={registrationStatus !== 'approved'}
                 >
-                  Accept Ride
+                  {registrationStatus === 'approved' ? 'Accept Ride' : 'Awaiting Approval'}
                 </Button>
               </CardContent>
             </Card>

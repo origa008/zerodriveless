@@ -99,6 +99,22 @@ export const acceptRideRequest = async (
   try {
     const { data: { user } } = await supabase.auth.getUser();
     
+    // Check if driver is approved
+    const { data: driverProfile, error: driverError } = await supabase
+      .from('driver_profiles')
+      .select('status')
+      .eq('user_id', driverId)
+      .single();
+    
+    if (driverError) throw driverError;
+    
+    if (!driverProfile || driverProfile.status !== 'approved') {
+      return { 
+        success: false, 
+        error: 'Your driver account must be approved to accept rides' 
+      };
+    }
+    
     // First check if ride is still available
     const { data: ride } = await supabase
       .from('rides')

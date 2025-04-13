@@ -295,7 +295,7 @@ const RideProgress: React.FC = () => {
   };
 
   // Function to handle confirming a ride
-  const handleConfirmRide = () => {
+  const handleConfirmRide = async () => {
     if (!estimate || !userBid) return;
     
     const paymentMethod = 'cash'; // Default to cash, can be changed if needed
@@ -303,25 +303,24 @@ const RideProgress: React.FC = () => {
     // Instead of navigating to a non-existent route, directly call confirmRide
     setIsProcessing(true);
     
-    // Call the confirmRide function from the RideContext
-    confirmRide(paymentMethod)
-      .then(() => {
-        toast({
-          title: "Ride Confirmed",
-          description: "Waiting for a driver to accept your request",
-          duration: 5000
-        });
-      })
-      .catch((error) => {
-        toast({
-          title: "Error",
-          description: error.message || "Failed to confirm ride",
-          duration: 5000
-        });
-      })
-      .finally(() => {
-        setIsProcessing(false);
+    try {
+      // Call the confirmRide function from the RideContext
+      confirmRide(paymentMethod);
+      
+      toast({
+        title: "Ride Confirmed",
+        description: "Waiting for a driver to accept your request",
+        duration: 5000
       });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to confirm ride",
+        duration: 5000
+      });
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   // Function to handle starting a ride
