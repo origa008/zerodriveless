@@ -375,17 +375,37 @@ export const updateDriverStatus = async (
       };
     }
 
-    // Update driver status
-    const { error } = await supabase
-      .from('driver_details')
+    // Update driver status in profiles table
+    const { error: profileError } = await supabase
+      .from('profiles')
       .update({
         is_online: isOnline,
-        last_location: location ? { lat: location.latitude, lng: location.longitude } : null,
+        current_location: location ? {
+          latitude: location.latitude,
+          longitude: location.longitude,
+          updated_at: new Date().toISOString()
+        } : null,
         last_online: isOnline ? new Date().toISOString() : null
       })
-      .eq('driver_id', driverId);
+      .eq('id', driverId);
 
-    if (error) throw error;
+    if (profileError) throw profileError;
+
+    // Also update driver_details table with current status
+    const { error: detailsError } = await supabase
+      .from('driver_details')
+      .update({
+        current_status: isOnline ? 'available' : 'offline',
+        last_status_update: new Date().toISOString(),
+        current_location: location ? {
+          lat: location.latitude,
+          lng: location.longitude,
+          updated_at: new Date().toISOString()
+        } : null
+      })
+      .eq('user_id', driverId);
+
+    if (detailsError) throw detailsError;
 
     return { success: true, error: null };
   } catch (error: any) {
