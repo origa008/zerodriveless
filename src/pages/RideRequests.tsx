@@ -1,16 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { useAuth } from '@/lib/context/AuthContext';
 import { useRide } from '@/lib/context/RideContext';
-import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/lib/context/AuthContext';
 import ModeSwitcher from '@/components/shared/ModeSwitcher';
-import { Map, MapPin, Star } from 'lucide-react';
+import { Map, MapPin, Star, Wallet } from 'lucide-react';
 import { 
   getNearbyPendingRides,
   subscribeToNearbyPendingRides,
   updateDriverStatus
 } from '@/lib/utils/dbFunctions';
+import { useToast } from '@/hooks/use-toast';
 
 const RideRequests: React.FC = () => {
   const navigate = useNavigate();
@@ -129,6 +129,17 @@ const RideRequests: React.FC = () => {
         description: "Please ensure location access is enabled and try again",
         duration: 3000
       });
+      return;
+    }
+
+    // Check wallet balance
+    if (walletBalance < 3000) {
+      toast({
+        title: "Insufficient Security Deposit",
+        description: "Please add RS 3,000 to your wallet as security deposit to start accepting rides",
+        duration: 5000
+      });
+      navigate('/wallet');
       return;
     }
 

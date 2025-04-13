@@ -356,187 +356,41 @@ export const updateDriverStatus = async (
   driverId: string,
   isOnline: boolean,
   location?: { latitude: number; longitude: number }
-) => {
+): Promise<{ success: boolean; error: string | null }> => {
   try {
-    console.log('Updating driver status for:', driverId, 'isOnline:', isOnline);
-
-    // First verify the user exists in profiles
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('id, is_verified_driver')
-      .eq('id', driverId)
-      .single();
-
-    if (profileError) {
-      console.error('Error fetching profile:', profileError);
-      return { 
-        success: false, 
-        error: 'Failed to fetch user profile' 
-      };
-    }
-
-    if (!profile) {
-      console.error('Profile not found for user:', driverId);
-      return { 
-        success: false, 
-        error: 'User profile not found' 
-      };
-    }
-
-    console.log('Found profile:', profile);
-
-    // Check driver_details with explicit error logging
-    const { data: driverDetails, error: detailsError } = await supabase
-      .from('driver_details')
-      .select(`
-        id,
-        user_id,
-        status,
-        has_sufficient_deposit,
-        vehicle_type,
-        deposit_amount_required,
-        current_status
-      `)
+    // Get driver's wallet balance
+    const { data: wallet, error: walletError } = await supabase
+      .from('wallets')
+      .select('balance')
       .eq('user_id', driverId)
       .single();
 
-    console.log('Driver details query result:', { driverDetails, detailsError });
+    if (walletError) throw walletError;
 
-    if (detailsError) {
-      console.error('Error fetching driver details:', detailsError);
-      // Check if this is a permissions error
-      if (detailsError.message.includes('permission') || detailsError.code === 'PGRST301') {
-        return { 
-          success: false, 
-          error: 'Permission denied accessing driver details. Please contact support.' 
-        };
-      }
-      return { 
-        success: false, 
-        error: 'Failed to fetch driver status' 
+    // Check if driver has sufficient security deposit
+    if (isOnline && (!wallet || wallet.balance < 3000)) {
+      return {
+        success: false,
+        error: 'Insufficient security deposit. Please add RS 3,000 to your wallet.'
       };
     }
 
-    if (!driverDetails) {
-      console.error('No driver details found for user:', driverId);
-      return { 
-        success: false, 
-        error: 'Driver registration not found. Please complete registration first.' 
-      };
-    }
-
-    console.log('Current driver status:', driverDetails.status);
-
-    // Check approval status
-    if (driverDetails.status !== 'approved') {
-      console.log('Driver not approved. Current status:', driverDetails.status);
-      return { 
-        success: false, 
-        error: `Driver account is ${driverDetails.status}. Must be approved to go online.` 
-      };
-    }
-
-    // Check wallet balance if trying to go online
-    if (isOnline) {
-      const { data: wallet, error: walletError } = await supabase
-        .from('wallets')
-        .select('balance')
-        .eq('user_id', driverId)
-        .single();
-
-      if (walletError) {
-        console.error('Error fetching wallet:', walletError);
-        return {
-          success: false,
-          error: 'Failed to verify deposit balance'
-        };
-      }
-
-      console.log('Wallet balance:', wallet?.balance, 'Required:', driverDetails.deposit_amount_required);
-
-      const hasEnoughDeposit = wallet && wallet.balance >= (driverDetails.deposit_amount_required || 3000);
-      
-      if (!hasEnoughDeposit) {
-        // Update driver_details to reflect deposit status
-        await supabase
-          .from('driver_details')
-          .update({ has_sufficient_deposit: false })
-          .eq('user_id', driverId);
-
-        return { 
-          success: false, 
-          error: `Insufficient deposit balance. Required: RS ${driverDetails.deposit_amount_required || 3000}` 
-        };
-      }
-
-      // Update deposit status if it was previously insufficient
-      if (!driverDetails.has_sufficient_deposit) {
-        await supabase
-          .from('driver_details')
-          .update({ has_sufficient_deposit: true })
-          .eq('user_id', driverId);
-      }
-    }
-
-    // Update profile with online status and location
-    const updateData: any = {
-      is_verified_driver: true,
-      is_online: isOnline,
-      last_online: new Date().toISOString()
-    };
-
-    if (location) {
-      updateData.current_location = {
-        latitude: location.latitude,
-        longitude: location.longitude,
-        updated_at: new Date().toISOString()
-      };
-    }
-
-    console.log('Updating profile with:', updateData);
-
-    const { error: updateError } = await supabase
-      .from('profiles')
-      .update(updateData)
-      .eq('id', driverId);
-
-    if (updateError) {
-      console.error('Error updating profile:', updateError);
-      throw updateError;
-    }
-
-    // Also update driver_details with current status
-    const { error: detailsUpdateError } = await supabase
+    // Update driver status
+    const { error } = await supabase
       .from('driver_details')
       .update({
-        current_status: isOnline ? 'available' : 'offline',
-        last_status_update: new Date().toISOString()
-      })
-      .eq('user_id', driverId);
-
-    if (detailsUpdateError) {
-      console.error('Error updating driver details:', detailsUpdateError);
-      // Don't throw here as the main update was successful
-    }
-
-    console.log('Successfully updated driver status');
-
-    return { 
-      success: true, 
-      error: null,
-      details: {
         is_online: isOnline,
-        vehicle_type: driverDetails.vehicle_type,
-        has_sufficient_deposit: true,
-        status: driverDetails.status
-      }
-    };
+        last_location: location ? { lat: location.latitude, lng: location.longitude } : null,
+        last_online: isOnline ? new Date().toISOString() : null
+      })
+      .eq('driver_id', driverId);
+
+    if (error) throw error;
+
+    return { success: true, error: null };
   } catch (error: any) {
     console.error('Error updating driver status:', error);
-    return { 
-      success: false, 
-      error: error.message || 'Failed to update driver status' 
-    };
+    return { success: false, error: error.message };
   }
 };
 
