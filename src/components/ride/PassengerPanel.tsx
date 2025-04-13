@@ -1,22 +1,21 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import LocationSearch from './LocationSearch';
+import RideOptionCard from './RideOptionCard';
 import { useRide } from '@/lib/context/RideContext';
 import { useAuth } from '@/lib/context/AuthContext';
-import LocationSearch from '@/components/ride/LocationSearch';
-import LocationInput from '@/components/ride/LocationInput';
-import RideOptionCard from '@/components/ride/RideOptionCard';
-import { Loader2, Clock, Wallet } from 'lucide-react';
+import { Check, CreditCard, Loader2, WalletCards } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { PaymentMethod } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
-import { useNavigate } from 'react-router-dom';
-import { Location } from '@/lib/types';
-
-type PaymentMethod = 'cash' | 'wallet';
+import { createRideRequest } from '@/lib/utils/rideUtils';
 
 const PassengerPanel: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuth();
-  
   const {
     pickupLocation,
     dropoffLocation,
@@ -26,337 +25,367 @@ const PassengerPanel: React.FC = () => {
     findRides,
     selectedRideOption,
     setSelectedRideOption,
-    confirmRide,
     isSearchingRides,
     estimatedDistance,
     estimatedDuration,
     calculateBaseFare,
     userBid,
     setUserBid,
-    isWaitingForDriverAcceptance,
-    setWaitingForDriverAcceptance,
-    driverAcceptanceTimer,
-    resetDriverAcceptanceTimer,
-    walletBalance,
     isPanelOpen,
-    setPanelOpen
+    setPanelOpen,
+    walletBalance
   } = useRide();
 
-  const [showBidModal, setShowBidModal] = useState(false);
-  const [bidAmount, setBidAmount] = useState<number>(0);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
+  const [step, setStep] = useState<'locations' | 'options' | 'confirm'>('locations');
+  const [isCreatingRide, setIsCreatingRide] = useState(false);
+  const [selectedPayment, setSelectedPayment] = useState<PaymentMethod>('cash');
+  const [hasSufficientBalance, setHasSufficientBalance] = useState(true);
+  const [isWaiting, setIsWaiting] = useState(false);
 
-  const handlePickupChange = (value: string) => {
-    // just a placeholder
-  };
-
-  const handleDropoffChange = (value: string) => {
-    // just a placeholder
-  };
-
-  const handlePickupSelect = (location: Location) => {
-    setPickupLocation(location);
-  };
-
-  const handleDropoffSelect = (location: Location) => {
-    setDropoffLocation(location);
-  };
-
+  // Effect to trigger ride finding when locations are set
   useEffect(() => {
-    if (isWaitingForDriverAcceptance && driverAcceptanceTimer <= 0) {
-      setWaitingForDriverAcceptance(false);
-      toast({
-        title: "No drivers available",
-        description: "Please try increasing your bid to find a driver faster.",
-        duration: 5000
-      });
+    if (pickupLocation && dropoffLocation) {
+      setStep('options');
+      findRides();
     }
-  }, [isWaitingForDriverAcceptance, driverAcceptanceTimer]);
+  }, [pickupLocation, dropoffLocation, findRides]);
 
-  const handleFindRides = () => {
-    // Check if user has completed their profile
-    if (!user?.phone) {
+  // Check if user has sufficient balance for wallet payment
+  useEffect(() => {
+    if (selectedPayment === 'wallet' && userBid) {
+      setHasSufficientBalance(walletBalance >= userBid);
+    }
+  }, [selectedPayment, userBid, walletBalance]);
+
+  // Handle ride option selection
+  const handleSelectOption = (option: any) => {
+    setSelectedRideOption(option);
+    
+    if (estimatedDistance) {
+      const baseFare = calculateBaseFare(estimatedDistance, option.name);
+      setUserBid(baseFare);
+    }
+    
+    setStep('confirm');
+  };
+
+  // Handle bid change
+  const handleBidChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = parseInt(e.target.value);
+    if (!isNaN(value) && value > 0) {
+      setUserBid(value);
+    }
+  };
+
+  // Handle ride confirmation
+  const handleConfirmRide = async () => {
+    if (!user?.id || !pickupLocation || !dropoffLocation || !selectedRideOption || !userBid) {
       toast({
-        title: "Profile incomplete",
-        description: "Please update your phone number and address in your profile",
-        duration: 5000
+        title: "Error",
+        description: "Missing required information to create ride request",
+        duration: 3000
       });
       return;
     }
     
-    findRides();
-  };
-
-  const handleSelectRideOption = (option: any) => {
-    setSelectedRideOption(option);
-
-    // Once vehicle is selected, immediately show bid modal
-    if (estimatedDistance) {
-      const minBid = calculateBaseFare(estimatedDistance, option.name);
-      setBidAmount(minBid);
-      setShowBidModal(true);
-    }
-  };
-
-  const handleOrderNow = () => {
-    // If payment method is wallet, validate wallet balance
-    if (paymentMethod === 'wallet' && walletBalance < (userBid || 0)) {
+    if (selectedPayment === 'wallet' && !hasSufficientBalance) {
       toast({
         title: "Insufficient balance",
-        description: "Please add money to your wallet or switch to cash payment.",
-        duration: 5000
+        description: "Please add funds to your wallet or choose cash payment",
+        duration: 3000
       });
       return;
     }
-
-    // Send ride request to drivers
-    confirmRide(paymentMethod);
-    setWaitingForDriverAcceptance(true);
-    resetDriverAcceptanceTimer();
-    toast({
-      title: "Looking for drivers",
-      description: "Waiting for a driver to accept your bid. This will take about a minute.",
-      duration: 5000
-    });
-  };
-
-  const handlePlaceBid = () => {
-    setUserBid(bidAmount);
-    setShowBidModal(false);
-  };
-
-  const handleIncreaseBid = () => {
-    if (selectedRideOption && estimatedDistance) {
-      const minBid = calculateBaseFare(estimatedDistance, selectedRideOption.name);
-      const currentBid = userBid || minBid;
+    
+    setIsCreatingRide(true);
+    
+    try {
+      console.log("Creating ride request with:", {
+        userId: user.id,
+        pickup: pickupLocation,
+        dropoff: dropoffLocation,
+        option: selectedRideOption,
+        price: userBid,
+        distance: estimatedDistance || 0,
+        duration: estimatedDuration || 0,
+        payment: selectedPayment
+      });
       
-      // Increase by 20%
-      const increasedBid = Math.round(currentBid * 1.2);
-      setBidAmount(increasedBid);
-      setShowBidModal(true);
+      const { rideId, error } = await createRideRequest(
+        user.id,
+        pickupLocation,
+        dropoffLocation,
+        selectedRideOption,
+        userBid,
+        estimatedDistance || 0,
+        estimatedDuration || 0,
+        selectedPayment
+      );
+      
+      if (error) {
+        throw new Error(error);
+      }
+      
+      console.log("Ride request created with ID:", rideId);
+      
+      toast({
+        title: "Ride request created",
+        description: "Looking for drivers nearby...",
+        duration: 3000
+      });
+      
+      // Set waiting state while looking for drivers
+      setIsWaiting(true);
+      setPanelOpen(false);
+      
+      // TODO: Here we'd ideally subscribe to changes on this ride to know when a driver accepts it
+      // For now, we'll just wait a bit and then reset
+      setTimeout(() => {
+        setIsWaiting(false);
+        setStep('locations');
+        setPickupLocation(null);
+        setDropoffLocation(null);
+        setSelectedRideOption(null);
+        setUserBid(null);
+      }, 60000); // Give it 60 seconds to find a driver
+      
+    } catch (error: any) {
+      console.error('Error creating ride:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create ride request",
+        duration: 3000
+      });
+    } finally {
+      setIsCreatingRide(false);
     }
   };
 
-  const handleTogglePaymentMethod = () => {
-    setPaymentMethod(prev => prev === 'cash' ? 'wallet' : 'cash');
-  };
-
-  // Render for expanded panel view (after finding rides)
-  if (isPanelOpen) {
-    return (
-      <div className="bg-white rounded-t-3xl -mt-6 relative z-10 p-6">
-        <div className="mb-4">
-          <LocationInput 
-            label="Pickup" 
-            value={pickupLocation?.name || ''} 
-            onChange={handlePickupChange} 
-            placeholder="Choose pickup location" 
-            readOnly 
-          />
-          <LocationInput 
-            label="Dropoff" 
-            value={dropoffLocation?.name || ''} 
-            onChange={handleDropoffChange} 
-            placeholder="Choose drop location" 
-            readOnly 
-          />
-        </div>
-        
-        {estimatedDistance && estimatedDuration && (
-          <div className="mb-4 p-3 bg-gray-50 rounded-xl">
-            <p className="text-gray-600">Estimated Trip: {estimatedDistance} km • {estimatedDuration} min</p>
-          </div>
-        )}
-        
-        <div className="mb-4">
-          <h3 className="text-xl font-medium mb-2 px-[8px]">Choose Vehicle</h3>
-          {availableRideOptions.map(option => (
-            <RideOptionCard 
-              key={option.id} 
-              option={option} 
-              isSelected={selectedRideOption?.id === option.id} 
-              onSelect={handleSelectRideOption} 
+  // Render the correct step
+  const renderStep = () => {
+    switch (step) {
+      case 'locations':
+        return (
+          <div className="space-y-4 py-2">
+            <LocationSearch 
+              label="Pickup Location"
+              placeholder="Current Location"
+              value={pickupLocation ? pickupLocation.name : ""}
+              onChange={(value) => {}}
+              onSelect={setPickupLocation}
+              icon={undefined}
             />
-          ))}
-        </div>
-        
-        {isWaitingForDriverAcceptance ? (
-          <div className="mb-6">
-            <div className="border border-yellow-200 bg-yellow-50 rounded-2xl p-4">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center">
-                  <Clock className="text-yellow-500 mr-2" size={20} />
-                  <span className="font-medium">Waiting for driver</span>
-                </div>
-                <span className="font-bold">{driverAcceptanceTimer}s</span>
-              </div>
-              <p className="text-sm text-gray-600 mb-3">
-                If no driver accepts your bid in the time limit, you may need to increase your bid.
-              </p>
-              <Button onClick={handleIncreaseBid} className="w-full bg-yellow-500 hover:bg-yellow-600 text-white">
-                Increase Bid
+            <LocationSearch 
+              label="Dropoff Location"
+              placeholder="Where to?"
+              value={dropoffLocation ? dropoffLocation.name : ""}
+              onChange={(value) => {}}
+              onSelect={setDropoffLocation}
+              icon={undefined}
+            />
+          </div>
+        );
+      
+      case 'options':
+        return (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="font-medium text-lg">Select Ride Option</h3>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => {
+                  setStep('locations');
+                  setSelectedRideOption(null);
+                }}
+              >
+                Change Location
               </Button>
             </div>
-          </div>
-        ) : userBid ? (
-          <div className="mb-6">
-            <div className="border border-gray-200 rounded-2xl p-4 flex justify-between">
-              <div>
-                <span className="text-gray-500">Your bid:</span>
-                <span className="ml-2 text-xl font-bold">{userBid} RS</span>
+            
+            {isSearchingRides ? (
+              <div className="py-8 flex flex-col items-center">
+                <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mb-2"></div>
+                <p className="text-gray-600">Finding available rides...</p>
               </div>
-              <button className="text-blue-500" onClick={() => setShowBidModal(true)}>
-                Change
-              </button>
-            </div>
-          </div>
-        ) : null}
-        
-        <div className="mb-6">
-          <div className="border border-gray-200 rounded-2xl p-4">
-            <div className="flex justify-between items-center mb-2">
-              <span className="text-xl font-medium">Payment Method</span>
-              <button onClick={handleTogglePaymentMethod} className="text-blue-500">
-                Change
-              </button>
-            </div>
-            <div className="flex items-center mt-2">
-              {paymentMethod === 'cash' ? (
-                <>
-                  <div className="w-5 h-5 rounded-full bg-green-500 mr-2 flex items-center justify-center">
-                    <div className="w-2 h-2 rounded-full bg-white"></div>
-                  </div>
-                  <span>Pay by Cash</span>
-                </>
-              ) : (
-                <>
-                  <div className="w-5 h-5 rounded-full bg-blue-500 mr-2 flex items-center justify-center">
-                    <div className="w-2 h-2 rounded-full bg-white"></div>
-                  </div>
-                  <span>Pay from Wallet (Balance: RS {walletBalance.toFixed(0)})</span>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-        
-        <Button 
-          onClick={handleOrderNow} 
-          disabled={!selectedRideOption || !userBid || isWaitingForDriverAcceptance || (paymentMethod === 'wallet' && walletBalance < (userBid || 0))} 
-          className="w-full bg-black text-white hover:bg-gray-800 text-xl py-[30px] rounded-2xl my-[10px]"
-        >
-          {isWaitingForDriverAcceptance ? (
-            <div className="flex items-center">
-              <Loader2 className="animate-spin mr-2" />
-              Waiting for driver...
-            </div>
-          ) : paymentMethod === 'wallet' && walletBalance < (userBid || 0) ? (
-            'Insufficient Balance'
-          ) : (
-            'Confirm Ride'
-          )}
-        </Button>
-        
-        {/* Bid Modal */}
-        {showBidModal && estimatedDistance && selectedRideOption && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl p-6 w-full max-w-md">
-              <h3 className="text-xl font-medium mb-4">
-                {userBid ? 'Update Your Bid' : 'Place Your Bid'}
-              </h3>
-              
-              <div className="mb-4">
-                <p className="text-gray-600 mb-2">Route: {pickupLocation?.name} → {dropoffLocation?.name}</p>
-                <p className="text-gray-600 mb-2">Distance: {estimatedDistance} km</p>
-                <p className="text-gray-600 mb-2">Vehicle: {selectedRideOption.name}</p>
-                <p className="text-gray-600 mb-2">Base fare: {calculateBaseFare(estimatedDistance, selectedRideOption.name)} RS</p>
+            ) : (
+              <div className="space-y-3">
+                {availableRideOptions.map((option) => (
+                  <RideOptionCard
+                    key={option.id}
+                    option={option}
+                    distance={estimatedDistance || 0}
+                    duration={estimatedDuration || 0}
+                    onSelect={() => handleSelectOption(option)}
+                  />
+                ))}
               </div>
-              
-              <div className="mb-6">
-                <label className="block text-sm font-medium mb-2">Your Bid (RS)</label>
-                <input 
-                  type="number" 
-                  min={calculateBaseFare(estimatedDistance, selectedRideOption.name)} 
-                  value={bidAmount} 
-                  onChange={e => setBidAmount(Number(e.target.value))} 
-                  className="w-full border border-gray-300 rounded-lg p-3" 
-                />
-                <p className="text-sm text-gray-500 mt-1">Minimum bid: {calculateBaseFare(estimatedDistance, selectedRideOption.name)} RS</p>
-                
-                {paymentMethod === 'wallet' && bidAmount > walletBalance && (
-                  <p className="text-sm text-red-500 mt-2">Your wallet balance is insufficient for this bid. Please add money to your wallet or switch to cash payment.</p>
+            )}
+          </div>
+        );
+      
+      case 'confirm':
+        if (!selectedRideOption || !userBid) return null;
+        
+        return (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="font-medium text-lg">Confirm Your Ride</h3>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setStep('options')}
+              >
+                Change Vehicle
+              </Button>
+            </div>
+            
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <div className="flex justify-between mb-3">
+                <span className="text-gray-600">Distance:</span>
+                <span className="font-medium">{estimatedDistance?.toFixed(1)} km</span>
+              </div>
+              <div className="flex justify-between mb-3">
+                <span className="text-gray-600">Est. Duration:</span>
+                <span className="font-medium">{Math.round((estimatedDuration || 0) / 60)} mins</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Vehicle:</span>
+                <span className="font-medium">{selectedRideOption.name}</span>
+              </div>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium mb-2">Your Bid (Rs)</label>
+              <input
+                type="number"
+                min={Math.round(calculateBaseFare(estimatedDistance || 0, selectedRideOption.name) * 0.8)}
+                value={userBid}
+                onChange={handleBidChange}
+                className="w-full border border-gray-300 rounded-lg p-3"
+              />
+              <p className="text-xs text-gray-500 mt-1">Min bid: Rs {Math.round(calculateBaseFare(estimatedDistance || 0, selectedRideOption.name) * 0.8)}</p>
+            </div>
+            
+            <div>
+              <p className="block text-sm font-medium mb-2">Payment Method</p>
+              <div className="flex space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedPayment('cash')}
+                  className={cn(
+                    "flex-1 border rounded-lg p-3 flex items-center justify-center",
+                    selectedPayment === 'cash' 
+                      ? "border-primary bg-primary/10" 
+                      : "border-gray-300"
+                  )}
+                >
+                  <CreditCard className={cn(
+                    "mr-2 h-5 w-5",
+                    selectedPayment === 'cash' ? "text-primary" : "text-gray-500"
+                  )} />
+                  Cash
+                  {selectedPayment === 'cash' && (
+                    <Check className="ml-2 h-4 w-4 text-primary" />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedPayment('wallet')}
+                  className={cn(
+                    "flex-1 border rounded-lg p-3 flex items-center justify-center",
+                    selectedPayment === 'wallet' 
+                      ? "border-primary bg-primary/10" 
+                      : "border-gray-300"
+                  )}
+                >
+                  <WalletCards className={cn(
+                    "mr-2 h-5 w-5",
+                    selectedPayment === 'wallet' ? "text-primary" : "text-gray-500"
+                  )} />
+                  Wallet
+                  {selectedPayment === 'wallet' && (
+                    <Check className="ml-2 h-4 w-4 text-primary" />
+                  )}
+                </button>
+              </div>
+              <div className="text-sm mt-1">
+                {selectedPayment === 'wallet' && (
+                  <p className={cn(
+                    hasSufficientBalance ? "text-green-600" : "text-red-600"
+                  )}>
+                    Balance: Rs {walletBalance} {!hasSufficientBalance && '(Insufficient)'}
+                  </p>
                 )}
               </div>
-              
-              <div className="flex space-x-3">
-                <Button variant="outline" className="flex-1" onClick={() => setShowBidModal(false)}>
-                  Cancel
-                </Button>
-                <Button 
-                  className="flex-1 bg-black text-white" 
-                  onClick={handlePlaceBid} 
-                  disabled={bidAmount < calculateBaseFare(estimatedDistance, selectedRideOption.name)}
-                >
-                  {userBid ? 'Update Bid' : 'Place Bid'}
-                </Button>
-              </div>
             </div>
+            
+            <Button 
+              className="w-full bg-black text-white"
+              onClick={handleConfirmRide}
+              disabled={isCreatingRide || (selectedPayment === 'wallet' && !hasSufficientBalance)}
+            >
+              {isCreatingRide ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Confirming...
+                </>
+              ) : (
+                "Confirm Ride"
+              )}
+            </Button>
           </div>
-        )}
+        );
+    }
+  };
+
+  if (isWaiting) {
+    return (
+      <div className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl p-6 shadow-lg">
+        <div className="py-4 flex flex-col items-center">
+          <div className="animate-pulse flex flex-col items-center">
+            <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mb-4"></div>
+            <h3 className="text-lg font-medium mb-2">Looking for drivers</h3>
+            <p className="text-gray-600 text-center">Please wait while we find drivers near you.</p>
+            <p className="text-gray-500 text-center text-sm mt-2">This could take a few moments...</p>
+          </div>
+          
+          <Button 
+            variant="outline" 
+            className="mt-6"
+            onClick={() => {
+              setIsWaiting(false);
+              setStep('locations');
+              setPickupLocation(null);
+              setDropoffLocation(null);
+              setSelectedRideOption(null);
+              setUserBid(null);
+              setPanelOpen(true);
+            }}
+          >
+            Cancel Request
+          </Button>
+        </div>
       </div>
     );
   }
-  
-  // Render for collapsed panel view (initial search panel)
-  return (
-    <div className="bg-white rounded-t-3xl -mt-6 relative z-10 p-6 py-[24px] my-[50px]">
-      <div className="mb-6">
-        <LocationSearch 
-          label="Pickup" 
-          value={pickupLocation?.name || ''} 
-          onChange={handlePickupChange} 
-          onSelect={handlePickupSelect} 
-          placeholder="Choose pickup location" 
-        />
-        <LocationSearch 
-          label="Dropoff" 
-          value={dropoffLocation?.name || ''} 
-          onChange={handleDropoffChange} 
-          onSelect={handleDropoffSelect} 
-          placeholder="Choose drop location" 
-        />
-      </div>
-      
-      <Button 
-        className="w-full bg-black text-white hover:bg-gray-800 py-6 text-xl rounded-xl" 
-        onClick={handleFindRides} 
-        disabled={!pickupLocation || !dropoffLocation || isSearchingRides}
-      >
-        {isSearchingRides ? (
-          <>
-            <Loader2 className="animate-spin mr-2" />
-            Finding rides...
-          </>
-        ) : (
-          'Find rides'
-        )}
-      </Button>
 
-      {!user?.phone && (
-        <div className="mt-4 p-4 bg-yellow-50 rounded-xl border border-yellow-200">
-          <p className="text-sm text-gray-700 mb-2">
-            Please update your profile with your phone number and address to ensure a smooth ride experience.
-          </p>
-          <Button 
-            variant="outline" 
-            size="sm"
-            className="w-full border-yellow-400 text-yellow-700"
-            onClick={() => navigate('/profile')}
-          >
-            Update Profile
-          </Button>
-        </div>
-      )}
+  if (!isPanelOpen) {
+    return (
+      <div className="fixed bottom-0 left-0 right-0 bg-white p-4 shadow-lg">
+        <Button 
+          className="w-full bg-black text-white" 
+          onClick={() => setPanelOpen(true)}
+        >
+          Where To?
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl p-6 shadow-lg">
+      {renderStep()}
     </div>
   );
 };

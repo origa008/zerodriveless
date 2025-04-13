@@ -1,19 +1,86 @@
 
 import React from 'react';
 import { RideOption } from '@/lib/types';
-import { User, Users } from 'lucide-react';
+import { MapPin, User, Users } from 'lucide-react';
 
 interface RideOptionCardProps {
   option: RideOption;
-  isSelected: boolean;
+  isSelected?: boolean;
+  distance?: number;
+  duration?: number;
   onSelect: (option: RideOption) => void;
+  pickupLocation?: string;
+  dropoffLocation?: string;
+  price?: number;
+  currency?: string;
 }
 
 const RideOptionCard: React.FC<RideOptionCardProps> = ({ 
   option, 
-  isSelected, 
-  onSelect 
+  isSelected = false, 
+  distance,
+  duration,
+  onSelect,
+  pickupLocation,
+  dropoffLocation,
+  price,
+  currency
 }) => {
+  // Simple card to display ride option details
+  if (pickupLocation && dropoffLocation) {
+    // Driver view of ride request
+    return (
+      <div 
+        className={`ride-option p-4 m-2 bg-white rounded-lg shadow-sm ${isSelected ? 'border-2 border-zerodrive-purple' : 'border border-gray-100'}`}
+        onClick={() => onSelect(option)}
+      >
+        <div className="flex flex-col">
+          <h3 className="text-2xl font-bold mb-6">Ride Request</h3>
+          
+          <div className="flex items-start mb-3">
+            <div className="mr-3 text-gray-400">
+              <MapPin size={20} className="rotate-45" />
+            </div>
+            <div>
+              <p className="text-lg">{pickupLocation}</p>
+            </div>
+          </div>
+          
+          <div className="flex items-start mb-6">
+            <div className="mr-3 text-black">
+              <MapPin size={20} />
+            </div>
+            <div>
+              <p className="text-lg font-medium">{dropoffLocation}</p>
+            </div>
+          </div>
+          
+          <div className="flex justify-between mt-2">
+            <div>
+              <p className="text-gray-500">Distance</p>
+              <p className="text-xl font-bold">{distance?.toFixed(1)} km</p>
+            </div>
+            <div className="text-right">
+              <p className="text-gray-500">Price</p>
+              <p className="text-xl font-bold">{price} {currency}</p>
+            </div>
+          </div>
+          
+          <button 
+            className="w-full bg-black text-white py-4 rounded-full text-lg font-medium mt-4"
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect(option);
+            }}
+          >
+            Accept
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Regular ride option selection
   return (
     <div 
       className={`ride-option p-2 m-2 ${isSelected ? 'border-zerodrive-purple bg-zerodrive-purple/10' : ''}`}
@@ -37,7 +104,7 @@ const RideOptionCard: React.FC<RideOptionCardProps> = ({
           </div>
           <div className="flex items-center text-gray-500">
             <div className="flex items-center mr-6">
-              <span className="text-lg">{option.duration} min</span>
+              <span className="text-lg">{duration ? `${Math.round(duration / 60)} min` : `${option.duration} min`}</span>
             </div>
             <div className="flex items-center gap-1">
               <Users size={16} />

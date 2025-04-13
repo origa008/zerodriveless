@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -8,14 +9,12 @@ import ModeSwitcher from '@/components/shared/ModeSwitcher';
 import { 
   getAvailableRideRequests, 
   subscribeToNewRideRequests,
-  acceptRideRequest as acceptRide,
-  getRideDetails,
-  updateRideStatus,
-  completeRideAndProcessPayment
+  acceptRideRequest as acceptRide
 } from '@/lib/utils/rideUtils';
 import { getDriverRegistrationStatus } from '@/lib/utils/driverUtils';
-import { AlertTriangle, Map, MapPin, Star, Wallet } from 'lucide-react';
+import { AlertTriangle, MapPin, RefreshCw, Star, Wallet } from 'lucide-react';
 import { Ride } from '@/lib/types';
+import RideOptionCard from '@/components/ride/RideOptionCard';
 
 const RideRequests: React.FC = () => {
   const navigate = useNavigate();
@@ -25,39 +24,10 @@ const RideRequests: React.FC = () => {
   
   const [pendingRideRequests, setPendingRideRequests] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [driverStatus, setDriverStatus] = useState<string | null>(null);
   const [showDriverRegistrationAlert, setShowDriverRegistrationAlert] = useState(false);
   const [showDepositAlert, setShowDepositAlert] = useState(false);
-  const [driverLocation, setDriverLocation] = useState<{ latitude: number; longitude: number } | null>(null);
-
-  // Get driver's current location
-  useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.watchPosition(
-        (position) => {
-          setDriverLocation({
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude
-          });
-        },
-        (error) => {
-          console.error('Error getting location:', error);
-          toast({
-            title: "Location Error",
-            description: "Unable to get your location. Some features may be limited.",
-            duration: 3000
-          });
-        },
-        { enableHighAccuracy: true }
-      );
-    } else {
-      toast({
-        title: "Location Not Supported",
-        description: "Your browser doesn't support location services. Please use a modern browser.",
-        duration: 3000
-      });
-    }
-  }, [toast]);
 
   // Check driver status on load
   useEffect(() => {
@@ -68,6 +38,7 @@ const RideRequests: React.FC = () => {
         const { status, details } = await getDriverRegistrationStatus(user.id);
         setDriverStatus(status);
         
+        // Show alerts based on driver status and deposit
         if (!status || status === null) {
           setShowDriverRegistrationAlert(true);
         } else if (status === 'pending') {
@@ -86,51 +57,73 @@ const RideRequests: React.FC = () => {
     checkDriverStatus();
   }, [user?.id]);
 
-  // Fetch and subscribe to nearby ride requests
-  useEffect(() => {
-    if (!user?.id || driverStatus !== 'approved' || showDepositAlert || !driverLocation) return;
+  // Fetch ride requests
+  const fetchRideRequests = async () => {
+    if (!user?.id) {
+      setIsLoading(false);
+      return;
+    }
     
-    const fetchRideRequests = async () => {
-      const { rides, error } = await getAvailableRideRequests(
-        driverLocation.latitude,
-        driverLocation.longitude,
-        5 // 5km radius
-      );
+    setIsRefreshing(true);
+    try {
+      console.log("Fetching available ride requests...");
+      const { rides, error } = await getAvailableRideRequests(user.email);
       
       if (!error) {
+        console.log("Fetched rides:", rides);
         setPendingRideRequests(rides || []);
+      } else {
+        console.error("Error fetching rides:", error);
+        toast({
+          title: "Error",
+          description: "Failed to fetch ride requests. Please try again.",
+          duration: 3000
+        });
       }
-    };
+    } catch (err) {
+      console.error("Exception fetching rides:", err);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred.",
+        duration: 3000
+      });
+    } finally {
+      setIsRefreshing(false);
+      setIsLoading(false);
+    }
+  };
+
+  // Fetch and subscribe to nearby ride requests
+  useEffect(() => {
+    if (!user?.id) return;
     
     fetchRideRequests();
     
     // Subscribe to real-time ride request updates
-    const unsubscribe = subscribeToNewRideRequests(
-      (newRide) => {
-        setPendingRideRequests(prevRides => {
-          // Remove any existing ride with the same ID
-          const filteredRides = prevRides.filter(r => r.id !== newRide.id);
-          return [...filteredRides, newRide];
-        });
-        
-        toast({
-          title: "New Ride Request",
-          description: "A new ride request is available nearby",
-          duration: 3000
-        });
-      },
-      driverLocation,
-      5 // 5km radius
-    );
+    const unsubscribe = subscribeToNewRideRequests((newRide) => {
+      console.log("New ride request received:", newRide);
+      setPendingRideRequests(prevRides => {
+        // Check if ride already exists
+        if (prevRides.some(ride => ride.id === newRide.id)) {
+          return prevRides;
+        }
+        return [newRide, ...prevRides];
+      });
+      
+      toast({
+        title: "New Ride Request",
+        description: "A new ride request is available nearby",
+        duration: 3000
+      });
+    });
     
-    // Refresh ride requests every 30 seconds
-    const refreshInterval = setInterval(fetchRideRequests, 30000);
-    
-    return () => {
-      unsubscribe();
-      clearInterval(refreshInterval);
-    };
-  }, [user?.id, driverStatus, showDepositAlert, driverLocation, toast]);
+    return () => unsubscribe();
+  }, [user?.id, toast]);
+
+  // Handle refreshing ride requests
+  const handleRefresh = () => {
+    fetchRideRequests();
+  };
 
   // Handle accepting a ride
   const handleAcceptRide = async (ride: any) => {
@@ -144,34 +137,38 @@ const RideRequests: React.FC = () => {
     }
     
     try {
-      const { success, error } = await acceptRideRequest(ride.id, user.id);
+      const { success, error } = await acceptRide(ride.id, user.id);
       
       if (!success) {
         throw new Error(error || "Failed to accept ride");
       }
       
-      // Remove the accepted ride from the list
-      setPendingRideRequests(prevRides => 
-        prevRides.filter(r => r.id !== ride.id)
-      );
-      
-      const formattedRide = {
+      const formattedRide: Ride = {
         id: ride.id,
         pickup: ride.pickup_location,
         dropoff: ride.dropoff_location,
+        rideOption: ride.ride_option,
+        driver: {
+          id: user.id,
+          name: user.name || 'Driver',
+          rating: user.rating || 5.0,
+          licensePlate: "Default",
+          avatar: user.avatar || "/lovable-uploads/498e0bf1-4c8a-4cad-8ee2-6f43fdccc511.png"
+        },
         status: 'confirmed',
-        price: ride.estimated_price,
-        currency: 'RS',
-        distance: ride.estimated_distance,
-        duration: ride.estimated_duration,
-        paymentMethod: ride.payment_method || 'cash'
+        price: ride.price,
+        currency: ride.currency || 'RS',
+        distance: ride.distance,
+        duration: ride.duration,
+        paymentMethod: ride.payment_method
       };
       
+      acceptRideRequest(ride.id);
       setCurrentRide(formattedRide);
       
       toast({
-        title: "Ride Accepted",
-        description: "You have accepted the ride. Please proceed to pickup location.",
+        title: "Ride accepted",
+        description: "You have accepted the ride. Navigating to passenger...",
         duration: 3000
       });
       
@@ -254,6 +251,32 @@ const RideRequests: React.FC = () => {
       <div className="p-4">
         {renderAlerts()}
         
+        <div className="flex justify-between items-center mb-4">
+          <p className="text-gray-700">
+            {!isLoading && !showDriverRegistrationAlert && !showDepositAlert && 
+             `${pendingRideRequests.length} ride requests available`}
+          </p>
+          <Button 
+            size="sm"
+            variant="outline"
+            className="flex items-center"
+            onClick={handleRefresh}
+            disabled={isRefreshing || isLoading}
+          >
+            {isRefreshing ? (
+              <>
+                <RefreshCw className="mr-1 h-4 w-4 animate-spin" />
+                Refreshing...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="mr-1 h-4 w-4" />
+                Refresh
+              </>
+            )}
+          </Button>
+        </div>
+        
         {isLoading ? (
           <div className="flex justify-center py-8">
             <div className="animate-spin h-8 w-8 border-4 border-violet-500 border-t-transparent rounded-full"></div>
@@ -270,59 +293,17 @@ const RideRequests: React.FC = () => {
         ) : (
           <div className="space-y-4">
             {pendingRideRequests.map((request) => (
-              <div key={request.id} className="bg-white rounded-lg shadow-sm overflow-hidden">
-                <div className="p-5">
-                  <div className="flex justify-between">
-                    <div className="flex items-center space-x-2">
-                      <Map className="text-gray-500" size={16} />
-                      <span className="font-medium">{request.distance?.toFixed(1)} km</span>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-gray-500 text-sm">Estimate</div>
-                      <div className="font-bold">{Math.round(request.duration / 60)} mins</div>
-                    </div>
-                  </div>
-                  
-                  <div className="border-t border-b border-gray-200 py-4 my-4 space-y-4">
-                    <div className="flex items-start">
-                      <div className="mt-1 mr-3 bg-emerald-100 p-1 rounded-full">
-                        <MapPin className="text-emerald-700" size={14} />
-                      </div>
-                      <div>
-                        <div className="text-sm font-medium">Pickup</div>
-                        <div className="text-gray-600">{request.pickup_location.name}</div>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-start">
-                      <div className="mt-1 mr-3 bg-red-100 p-1 rounded-full">
-                        <MapPin className="text-red-700" size={14} />
-                      </div>
-                      <div>
-                        <div className="text-sm font-medium">Dropoff</div>
-                        <div className="text-gray-600">{request.dropoff_location.name}</div>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="flex justify-between items-center mt-4">
-                    <div>
-                      <div className="text-gray-500">Fare</div>
-                      <div className="text-2xl font-bold">{request.price} {request.currency}</div>
-                      <div className="text-xs text-green-600">
-                        Earn {Math.round(request.price * 0.8)} {request.currency}
-                      </div>
-                    </div>
-                    
-                    <Button 
-                      className="bg-black text-white px-6 py-2 rounded-full"
-                      onClick={() => handleAcceptRide(request)}
-                    >
-                      Accept
-                    </Button>
-                  </div>
-                </div>
-              </div>
+              <RideOptionCard
+                key={request.id}
+                option={request.ride_option}
+                distance={request.distance}
+                duration={request.duration}
+                pickupLocation={request.pickup_location.name}
+                dropoffLocation={request.dropoff_location.name}
+                price={request.price}
+                currency={request.currency}
+                onSelect={() => handleAcceptRide(request)}
+              />
             ))}
           </div>
         )}
