@@ -6,9 +6,17 @@ import { useAuth } from '@/lib/context/AuthContext';
 import RideMap from '@/components/map/RideMap';
 import RideDetails from '@/components/ride/RideDetails';
 import RealTimeStats from '@/components/ride/RealTimeStats';
-import { completeRideAndProcessPayment } from '@/lib/utils/rideUtils';
+import { Input } from '@/components/ui/input';
+import { Card } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2 } from 'lucide-react';
+import { Loader2, MapPin } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+
+interface RideEstimate {
+  distance: number;
+  duration: number;
+  baseFare: number;
+}
 
 const RideProgress: React.FC = () => {
   const navigate = useNavigate();
@@ -16,140 +24,206 @@ const RideProgress: React.FC = () => {
   const { user } = useAuth();
   const {
     currentRide,
-    startRide,
-    completeRide,
-    cancelRide
+    pickupLocation,
+    dropoffLocation,
+    selectedRideOption,
+    setUserBid,
+    userBid,
+    confirmRide,
+    isSearchingRides,
+    calculateBaseFare
   } = useRide();
+
   const [isProcessing, setIsProcessing] = useState(false);
+  const [estimate, setEstimate] = useState<RideEstimate | null>(null);
 
+  // Calculate route and fare estimate when locations change
   useEffect(() => {
-    // Start the ride automatically when the page loads
-    if (currentRide && currentRide.status === 'confirmed') {
-      startRide();
-    }
-  }, [currentRide, startRide]);
-
-  useEffect(() => {
-    // If ride is completed, navigate to ride-completed
-    if (currentRide && currentRide.status === 'completed') {
-      navigate('/ride-completed');
-    }
-  }, [currentRide, navigate]);
-
-  if (!currentRide) {
-    navigate('/');
-    return null;
-  }
-
-  const handleCancel = () => {
-    cancelRide();
-    navigate('/');
-  };
-
-  const handleComplete = async () => {
-    if (!user?.id || !currentRide) return;
-    
-    setIsProcessing(true);
-    
-    try {
-      // Process payment if needed and complete the ride
-      const { success, error } = await completeRideAndProcessPayment(currentRide.id);
-      
-      if (!success || error) {
-        throw new Error(error || "Failed to complete ride");
+    const calculateEstimate = async () => {
+      if (!pickupLocation?.coordinates || !dropoffLocation?.coordinates || !window.google) {
+        return;
       }
-      
-      completeRide();
-      
+
+      const directionsService = new window.google.maps.DirectionsService();
+
+      try {
+        const result = await directionsService.route({
+          origin: {
+            lat: pickupLocation.coordinates[1],
+            lng: pickupLocation.coordinates[0]
+          },
+          destination: {
+            lat: dropoffLocation.coordinates[1],
+            lng: dropoffLocation.coordinates[0]
+          },
+          travelMode: window.google.maps.TravelMode.DRIVING
+        });
+
+        if (result.routes[0]) {
+          const distance = result.routes[0].legs[0].distance.value / 1000; // Convert to km
+          const duration = Math.ceil(result.routes[0].legs[0].duration.value / 60); // Convert to minutes
+          const baseFare = calculateBaseFare(distance, selectedRideOption?.name || 'Bike');
+
+          setEstimate({
+            distance,
+            duration,
+            baseFare
+          });
+
+          // Set initial bid to base fare
+          if (!userBid) {
+            setUserBid(baseFare);
+          }
+        }
+      } catch (error) {
+        console.error('Error calculating route:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to calculate route. Please try again.',
+          duration: 3000
+        });
+      }
+    };
+
+    calculateEstimate();
+  }, [pickupLocation, dropoffLocation, selectedRideOption]);
+
+  const handleConfirmRide = async () => {
+    if (!user?.id || !estimate || !userBid) {
       toast({
-        title: "Ride Completed",
-        description: currentRide.paymentMethod === 'wallet' 
-          ? "Payment has been processed automatically" 
-          : "Please collect cash payment from the passenger",
+        title: 'Error',
+        description: 'Please set a bid amount to continue',
+        duration: 3000
+      });
+      return;
+    }
+
+    setIsProcessing(true);
+
+    try {
+      // Create ride request in Supabase
+      const { data: ride, error } = await supabase
+        .from('rides')
+        .insert({
+          passenger_id: user.id,
+          pickup_location: {
+            name: pickupLocation?.name,
+            coordinates: pickupLocation?.coordinates
+          },
+          dropoff_location: {
+            name: dropoffLocation?.name,
+            coordinates: dropoffLocation?.coordinates
+          },
+          vehicle_type: selectedRideOption?.name.toLowerCase(),
+          bid_amount: userBid,
+          estimated_distance: estimate.distance,
+          estimated_duration: estimate.duration,
+          status: 'searching',
+          created_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Call the confirmRide function from context
+      await confirmRide('wallet');
+
+      toast({
+        title: 'Success',
+        description: 'Your ride request has been created. Waiting for a driver...',
         duration: 5000
       });
+
+      // Navigate to waiting screen
+      navigate('/waiting-driver');
     } catch (error: any) {
-      console.error("Failed to complete ride:", error);
+      console.error('Error creating ride request:', error);
       toast({
-        title: "Error",
-        description: error.message || "Failed to complete ride",
-        duration: 5000
+        title: 'Error',
+        description: error.message || 'Failed to create ride request',
+        duration: 3000
       });
     } finally {
       setIsProcessing(false);
     }
   };
 
-  // Vehicle images for display
-  const vehicleImages = {
-    Bike: '/lovable-uploads/cfd3fd57-c24d-402a-9e79-91bdb781be21.png',
-    Auto: '/lovable-uploads/28c00f11-f954-45d1-94a5-4c5604aa633c.png'
-  };
-
   return (
     <div className="min-h-screen bg-white">
-      <RideMap />
+      <div className="h-[60vh]">
+        <RideMap />
+      </div>
       
       <div className="bg-white rounded-t-3xl -mt-6 relative z-10 p-6">
-        {currentRide.status === 'in_progress' && <RealTimeStats />}
-        
-        {/* Vehicle image */}
-        <div className="mb-4 flex justify-center">
-          {currentRide.rideOption.name === 'Bike' ? (
-            <img 
-              src={vehicleImages.Bike} 
-              alt="Bike" 
-              className="h-24 object-contain mx-auto"
-            />
+        {estimate ? (
+          <Card className="p-4 mb-4">
+            <div className="grid grid-cols-3 gap-4 mb-4">
+              <div className="text-center">
+                <p className="text-sm text-gray-500">Distance</p>
+                <p className="font-semibold">{estimate.distance.toFixed(1)} km</p>
+              </div>
+              <div className="text-center border-x border-gray-200">
+                <p className="text-sm text-gray-500">Time</p>
+                <p className="font-semibold">{estimate.duration} mins</p>
+              </div>
+              <div className="text-center">
+                <p className="text-sm text-gray-500">Base Fare</p>
+                <p className="font-semibold">RS {estimate.baseFare}</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <div className="flex items-center mb-2">
+                  <MapPin className="h-4 w-4 text-blue-500 mr-2" />
+                  <p className="text-sm font-medium">{pickupLocation?.name}</p>
+                </div>
+                <div className="flex items-center">
+                  <MapPin className="h-4 w-4 text-green-500 mr-2" />
+                  <p className="text-sm font-medium">{dropoffLocation?.name}</p>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm text-gray-500 mb-2 block">
+                  Your Bid (RS)
+                </label>
+                <Input
+                  type="number"
+                  value={userBid || ''}
+                  onChange={(e) => setUserBid(Number(e.target.value))}
+                  min={estimate.baseFare}
+                  className="text-lg font-semibold"
+                />
+                {userBid && userBid < estimate.baseFare && (
+                  <p className="text-red-500 text-sm mt-1">
+                    Bid cannot be lower than base fare
+                  </p>
+                )}
+              </div>
+            </div>
+          </Card>
+        ) : (
+          <div className="flex justify-center py-8">
+            <Loader2 className="h-8 w-8 animate-spin" />
+          </div>
+        )}
+
+        <Button
+          className="w-full bg-black text-white hover:bg-gray-800 py-6 text-xl rounded-xl"
+          onClick={handleConfirmRide}
+          disabled={isProcessing || isSearchingRides || !estimate || !userBid || userBid < (estimate?.baseFare || 0)}
+        >
+          {isProcessing ? (
+            <>
+              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+              Processing...
+            </>
           ) : (
-            <img 
-              src={vehicleImages.Auto} 
-              alt="Auto" 
-              className="h-24 object-contain mx-auto"
-            />
+            'Confirm Ride'
           )}
-        </div>
-        
-        <RideDetails />
-        
-        <div className="p-6 bg-white">
-          {currentRide.status === 'in_progress' ? (
-            <Button 
-              className="w-full bg-black text-white hover:bg-gray-800 py-6 text-xl rounded-xl" 
-              onClick={handleComplete}
-              disabled={isProcessing}
-            >
-              {isProcessing ? (
-                <>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  Processing...
-                </>
-              ) : (
-                'Complete Ride'
-              )}
-            </Button>
-          ) : (
-            <Button 
-              variant="outline" 
-              className="w-full border-gray-300 py-6 text-xl rounded-xl" 
-              onClick={handleCancel}
-              disabled={isProcessing}
-            >
-              Cancel
-            </Button>
-          )}
-          
-          {currentRide.paymentMethod === 'wallet' && (
-            <p className="text-center text-sm text-gray-500 mt-2">
-              Payment will be processed automatically from passenger's wallet
-            </p>
-          )}
-          {currentRide.paymentMethod === 'cash' && (
-            <p className="text-center text-sm text-gray-500 mt-2">
-              Please collect cash payment of {currentRide.price} RS from passenger
-            </p>
-          )}
-        </div>
+        </Button>
       </div>
     </div>
   );
