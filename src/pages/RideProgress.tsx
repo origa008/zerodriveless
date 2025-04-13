@@ -5,11 +5,17 @@ import { useRide } from '@/lib/context/RideContext';
 import { useAuth } from '@/lib/context/AuthContext';
 import RideMap from '@/components/map/RideMap';
 import RideDetails from '@/components/ride/RideDetails';
-import RealTimeStats from '@/components/ride/RealTimeStats';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2 } from 'lucide-react';
+import { Loader2, MapPin } from 'lucide-react';
+
+// Define RideEstimate type to fix the TypeScript error
+interface RideEstimate {
+  distance: number;
+  duration: number;
+  baseFare: number;
+}
 
 const RideProgress: React.FC = () => {
   const navigate = useNavigate();
@@ -19,17 +25,23 @@ const RideProgress: React.FC = () => {
     currentRide,
     startRide,
     completeRide,
-    cancelRide
+    cancelRide,
+    pickupLocation,
+    dropoffLocation,
+    selectedRideOption,
+    isSearchingRides,
+    userBid,
+    setUserBid,
+    calculateBaseFare
   } = useRide();
+  
   const [isProcessing, setIsProcessing] = useState(false);
   const [estimate, setEstimate] = useState<RideEstimate | null>(null);
 
   // Calculate route and fare estimate when locations change
   useEffect(() => {
     const calculateEstimate = async () => {
-      if (!pickupLocation?.latitude || !pickupLocation?.longitude || 
-          !dropoffLocation?.latitude || !dropoffLocation?.longitude || 
-          !window.google) {
+      if (!pickupLocation?.coordinates || !dropoffLocation?.coordinates || !window.google) {
         return;
       }
 
@@ -38,12 +50,12 @@ const RideProgress: React.FC = () => {
       try {
         const result = await directionsService.route({
           origin: {
-            lat: pickupLocation.latitude,
-            lng: pickupLocation.longitude
+            lat: pickupLocation.coordinates[1],
+            lng: pickupLocation.coordinates[0]
           },
           destination: {
-            lat: dropoffLocation.latitude,
-            lng: dropoffLocation.longitude
+            lat: dropoffLocation.coordinates[1],
+            lng: dropoffLocation.coordinates[0]
           },
           travelMode: window.google.maps.TravelMode.DRIVING
         });
@@ -75,13 +87,13 @@ const RideProgress: React.FC = () => {
     };
 
     calculateEstimate();
-  }, [pickupLocation, dropoffLocation, selectedRideOption]);
+  }, [pickupLocation, dropoffLocation, selectedRideOption, calculateBaseFare, toast, setUserBid, userBid]);
 
-  const handleConfirmRide = async () => {
-    if (!user?.id || !estimate || !userBid) {
+  const handleCompleteRide = async () => {
+    if (!user?.id || !currentRide?.id) {
       toast({
         title: 'Error',
-        description: 'Please set a bid amount to continue',
+        description: 'Unable to complete ride due to missing information',
         duration: 3000
       });
       return;
@@ -90,14 +102,7 @@ const RideProgress: React.FC = () => {
     setIsProcessing(true);
     
     try {
-      // Process payment if needed and complete the ride
-      const { success, error } = await completeRideAndProcessPayment(currentRide.id);
-      
-      if (!success || error) {
-        throw new Error(error || "Failed to complete ride");
-      }
-      
-      completeRide();
+      await completeRide();
       
       toast({
         title: "Ride Completed",
@@ -106,6 +111,9 @@ const RideProgress: React.FC = () => {
           : "Please collect cash payment from the passenger",
         duration: 5000
       });
+      
+      // Navigate to ride summary after completion
+      navigate('/ride-summary');
     } catch (error: any) {
       console.error("Failed to complete ride:", error);
       toast({
@@ -123,6 +131,8 @@ const RideProgress: React.FC = () => {
       <RideMap />
       
       <div className="bg-white rounded-t-3xl -mt-6 relative z-10 p-6">
+        {currentRide && <RideDetails />}
+        
         {estimate ? (
           <Card className="p-4 mb-4">
             <div className="grid grid-cols-3 gap-4 mb-4">
@@ -152,23 +162,26 @@ const RideProgress: React.FC = () => {
                 </div>
               </div>
 
-              <div>
-                <label className="text-sm text-gray-500 mb-2 block">
-                  Your Bid (RS)
-                </label>
-                <Input
-                  type="number"
-                  value={userBid || ''}
-                  onChange={(e) => setUserBid(Number(e.target.value))}
-                  min={estimate.baseFare}
-                  className="text-lg font-semibold"
-                />
-                {userBid && userBid < estimate.baseFare && (
-                  <p className="text-red-500 text-sm mt-1">
-                    Bid cannot be lower than base fare
-                  </p>
-                )}
-              </div>
+              {/* Only show bid input when ride is not yet started */}
+              {(!currentRide || currentRide.status === 'searching') && (
+                <div>
+                  <label className="text-sm text-gray-500 mb-2 block">
+                    Your Bid (RS)
+                  </label>
+                  <Input
+                    type="number"
+                    value={userBid || ''}
+                    onChange={(e) => setUserBid(Number(e.target.value))}
+                    min={estimate.baseFare}
+                    className="text-lg font-semibold"
+                  />
+                  {userBid !== null && userBid < estimate.baseFare && (
+                    <p className="text-red-500 text-sm mt-1">
+                      Bid cannot be lower than base fare
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           </Card>
         ) : (
@@ -177,20 +190,57 @@ const RideProgress: React.FC = () => {
           </div>
         )}
 
-        <Button
-          className="w-full bg-black text-white hover:bg-gray-800 py-6 text-xl rounded-xl"
-          onClick={handleConfirmRide}
-          disabled={isProcessing || isSearchingRides || !estimate || !userBid || userBid < (estimate?.baseFare || 0)}
-        >
-          {isProcessing ? (
-            <>
-              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-              Processing...
-            </>
-          ) : (
-            'Confirm Ride'
-          )}
-        </Button>
+        {/* Show different buttons based on ride status */}
+        {currentRide?.status === 'confirmed' && (
+          <Button
+            className="w-full bg-green-600 text-white hover:bg-green-700 py-6 text-xl rounded-xl"
+            onClick={() => startRide()}
+          >
+            Start Ride
+          </Button>
+        )}
+
+        {currentRide?.status === 'in_progress' && (
+          <Button
+            className="w-full bg-black text-white hover:bg-gray-800 py-6 text-xl rounded-xl"
+            onClick={handleCompleteRide}
+            disabled={isProcessing}
+          >
+            {isProcessing ? (
+              <>
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                Processing...
+              </>
+            ) : (
+              'Complete Ride'
+            )}
+          </Button>
+        )}
+
+        {!currentRide && estimate && (
+          <Button
+            className="w-full bg-black text-white hover:bg-gray-800 py-6 text-xl rounded-xl"
+            disabled={isSearchingRides || !estimate || !userBid || userBid < (estimate?.baseFare || 0)}
+          >
+            Confirm Ride
+          </Button>
+        )}
+
+        {/* Cancel button for in-progress rides */}
+        {currentRide && currentRide.status !== 'completed' && (
+          <Button
+            variant="outline"
+            className="w-full mt-2 border-red-300 text-red-500 hover:bg-red-50"
+            onClick={() => {
+              if (currentRide?.id) {
+                cancelRide(currentRide.id, "Cancelled by driver");
+                navigate('/home');
+              }
+            }}
+          >
+            Cancel Ride
+          </Button>
+        )}
       </div>
     </div>
   );
