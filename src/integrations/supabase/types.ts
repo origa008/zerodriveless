@@ -241,17 +241,9 @@ export type Database = {
           email: string
           id: string
           is_verified_driver: boolean | null
-          is_online: boolean | null
-          current_location: {
-            latitude: number
-            longitude: number
-            updated_at: string
-          } | null
-          last_online: string | null
           name: string
           phone: string | null
           referral_code: string | null
-          rating: number | null
         }
         Insert: {
           address?: string | null
@@ -260,17 +252,9 @@ export type Database = {
           email: string
           id: string
           is_verified_driver?: boolean | null
-          is_online?: boolean | null
-          current_location?: {
-            latitude: number
-            longitude: number
-            updated_at: string
-          } | null
-          last_online?: string | null
           name: string
           phone?: string | null
           referral_code?: string | null
-          rating?: number | null
         }
         Update: {
           address?: string | null
@@ -279,17 +263,9 @@ export type Database = {
           email?: string
           id?: string
           is_verified_driver?: boolean | null
-          is_online?: boolean | null
-          current_location?: {
-            latitude: number
-            longitude: number
-            updated_at: string
-          } | null
-          last_online?: string | null
           name?: string
           phone?: string | null
           referral_code?: string | null
-          rating?: number | null
         }
         Relationships: []
       }
@@ -551,89 +527,6 @@ export type Database = {
           },
         ]
       }
-      ride_requests: {
-        Row: {
-          id: string
-          created_at: string
-          passenger_id: string
-          driver_id?: string | null
-          pickup_location: {
-            name: string
-            coordinates: [number, number]
-          }
-          dropoff_location: {
-            name: string
-            coordinates: [number, number]
-          }
-          pickup_lat: number
-          pickup_lng: number
-          dropoff_lat: number
-          dropoff_lng: number
-          vehicle_type: 'car' | 'bike' | 'auto'
-          estimated_price: number
-          estimated_distance: number
-          estimated_duration: number
-          payment_method: string
-          status: 'searching' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled'
-          started_at?: string | null
-          completed_at?: string | null
-          cancelled_at?: string | null
-        }
-        Insert: {
-          id?: string
-          created_at?: string
-          passenger_id: string
-          driver_id?: string | null
-          pickup_location: {
-            name: string
-            coordinates: [number, number]
-          }
-          dropoff_location: {
-            name: string
-            coordinates: [number, number]
-          }
-          pickup_lat: number
-          pickup_lng: number
-          dropoff_lat: number
-          dropoff_lng: number
-          vehicle_type: 'car' | 'bike' | 'auto'
-          estimated_price: number
-          estimated_distance: number
-          estimated_duration: number
-          payment_method?: string
-          status?: 'searching' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled'
-          started_at?: string | null
-          completed_at?: string | null
-          cancelled_at?: string | null
-        }
-        Update: {
-          id?: string
-          created_at?: string
-          passenger_id?: string
-          driver_id?: string | null
-          pickup_location?: {
-            name: string
-            coordinates: [number, number]
-          }
-          dropoff_location?: {
-            name: string
-            coordinates: [number, number]
-          }
-          pickup_lat?: number
-          pickup_lng?: number
-          dropoff_lat?: number
-          dropoff_lng?: number
-          vehicle_type?: 'car' | 'bike' | 'auto'
-          estimated_price?: number
-          estimated_distance?: number
-          estimated_duration?: number
-          payment_method?: string
-          status?: 'searching' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled'
-          started_at?: string | null
-          completed_at?: string | null
-          cancelled_at?: string | null
-        }
-      }
     }
     Views: {
       [_ in never]: never
@@ -671,31 +564,6 @@ export type Database = {
       subtract_from_balance: {
         Args: { amount: number }
         Returns: number
-      }
-      get_nearby_ride_requests: {
-        Args: {
-          driver_lat: number
-          driver_lng: number
-          radius_km: number
-        }
-        Returns: {
-          id: string
-          passenger_id: string
-          pickup_location: {
-            name: string
-            coordinates: [number, number]
-          }
-          dropoff_location: {
-            name: string
-            coordinates: [number, number]
-          }
-          estimated_price: number
-          estimated_distance: number
-          estimated_duration: number
-          vehicle_type: 'car' | 'bike' | 'auto'
-          status: 'searching' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled'
-          created_at: string
-        }[]
       }
     }
     Enums: {
@@ -817,8 +685,3 @@ export const Constants = {
     Enums: {},
   },
 } as const
-
-// Derived types
-export type RideRequest = Database['public']['Tables']['ride_requests']['Row']
-export type Profile = Database['public']['Tables']['profiles']['Row']
-export type RideStatus = RideRequest['status']

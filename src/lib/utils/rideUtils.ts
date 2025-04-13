@@ -1,3 +1,4 @@
+
 import { supabase } from "@/integrations/supabase/client";
 import { Ride, Location, RideOption, PaymentMethod } from "@/lib/types";
 import { Database } from "@/integrations/supabase/types";
@@ -49,40 +50,26 @@ export const createRideRequest = async (
 };
 
 /**
- * Gets all available ride requests for drivers within their radius
+ * Gets all available ride requests for drivers
  */
-export const getAvailableRideRequests = async (
-  driverLat: number,
-  driverLng: number,
-  radiusKm: number = 5
-): Promise<{ rides: any[]; error: string | null }> => {
+export const getAvailableRideRequests = async (driverEmail?: string): Promise<{ rides: any[]; error: string | null }> => {
   try {
     const { data, error } = await supabase
-      .rpc('get_nearby_ride_requests', {
-        driver_lat: driverLat,
-        driver_lng: driverLng,
-        radius_km: radiusKm
-      });
+      .from('rides')
+      .select(`
+        *,
+        passengers:passenger_id (
+          name,
+          email,
+          avatar
+        )
+      `)
+      .eq('status', 'searching')
+      .order('created_at', { ascending: false });
     
     if (error) throw error;
     
-    // Get passenger details for each ride
-    const ridesWithPassengers = await Promise.all(
-      (data || []).map(async (ride) => {
-        const { data: passenger } = await supabase
-          .from('profiles')
-          .select('name, avatar')
-          .eq('id', ride.passenger_id)
-          .single();
-        
-        return {
-          ...ride,
-          passenger: passenger || null
-        };
-      })
-    );
-    
-    return { rides: ridesWithPassengers, error: null };
+    return { rides: data || [], error: null };
   } catch (error: any) {
     console.error("Get available rides error:", error.message);
     return { rides: [], error: error.message };
@@ -98,28 +85,14 @@ export const acceptRideRequest = async (
 ): Promise<{ success: boolean; error: string | null }> => {
   try {
     const { data: { user } } = await supabase.auth.getUser();
+    const email = user?.email;
     
-    // First check if ride is still available
-    const { data: ride } = await supabase
-      .from('ride_requests')
-      .select('status')
-      .eq('id', rideId)
-      .single();
-    
-    if (!ride || ride.status !== 'searching') {
-      return { 
-        success: false, 
-        error: 'This ride is no longer available' 
-      };
-    }
-    
-    // Update ride status and assign driver
     const { error } = await supabase
-      .from('ride_requests')
+      .from('rides')
       .update({ 
         driver_id: driverId,
-        status: 'confirmed',
-        started_at: new Date().toISOString()
+        driver_email: email,
+        status: 'confirmed'
       })
       .eq('id', rideId)
       .eq('status', 'searching');
@@ -134,13 +107,24 @@ export const acceptRideRequest = async (
 };
 
 /**
- * Subscribes to new ride requests in the driver's area
+ * Subscribes to new ride requests for drivers with sufficient deposit
  */
-export const subscribeToNewRideRequests = (
-  callback: (ride: any) => void,
-  driverLocation: { latitude: number; longitude: number },
-  radiusKm: number = 5
+export const subscribeToNearbyRides = (
+  driverId: string,
+  callback: (rides: any[]) => void
 ) => {
+  // First check if the driver is eligible (approved & has sufficient deposit)
+  const checkEligibility = async () => {
+    const { data } = await supabase
+      .from('driver_details')
+      .select('status, has_sufficient_deposit')
+      .eq('user_id', driverId)
+      .single();
+    
+    return data && data.status === 'approved' && data.has_sufficient_deposit;
+  };
+  
+  // Subscribe to new rides
   const channel = supabase
     .channel('nearby_rides')
     .on(
@@ -148,38 +132,14 @@ export const subscribeToNewRideRequests = (
       {
         event: 'INSERT',
         schema: 'public',
-        table: 'ride_requests',
-        filter: `status=eq.searching`
+        table: 'rides',
+        filter: 'status=eq.searching'
       },
-      async (payload) => {
-        try {
-          const newRide = payload.new;
-          
-          // Calculate distance to new ride
-          const distance = getDistanceFromLatLonInKm(
-            driverLocation.latitude,
-            driverLocation.longitude,
-            newRide.pickup_lat,
-            newRide.pickup_lng
-          );
-          
-          // Only notify if ride is within radius
-          if (distance <= radiusKm) {
-            // Get passenger details
-            const { data: passenger } = await supabase
-              .from('profiles')
-              .select('name, avatar')
-              .eq('id', newRide.passenger_id)
-              .single();
-            
-            callback({
-              ...newRide,
-              distance_to_pickup: distance,
-              passenger
-            });
-          }
-        } catch (error) {
-          console.error('Error processing new ride request:', error);
+      async () => {
+        const isEligible = await checkEligibility();
+        if (isEligible) {
+          const { rides } = await getAvailableRideRequests();
+          callback(rides);
         }
       }
     )
@@ -188,25 +148,6 @@ export const subscribeToNewRideRequests = (
   return () => {
     supabase.removeChannel(channel);
   };
-};
-
-/**
- * Calculate distance between two points in km using Haversine formula
- */
-const getDistanceFromLatLonInKm = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-  const R = 6371; // Radius of the earth in km
-  const dLat = deg2rad(lat2 - lat1);
-  const dLon = deg2rad(lon2 - lon1);
-  const a = 
-    Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * 
-    Math.sin(dLon/2) * Math.sin(dLon/2); 
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
-  return R * c;
-};
-
-const deg2rad = (deg: number): number => {
-  return deg * (Math.PI/180);
 };
 
 /**
@@ -280,6 +221,33 @@ export const subscribeToRideUpdates = (
         schema: 'public',
         table: 'rides',
         filter: `id=eq.${rideId}`
+      },
+      (payload) => {
+        callback(payload.new);
+      }
+    )
+    .subscribe();
+    
+  return () => {
+    supabase.removeChannel(channel);
+  };
+};
+
+/**
+ * Subscribes to new ride requests (for drivers)
+ */
+export const subscribeToNewRideRequests = (
+  callback: (ride: any) => void
+) => {
+  const channel = supabase
+    .channel('new_rides')
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'rides',
+        filter: `status=eq.searching`
       },
       (payload) => {
         callback(payload.new);

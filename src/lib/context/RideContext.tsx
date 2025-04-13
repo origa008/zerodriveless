@@ -1,12 +1,10 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { RideOption, Location, Driver, PaymentMethod, Ride } from '../types';
-import { createNewRideRequest, updateRideStatus } from '../utils/dbFunctions';
+import { createRideRequest, updateRideStatus, getRideDetails } from '../utils/rideUtils';
 import { useAuth } from './AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { getMockRideOptions } from '../utils/mockData';
-import { getWalletBalance, getTransactionHistory, subscribeToWalletBalance, subscribeToRideUpdates } from '../utils/walletUtils';
-import { calculateDistance } from '../utils/mapsApi';
-import { supabase } from '@/integrations/supabase/client';
+import { getWalletBalance, getTransactionHistory, subscribeToWalletBalance } from '../utils/walletUtils';
 
 type RideContextType = {
   pickup: Location | null;
@@ -52,12 +50,11 @@ type RideContextType = {
   acceptRideRequest: (rideId: string) => void;
   startRide: () => void;
   completeRide: () => void;
-  cancelRide: (rideId?: string, reason?: string) => void;
+  cancelRide: () => void;
   
   updateWalletBalance: (amount: number) => void;
   rideHistory: Ride[];
   transactions: any[];
-  driverLocation: { latitude: number; longitude: number } | null;
 };
 
 const RideContext = createContext<RideContextType | undefined>(undefined);
@@ -89,7 +86,6 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [rideHistory, setRideHistory] = useState<Ride[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
-  const [driverLocation, setDriverLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   
   useEffect(() => {
     if (user?.id) {
@@ -115,81 +111,18 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [user?.id]);
   
-  const findRides = async () => {
-    if (!pickupLocation?.latitude || !pickupLocation?.longitude || 
-        !dropoffLocation?.latitude || !dropoffLocation?.longitude || 
-        !window.google) {
-      toast({
-        title: "Error",
-        description: "Please select both pickup and dropoff locations",
-        duration: 3000
-      });
-      return;
-    }
+  const findRides = () => {
+    if (!pickupLocation || !dropoffLocation) return;
     
     setIsSearchingRides(true);
     
-    try {
-      const directionsService = new window.google.maps.DirectionsService();
-      
-      const result = await directionsService.route({
-        origin: {
-          lat: pickupLocation.latitude,
-          lng: pickupLocation.longitude
-        },
-        destination: {
-          lat: dropoffLocation.latitude,
-          lng: dropoffLocation.longitude
-        },
-        travelMode: window.google.maps.TravelMode.DRIVING
-      });
-
-      if (result.routes[0]) {
-        const distance = result.routes[0].legs[0].distance.value / 1000; // Convert to km
-        const duration = Math.ceil(result.routes[0].legs[0].duration.value / 60); // Convert to minutes
-        
-        setEstimatedDistance(distance);
-        setEstimatedDuration(duration);
-        
-        // Get available ride options with real prices
-        const options = [
-          {
-            id: 'bike',
-            name: 'Bike',
-            description: 'Affordable bike ride',
-            image: '/assets/bike.png',
-            basePrice: calculateBaseFare(distance, 'Bike'),
-            estimatedTime: duration,
-            pricePerKm: 20,
-            pricePerMinute: 2
-          },
-          {
-            id: 'auto',
-            name: 'Auto',
-            description: 'Comfortable auto ride',
-            image: '/assets/auto.png',
-            basePrice: calculateBaseFare(distance, 'Auto'),
-            estimatedTime: duration,
-            pricePerKm: 35,
-            pricePerMinute: 3
-          }
-        ];
-        
-        setAvailableRideOptions(options);
-        setSelectedRideOption(options[0]); // Default to bike
-        setUserBid(options[0].basePrice); // Set initial bid to base price
-      }
-    } catch (error) {
-      console.error('Error calculating route:', error);
-      toast({
-        title: "Error",
-        description: "Failed to calculate route. Please try again.",
-        duration: 3000
-      });
-    } finally {
+    setTimeout(() => {
+      setEstimatedDistance(5.2);
+      setEstimatedDuration(12);
+      setAvailableRideOptions(getMockRideOptions());
       setIsSearchingRides(false);
       setPanelOpen(true);
-    }
+    }, 1500);
   };
   
   const calculateBaseFare = (distance: number, vehicleType: string): number => {
@@ -197,7 +130,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return Math.round(baseRate * distance);
   };
   
-  const confirmRide = async (paymentMethod: PaymentMethod) => {
+  const confirmRide = (paymentMethod: PaymentMethod) => {
     if (!user?.id || !pickupLocation || !dropoffLocation || !selectedRideOption || !userBid) {
       toast({
         title: "Error",
@@ -206,95 +139,26 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       return;
     }
-
-    if (!estimatedDistance || !estimatedDuration) {
-      toast({
-        title: "Error",
-        description: "Please wait for ride estimation to complete",
-        duration: 3000
-      });
-      return;
-    }
-
-    setIsSearchingRides(true);
-
-    try {
-      const { data: ride, error, unsubscribe } = await createNewRideRequest({
-        passengerId: user.id,
+    
+    if (estimatedDistance) {
+      createRideRequest(
+        user.id,
         pickupLocation,
         dropoffLocation,
-        bidAmount: userBid,
-        vehicleType: selectedRideOption.name.toLowerCase(),
+        selectedRideOption,
+        userBid,
         estimatedDistance,
-        estimatedDuration,
+        estimatedDuration || 0,
         paymentMethod
+      ).then(({ rideId, error }) => {
+        if (error) {
+          toast({
+            title: "Error",
+            description: error,
+            duration: 3000
+          });
+        }
       });
-
-      if (error) throw new Error(error);
-
-      if (ride) {
-        // Set current ride in waiting state
-        setCurrentRide({
-          id: ride.id,
-          pickup: pickupLocation,
-          dropoff: dropoffLocation,
-          rideOption: selectedRideOption,
-          status: "searching",
-          price: userBid,
-          currency: "RS",
-          distance: estimatedDistance,
-          duration: estimatedDuration,
-          paymentMethod: paymentMethod
-        });
-
-        setWaitingForDriverAcceptance(true);
-        resetDriverAcceptanceTimer();
-
-        // Start a timer to check for ride acceptance
-        const timer = setTimeout(() => {
-          if (currentRide?.status === "searching") {
-            // Cancel the ride if no driver accepts
-            cancelRide(ride.id, "No driver found");
-            setCurrentRide(null);
-            setWaitingForDriverAcceptance(false);
-            toast({
-              title: "No Driver Found",
-              description: "Please try requesting again",
-              duration: 3000
-            });
-          }
-        }, 60000); // 1 minute timeout
-
-        // Subscribe to ride status updates
-        const statusUnsubscribe = subscribeToRideUpdates(ride.id, (updatedRide) => {
-          if (updatedRide.status === "confirmed") {
-            clearTimeout(timer);
-            setWaitingForDriverAcceptance(false);
-            setCurrentRide(updatedRide);
-            toast({
-              title: "Ride Confirmed",
-              description: "A driver has accepted your ride request",
-              duration: 3000
-            });
-          }
-        });
-
-        // Clean up on component unmount
-        return () => {
-          clearTimeout(timer);
-          unsubscribe();
-          if (statusUnsubscribe) statusUnsubscribe();
-        };
-      }
-    } catch (error: any) {
-      console.error("Error confirming ride:", error);
-      toast({
-        title: "Error",
-        description: error.message || "Could not create ride request",
-        duration: 3000
-      });
-    } finally {
-      setIsSearchingRides(false);
     }
   };
   
@@ -382,11 +246,10 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
   };
   
-  const cancelRide = (rideId?: string, reason?: string) => {
-    const targetRideId = rideId || currentRide?.id;
-    if (!targetRideId) return;
+  const cancelRide = () => {
+    if (!currentRide) return;
     
-    updateRideStatus(targetRideId, 'cancelled', { cancellation_reason: reason })
+    updateRideStatus(currentRide.id, 'cancelled')
       .then(({ success, error }) => {
         if (!success) {
           toast({
@@ -410,74 +273,6 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateWalletBalance = (amount: number) => {
     setWalletBalance(prev => prev + amount);
   };
-  
-  // Watch driver location when in driver mode
-  useEffect(() => {
-    if (!isDriverMode || !user?.id) return;
-
-    let watchId: number | null = null;
-
-    const setupLocationWatch = () => {
-      if (!navigator.geolocation) return;
-
-      watchId = navigator.geolocation.watchPosition(
-        (position) => {
-          setDriverLocation({
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude
-          });
-        },
-        (error) => {
-          console.error('Location watch error:', error);
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-      );
-    };
-
-    setupLocationWatch();
-
-    return () => {
-      if (watchId !== null) {
-        navigator.geolocation.clearWatch(watchId);
-      }
-    };
-  }, [isDriverMode, user?.id]);
-
-  // Start ride timer when ride is in progress
-  useEffect(() => {
-    if (!currentRide || currentRide.status !== 'in_progress') {
-      setRideTimer(0);
-      return;
-    }
-
-    const interval = setInterval(() => {
-      setRideTimer(prev => prev + 1);
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [currentRide]);
-
-  // Fetch wallet balance
-  useEffect(() => {
-    const fetchWalletBalance = async () => {
-      if (!user?.id) return;
-
-      try {
-        const { data, error } = await supabase
-          .from('wallets')
-          .select('balance')
-          .eq('user_id', user.id)
-          .single();
-
-        if (error) throw error;
-        setWalletBalance(data.balance || 0);
-      } catch (error) {
-        console.error('Error fetching wallet balance:', error);
-      }
-    };
-
-    fetchWalletBalance();
-  }, [user?.id]);
   
   return (
     <RideContext.Provider
@@ -526,8 +321,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
         cancelRide,
         updateWalletBalance,
         rideHistory,
-        transactions,
-        driverLocation
+        transactions
       }}
     >
       {children}

@@ -1,7 +1,7 @@
+
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Database } from "@/integrations/supabase/types";
-import { Ride } from '../types';
 
 /**
  * Gets user wallet balance
@@ -265,29 +265,4 @@ export const getDepositRequestStatus = async (userId: string): Promise<{
     console.error("Get deposit request status error:", error.message);
     return { pending: false, amount: 0, createdAt: null, error: error.message };
   }
-};
-
-/**
- * Subscribe to ride updates
- */
-export const subscribeToRideUpdates = (rideId: string, callback: (ride: Ride) => void) => {
-  const channel = supabase
-    .channel(`ride:${rideId}`)
-    .on(
-      'postgres_changes',
-      {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'rides',
-        filter: `id=eq.${rideId}`
-      },
-      (payload) => {
-        callback(payload.new as Ride);
-      }
-    )
-    .subscribe();
-
-  return () => {
-    supabase.removeChannel(channel);
-  };
 };
