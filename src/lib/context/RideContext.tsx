@@ -115,18 +115,81 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [user?.id]);
   
-  const findRides = () => {
-    if (!pickupLocation || !dropoffLocation) return;
+  const findRides = async () => {
+    if (!pickupLocation?.latitude || !pickupLocation?.longitude || 
+        !dropoffLocation?.latitude || !dropoffLocation?.longitude || 
+        !window.google) {
+      toast({
+        title: "Error",
+        description: "Please select both pickup and dropoff locations",
+        duration: 3000
+      });
+      return;
+    }
     
     setIsSearchingRides(true);
     
-    setTimeout(() => {
-      setEstimatedDistance(5.2);
-      setEstimatedDuration(12);
-      setAvailableRideOptions(getMockRideOptions());
+    try {
+      const directionsService = new window.google.maps.DirectionsService();
+      
+      const result = await directionsService.route({
+        origin: {
+          lat: pickupLocation.latitude,
+          lng: pickupLocation.longitude
+        },
+        destination: {
+          lat: dropoffLocation.latitude,
+          lng: dropoffLocation.longitude
+        },
+        travelMode: window.google.maps.TravelMode.DRIVING
+      });
+
+      if (result.routes[0]) {
+        const distance = result.routes[0].legs[0].distance.value / 1000; // Convert to km
+        const duration = Math.ceil(result.routes[0].legs[0].duration.value / 60); // Convert to minutes
+        
+        setEstimatedDistance(distance);
+        setEstimatedDuration(duration);
+        
+        // Get available ride options with real prices
+        const options = [
+          {
+            id: 'bike',
+            name: 'Bike',
+            description: 'Affordable bike ride',
+            image: '/assets/bike.png',
+            basePrice: calculateBaseFare(distance, 'Bike'),
+            estimatedTime: duration,
+            pricePerKm: 20,
+            pricePerMinute: 2
+          },
+          {
+            id: 'auto',
+            name: 'Auto',
+            description: 'Comfortable auto ride',
+            image: '/assets/auto.png',
+            basePrice: calculateBaseFare(distance, 'Auto'),
+            estimatedTime: duration,
+            pricePerKm: 35,
+            pricePerMinute: 3
+          }
+        ];
+        
+        setAvailableRideOptions(options);
+        setSelectedRideOption(options[0]); // Default to bike
+        setUserBid(options[0].basePrice); // Set initial bid to base price
+      }
+    } catch (error) {
+      console.error('Error calculating route:', error);
+      toast({
+        title: "Error",
+        description: "Failed to calculate route. Please try again.",
+        duration: 3000
+      });
+    } finally {
       setIsSearchingRides(false);
       setPanelOpen(true);
-    }, 1500);
+    }
   };
   
   const calculateBaseFare = (distance: number, vehicleType: string): number => {

@@ -40,7 +40,9 @@ const RideProgress: React.FC = () => {
   // Calculate route and fare estimate when locations change
   useEffect(() => {
     const calculateEstimate = async () => {
-      if (!pickupLocation?.coordinates || !dropoffLocation?.coordinates || !window.google) {
+      if (!pickupLocation?.latitude || !pickupLocation?.longitude || 
+          !dropoffLocation?.latitude || !dropoffLocation?.longitude || 
+          !window.google) {
         return;
       }
 
@@ -49,12 +51,12 @@ const RideProgress: React.FC = () => {
       try {
         const result = await directionsService.route({
           origin: {
-            lat: pickupLocation.coordinates[1],
-            lng: pickupLocation.coordinates[0]
+            lat: pickupLocation.latitude,
+            lng: pickupLocation.longitude
           },
           destination: {
-            lat: dropoffLocation.coordinates[1],
-            lng: dropoffLocation.coordinates[0]
+            lat: dropoffLocation.latitude,
+            lng: dropoffLocation.longitude
           },
           travelMode: window.google.maps.TravelMode.DRIVING
         });
@@ -108,11 +110,15 @@ const RideProgress: React.FC = () => {
           passenger_id: user.id,
           pickup_location: {
             name: pickupLocation?.name,
-            coordinates: pickupLocation?.coordinates
+            latitude: pickupLocation?.latitude,
+            longitude: pickupLocation?.longitude,
+            placeId: pickupLocation?.placeId
           },
           dropoff_location: {
             name: dropoffLocation?.name,
-            coordinates: dropoffLocation?.coordinates
+            latitude: dropoffLocation?.latitude,
+            longitude: dropoffLocation?.longitude,
+            placeId: dropoffLocation?.placeId
           },
           vehicle_type: selectedRideOption?.name.toLowerCase(),
           bid_amount: userBid,

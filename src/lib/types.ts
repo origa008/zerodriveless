@@ -62,6 +62,9 @@ export interface Ride {
     name: string;
     avatar?: string;
   };
+  endTime?: string;
+  startTime?: string;
+  createdAt?: string;
 }
 
 export type ChatMessage = {
