@@ -1,3 +1,4 @@
+
 import { Location } from '../types';
 
 const MAPS_API_BASE_URL = 'https://maps.gomaps.pro';
@@ -66,54 +67,31 @@ export const calculateDistance = async (
   destination: [number, number]
 ): Promise<{ distance: number; duration: number } | null> => {
   try {
-    const originStr = `${origin[1]},${origin[0]}`; // lat,lng
-    const destStr = `${destination[1]},${destination[0]}`; // lat,lng
+    const originStr = `${origin[1]},${origin[0]}`;  // lat,lng
+    const destStr = `${destination[1]},${destination[0]}`;  // lat,lng
     
-    // First try Google Maps Distance Matrix API
     const response = await fetch(
       `${MAPS_API_BASE_URL}/maps/api/distancematrix/json?origins=${originStr}&destinations=${destStr}&key=${import.meta.env.VITE_MAPS_API_KEY}`
     );
     
     const data = await response.json();
     
-    if (data.status === 'OK' && data.rows[0]?.elements[0]?.status === 'OK') {
+    if (data.status === 'OK') {
       const element = data.rows[0].elements[0];
-      return {
-        distance: element.distance.value / 1000, // Convert meters to kilometers
-        duration: Math.ceil(element.duration.value / 60) // Convert seconds to minutes
-      };
+      
+      if (element.status === 'OK') {
+        return {
+          distance: element.distance.value / 1000, // Convert meters to kilometers
+          duration: Math.ceil(element.duration.value / 60) // Convert seconds to minutes
+        };
+      }
     }
     
-    // Fallback to Haversine formula if API fails
-    const [originLng, originLat] = origin;
-    const [destLng, destLat] = destination;
-    
-    const R = 6371; // Radius of the earth in km
-    const dLat = deg2rad(destLat - originLat);
-    const dLon = deg2rad(destLng - originLng);
-    const a = 
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(deg2rad(originLat)) * Math.cos(deg2rad(destLat)) * 
-      Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    const distance = R * c;
-    
-    // Estimate duration based on average speed (30 km/h for urban areas)
-    const averageSpeedKmH = 30;
-    const estimatedDuration = (distance / averageSpeedKmH) * 60; // Convert to minutes
-    
-    return {
-      distance: Number(distance.toFixed(1)),
-      duration: Math.ceil(estimatedDuration)
-    };
+    return null;
   } catch (error) {
     console.error('Error calculating distance:', error);
     return null;
   }
-};
-
-const deg2rad = (deg: number): number => {
-  return deg * (Math.PI/180);
 };
 
 // Function to get default map location (Lahore, Pakistan)
