@@ -34,8 +34,32 @@ const RideRequests: React.FC = () => {
   useEffect(() => {
     if (!user?.id || driverStatus !== 'approved') return;
 
+    const getInitialLocation = () => {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const newLocation = {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
+          };
+          setDriverLocation(newLocation);
+        },
+        (error) => {
+          console.error('Error getting initial location:', error);
+          toast({
+            title: "Location Error",
+            description: "Please enable location access in your browser settings to go online.",
+            duration: 5000
+          });
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    };
+
+    // Get initial location immediately
+    getInitialLocation();
+
     const watchId = navigator.geolocation.watchPosition(
-      async (position) => {
+      (position) => {
         const newLocation = {
           latitude: position.coords.latitude,
           longitude: position.coords.longitude
@@ -45,27 +69,38 @@ const RideRequests: React.FC = () => {
 
         // Update driver's location and online status in database
         if (isOnline) {
-          await updateDriverStatus(user.id, true, newLocation);
+          updateDriverStatus(user.id, true, newLocation).catch(error => {
+            console.error('Error updating driver status:', error);
+            toast({
+              title: "Warning",
+              description: "Failed to update your location. Your status may be affected.",
+              duration: 3000
+            });
+          });
         }
       },
       (error) => {
-        console.error('Error getting location:', error);
-        toast({
-          title: "Location Error",
-          description: "Unable to get your location. Some features may be limited.",
-          duration: 3000
-        });
+        console.error('Error watching location:', error);
+        if (isOnline) {
+          toast({
+            title: "Location Error",
+            description: "Lost access to your location. Please check your location settings.",
+            duration: 5000
+          });
+          // Automatically go offline if we lose location access while online
+          toggleOnlineStatus();
+        }
       },
-      { enableHighAccuracy: true }
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
 
     return () => {
       navigator.geolocation.clearWatch(watchId);
-      if (user?.id) {
+      if (user?.id && isOnline) {
         updateDriverStatus(user.id, false);
       }
     };
-  }, [user?.id, driverStatus, isOnline, toast]);
+  }, [user?.id, driverStatus, isOnline]);
 
   // Check driver status on load
   useEffect(() => {
@@ -214,13 +249,43 @@ const RideRequests: React.FC = () => {
       return;
     }
 
+    // Request location permission if not already granted
     if (!driverLocation) {
-      toast({
-        title: "Error",
-        description: "Location access is required to go online. Please enable location services.",
-        duration: 3000
-      });
-      return;
+      const permissionResult = await navigator.permissions.query({ name: 'geolocation' });
+      
+      if (permissionResult.state === 'denied') {
+        toast({
+          title: "Location Access Required",
+          description: "Please enable location access in your browser settings to go online.",
+          duration: 5000
+        });
+        return;
+      }
+
+      if (permissionResult.state === 'prompt') {
+        // This will trigger the browser's location permission prompt
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const newLocation = {
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude
+            };
+            setDriverLocation(newLocation);
+            // Retry going online after getting location
+            toggleOnlineStatus();
+          },
+          (error) => {
+            console.error('Error getting location:', error);
+            toast({
+              title: "Location Error",
+              description: "Unable to get your location. Please check your browser settings.",
+              duration: 5000
+            });
+          },
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+        return;
+      }
     }
 
     try {
