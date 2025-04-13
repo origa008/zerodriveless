@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useRide } from '@/lib/context/RideContext';
 import { useAuth } from '@/lib/context/AuthContext';
@@ -11,6 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Loader2, MapPin } from 'lucide-react';
 import { calculateDistance } from '@/lib/utils/mapsApi';
 import { Ride } from '@/lib/types';
+import { supabase } from '@/integrations/supabase/client';
 
 // Define RideEstimate type to fix the TypeScript error
 interface RideEstimate {
@@ -21,6 +22,7 @@ interface RideEstimate {
 
 const RideProgress: React.FC = () => {
   const navigate = useNavigate();
+  const { rideId } = useParams<{ rideId: string }>();
   const { toast } = useToast();
   const { user } = useAuth();
   const {
@@ -40,14 +42,61 @@ const RideProgress: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [estimate, setEstimate] = useState<RideEstimate | null>(null);
   const [isCalculating, setIsCalculating] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [rideDetails, setRideDetails] = useState<any>(null);
 
-  // Calculate route and fare estimate when locations change
+  // Fetch ride details from the database if rideId is available
   useEffect(() => {
-    const calculateEstimate = async () => {
-      if (!pickupLocation?.coordinates || !dropoffLocation?.coordinates) {
-        return;
+    const fetchRideDetails = async () => {
+      if (!rideId && !currentRide?.id) return;
+      
+      const id = rideId || currentRide?.id;
+      if (!id) return;
+      
+      setIsLoading(true);
+      
+      try {
+        const { data, error } = await supabase
+          .from('rides')
+          .select('*')
+          .eq('id', id)
+          .single();
+        
+        if (error) throw error;
+        
+        if (data) {
+          setRideDetails(data);
+          
+          // Set estimate based on the actual ride data
+          setEstimate({
+            distance: data.estimated_distance || 0,
+            duration: data.estimated_duration || 0,
+            baseFare: data.bid_amount || 0
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching ride details:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to load ride information. Using calculated estimates instead.',
+          duration: 3000
+        });
+      } finally {
+        setIsLoading(false);
       }
+    };
+    
+    fetchRideDetails();
+  }, [rideId, currentRide, toast]);
 
+  // Calculate route and fare estimate when locations change (used when no ride details are available yet)
+  useEffect(() => {
+    // Skip calculation if we already have ride details from the database
+    if (rideDetails || !pickupLocation?.coordinates || !dropoffLocation?.coordinates) {
+      return;
+    }
+
+    const calculateEstimate = async () => {
       setIsCalculating(true);
 
       try {
@@ -155,7 +204,7 @@ const RideProgress: React.FC = () => {
     };
 
     calculateEstimate();
-  }, [pickupLocation, dropoffLocation, selectedRideOption, calculateBaseFare, toast, setUserBid, userBid]);
+  }, [pickupLocation, dropoffLocation, selectedRideOption, calculateBaseFare, toast, setUserBid, userBid, rideDetails]);
 
   const deg2rad = (deg: number): number => {
     return deg * (Math.PI/180);
@@ -163,7 +212,7 @@ const RideProgress: React.FC = () => {
 
   // Update current ride with real estimates if needed
   useEffect(() => {
-    if (currentRide && estimate && currentRide.status === 'searching') {
+    if (currentRide && estimate && currentRide.status === 'searching' && !rideDetails) {
       // We've calculated actual values while having a current ride in searching state
       // This means we need to update the displayed values for the current ride
       const updatedRide = {
@@ -176,13 +225,24 @@ const RideProgress: React.FC = () => {
       // Note: We're using a local state update here since we don't have access to context setters
       setLocalRide(updatedRide);
     }
-  }, [currentRide, estimate, userBid]);
+  }, [currentRide, estimate, userBid, rideDetails]);
 
   // Local state to override current ride when needed
   const [localRide, setLocalRide] = useState<Ride | null>(null);
   
-  // Use local ride if available, otherwise use the one from context
-  const displayRide = localRide || currentRide;
+  // Use ride details from database if available, otherwise fallback to local or context ride
+  const displayRide = rideDetails ? {
+    ...currentRide,
+    id: rideDetails.id,
+    pickup: rideDetails.pickup_location,
+    dropoff: rideDetails.dropoff_location,
+    status: rideDetails.status,
+    price: rideDetails.bid_amount,
+    currency: "RS",
+    distance: rideDetails.estimated_distance,
+    duration: rideDetails.estimated_duration,
+    paymentMethod: rideDetails.payment_method
+  } : (localRide || currentRide);
 
   const handleCompleteRide = async () => {
     if (!user?.id || !displayRide?.id) {
@@ -197,6 +257,18 @@ const RideProgress: React.FC = () => {
     setIsProcessing(true);
     
     try {
+      // Update ride status in the database
+      const { error } = await supabase
+        .from('rides')
+        .update({
+          status: 'completed',
+          completed_at: new Date().toISOString()
+        })
+        .eq('id', displayRide.id);
+      
+      if (error) throw error;
+      
+      // Also update in the context
       await completeRide();
       
       toast({
@@ -237,6 +309,94 @@ const RideProgress: React.FC = () => {
     });
   };
 
+  // Function to handle starting a ride
+  const handleStartRide = async () => {
+    if (!displayRide?.id) return;
+    
+    setIsProcessing(true);
+    
+    try {
+      // Update ride status in the database
+      const { error } = await supabase
+        .from('rides')
+        .update({
+          status: 'in_progress',
+          started_at: new Date().toISOString()
+        })
+        .eq('id', displayRide.id);
+      
+      if (error) throw error;
+      
+      // Also update in the context
+      await startRide();
+      
+      toast({
+        title: "Ride Started",
+        description: "You can now navigate to the drop-off location",
+        duration: 3000
+      });
+    } catch (error: any) {
+      console.error("Failed to start ride:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to start ride",
+        duration: 3000
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Handle cancelling a ride
+  const handleCancelRide = async () => {
+    if (!displayRide?.id) return;
+    
+    setIsProcessing(true);
+    
+    try {
+      // Update ride status in the database
+      const { error } = await supabase
+        .from('rides')
+        .update({
+          status: 'cancelled',
+          cancelled_at: new Date().toISOString(),
+          cancellation_reason: 'Cancelled by driver'
+        })
+        .eq('id', displayRide.id);
+      
+      if (error) throw error;
+      
+      // Also update in the context
+      await cancelRide(displayRide.id, "Cancelled by driver");
+      
+      toast({
+        title: "Ride Cancelled",
+        description: "The ride has been cancelled",
+        duration: 3000
+      });
+      
+      navigate('/home');
+    } catch (error: any) {
+      console.error("Failed to cancel ride:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to cancel ride",
+        duration: 3000
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center">
+        <Loader2 className="h-12 w-12 animate-spin mb-4" />
+        <p className="text-gray-500">Loading ride details...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-white">
       <RideMap />
@@ -249,20 +409,35 @@ const RideProgress: React.FC = () => {
             <Loader2 className="h-8 w-8 animate-spin mb-2" />
             <p className="text-sm text-gray-500">Calculating route and fare...</p>
           </div>
-        ) : estimate ? (
+        ) : (estimate || rideDetails) ? (
           <Card className="p-4 mb-4">
             <div className="grid grid-cols-3 gap-4 mb-4">
               <div className="text-center">
                 <p className="text-sm text-gray-500">Distance</p>
-                <p className="font-semibold">{estimate.distance.toFixed(1)} km</p>
+                <p className="font-semibold">
+                  {rideDetails ? 
+                    `${rideDetails.estimated_distance.toFixed(1)} km` : 
+                    `${estimate?.distance.toFixed(1)} km`
+                  }
+                </p>
               </div>
               <div className="text-center border-x border-gray-200">
                 <p className="text-sm text-gray-500">Time</p>
-                <p className="font-semibold">{estimate.duration} mins</p>
+                <p className="font-semibold">
+                  {rideDetails ? 
+                    `${rideDetails.estimated_duration} mins` : 
+                    `${estimate?.duration} mins`
+                  }
+                </p>
               </div>
               <div className="text-center">
                 <p className="text-sm text-gray-500">Base Fare</p>
-                <p className="font-semibold">RS {estimate.baseFare}</p>
+                <p className="font-semibold">
+                  {rideDetails ? 
+                    `RS ${rideDetails.bid_amount}` : 
+                    `RS ${estimate?.baseFare}`
+                  }
+                </p>
               </div>
             </div>
 
@@ -270,16 +445,26 @@ const RideProgress: React.FC = () => {
               <div>
                 <div className="flex items-center mb-2">
                   <MapPin className="h-4 w-4 text-blue-500 mr-2" />
-                  <p className="text-sm font-medium">{pickupLocation?.name}</p>
+                  <p className="text-sm font-medium">
+                    {rideDetails ? 
+                      rideDetails.pickup_location.name : 
+                      pickupLocation?.name
+                    }
+                  </p>
                 </div>
                 <div className="flex items-center">
                   <MapPin className="h-4 w-4 text-green-500 mr-2" />
-                  <p className="text-sm font-medium">{dropoffLocation?.name}</p>
+                  <p className="text-sm font-medium">
+                    {rideDetails ? 
+                      rideDetails.dropoff_location.name : 
+                      dropoffLocation?.name
+                    }
+                  </p>
                 </div>
               </div>
 
               {/* Only show bid input when ride is not yet started */}
-              {(!displayRide || displayRide.status === 'searching') && (
+              {(!displayRide || displayRide.status === 'searching') && !rideDetails && (
                 <div>
                   <label className="text-sm text-gray-500 mb-2 block">
                     Your Bid (RS)
@@ -288,10 +473,10 @@ const RideProgress: React.FC = () => {
                     type="number"
                     value={userBid || ''}
                     onChange={(e) => setUserBid(Number(e.target.value))}
-                    min={estimate.baseFare}
+                    min={estimate?.baseFare || 0}
                     className="text-lg font-semibold"
                   />
-                  {userBid !== null && userBid < estimate.baseFare && (
+                  {userBid !== null && estimate && userBid < estimate.baseFare && (
                     <p className="text-red-500 text-sm mt-1">
                       Bid cannot be lower than base fare
                     </p>
@@ -311,9 +496,17 @@ const RideProgress: React.FC = () => {
         {displayRide?.status === 'confirmed' && (
           <Button
             className="w-full bg-green-600 text-white hover:bg-green-700 py-6 text-xl rounded-xl"
-            onClick={() => startRide()}
+            onClick={handleStartRide}
+            disabled={isProcessing}
           >
-            Start Ride
+            {isProcessing ? (
+              <>
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                Processing...
+              </>
+            ) : (
+              'Start Ride'
+            )}
           </Button>
         )}
 
@@ -334,10 +527,10 @@ const RideProgress: React.FC = () => {
           </Button>
         )}
 
-        {!displayRide && estimate && (
+        {!displayRide && (estimate || rideDetails) && (
           <Button
             className="w-full bg-black text-white hover:bg-gray-800 py-6 text-xl rounded-xl"
-            disabled={isSearchingRides || !estimate || !userBid || userBid < (estimate?.baseFare || 0)}
+            disabled={isSearchingRides || !estimate || !userBid || (estimate && userBid < estimate.baseFare)}
             onClick={handleConfirmRide}
           >
             Confirm Ride
@@ -349,14 +542,17 @@ const RideProgress: React.FC = () => {
           <Button
             variant="outline"
             className="w-full mt-2 border-red-300 text-red-500 hover:bg-red-50"
-            onClick={() => {
-              if (displayRide?.id) {
-                cancelRide(displayRide.id, "Cancelled by driver");
-                navigate('/home');
-              }
-            }}
+            onClick={handleCancelRide}
+            disabled={isProcessing}
           >
-            Cancel Ride
+            {isProcessing ? (
+              <>
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                Processing...
+              </>
+            ) : (
+              'Cancel Ride'
+            )}
           </Button>
         )}
       </div>

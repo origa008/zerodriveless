@@ -112,18 +112,116 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [user?.id]);
   
-  const findRides = () => {
-    if (!pickupLocation || !dropoffLocation) return;
+  const findRides = async () => {
+    if (!pickupLocation?.coordinates || !dropoffLocation?.coordinates) {
+      toast({
+        title: "Missing Information",
+        description: "Please select pickup and dropoff locations",
+        duration: 3000
+      });
+      return;
+    }
     
     setIsSearchingRides(true);
     
-    setTimeout(() => {
-      setEstimatedDistance(5.2);
-      setEstimatedDuration(12);
-      setAvailableRideOptions(getMockRideOptions());
+    try {
+      // Calculate actual distance and time using the Maps API
+      const distanceResult = await calculateDistance(
+        pickupLocation.coordinates,
+        dropoffLocation.coordinates
+      );
+      
+      if (!distanceResult) {
+        throw new Error("Could not calculate route");
+      }
+      
+      // Set the estimated distance and duration from API results
+      setEstimatedDistance(distanceResult.distance);
+      setEstimatedDuration(distanceResult.duration);
+      
+      // Get available ride options
+      const rideOptions = getMockRideOptions();
+      
+      // Update ride options with calculated prices based on actual distance
+      const updatedRideOptions = rideOptions.map(option => {
+        const baseRate = option.name === 'Bike' ? 20 : 35;
+        const calculatedPrice = Math.round(baseRate * distanceResult.distance);
+        return {
+          ...option,
+          basePrice: calculatedPrice,
+          price: calculatedPrice
+        };
+      });
+      
+      setAvailableRideOptions(updatedRideOptions);
       setIsSearchingRides(false);
       setPanelOpen(true);
-    }, 1500);
+      
+      // Set initial userBid based on first ride option price
+      if (updatedRideOptions.length > 0 && !userBid) {
+        setUserBid(updatedRideOptions[0].price || 0);
+      }
+    } catch (error) {
+      console.error("Error finding rides:", error);
+      
+      // Fallback to basic calculation if API fails
+      if (pickupLocation.coordinates && dropoffLocation.coordinates) {
+        // Use Haversine formula to calculate distance
+        const [pickupLng, pickupLat] = pickupLocation.coordinates;
+        const [dropoffLng, dropoffLat] = dropoffLocation.coordinates;
+        
+        const R = 6371; // Radius of the earth in km
+        const dLat = deg2rad(dropoffLat - pickupLat);
+        const dLon = deg2rad(dropoffLng - pickupLng);
+        const a = 
+          Math.sin(dLat/2) * Math.sin(dLat/2) +
+          Math.cos(deg2rad(pickupLat)) * Math.cos(deg2rad(dropoffLat)) * 
+          Math.sin(dLon/2) * Math.sin(dLon/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        const distance = R * c;
+        
+        // Estimate duration based on average speed (30 km/h for urban areas)
+        const averageSpeedKmH = 30;
+        const duration = Math.ceil((distance / averageSpeedKmH) * 60); // Convert to minutes
+        
+        setEstimatedDistance(parseFloat(distance.toFixed(1)));
+        setEstimatedDuration(duration);
+        
+        // Get available ride options
+        const rideOptions = getMockRideOptions();
+        
+        // Update ride options with calculated prices based on fallback distance
+        const updatedRideOptions = rideOptions.map(option => {
+          const baseRate = option.name === 'Bike' ? 20 : 35;
+          const calculatedPrice = Math.round(baseRate * distance);
+          return {
+            ...option,
+            basePrice: calculatedPrice,
+            price: calculatedPrice
+          };
+        });
+        
+        setAvailableRideOptions(updatedRideOptions);
+        setIsSearchingRides(false);
+        setPanelOpen(true);
+        
+        // Set initial userBid based on first ride option price
+        if (updatedRideOptions.length > 0 && !userBid) {
+          setUserBid(updatedRideOptions[0].price || 0);
+        }
+      } else {
+        toast({
+          title: "Error",
+          description: "Could not calculate route. Please try again.",
+          duration: 3000
+        });
+        setIsSearchingRides(false);
+      }
+    }
+  };
+  
+  const deg2rad = (deg: number): number => {
+    return deg * (Math.PI/180);
   };
   
   const calculateBaseFare = (distance: number, vehicleType: string): number => {
