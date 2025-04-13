@@ -10,6 +10,7 @@ import { Card } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, MapPin } from 'lucide-react';
 import { calculateDistance } from '@/lib/utils/mapsApi';
+import { Ride } from '@/lib/types';
 
 // Define RideEstimate type to fix the TypeScript error
 interface RideEstimate {
@@ -33,9 +34,7 @@ const RideProgress: React.FC = () => {
     isSearchingRides,
     userBid,
     setUserBid,
-    calculateBaseFare,
-    setEstimatedDistance,
-    setEstimatedDuration
+    calculateBaseFare
   } = useRide();
   
   const [isProcessing, setIsProcessing] = useState(false);
@@ -79,10 +78,6 @@ const RideProgress: React.FC = () => {
               baseFare
             });
 
-            // Update context values for other components to use
-            setEstimatedDistance(distance);
-            setEstimatedDuration(duration);
-
             // Set initial bid to base fare
             if (!userBid) {
               setUserBid(baseFare);
@@ -109,10 +104,6 @@ const RideProgress: React.FC = () => {
             duration,
             baseFare
           });
-
-          // Update context values for other components to use
-          setEstimatedDistance(distance);
-          setEstimatedDuration(duration);
 
           // Set initial bid to base fare
           if (!userBid) {
@@ -153,10 +144,6 @@ const RideProgress: React.FC = () => {
             baseFare
           });
 
-          // Update context values for other components to use
-          setEstimatedDistance(distance);
-          setEstimatedDuration(duration);
-
           // Set initial bid to base fare
           if (!userBid) {
             setUserBid(baseFare);
@@ -168,14 +155,37 @@ const RideProgress: React.FC = () => {
     };
 
     calculateEstimate();
-  }, [pickupLocation, dropoffLocation, selectedRideOption, calculateBaseFare, toast, setUserBid, userBid, setEstimatedDistance, setEstimatedDuration]);
+  }, [pickupLocation, dropoffLocation, selectedRideOption, calculateBaseFare, toast, setUserBid, userBid]);
 
   const deg2rad = (deg: number): number => {
     return deg * (Math.PI/180);
   };
 
+  // Update current ride with real estimates if needed
+  useEffect(() => {
+    if (currentRide && estimate && currentRide.status === 'searching') {
+      // We've calculated actual values while having a current ride in searching state
+      // This means we need to update the displayed values for the current ride
+      const updatedRide = {
+        ...currentRide,
+        distance: estimate.distance,
+        duration: estimate.duration,
+        price: userBid || estimate.baseFare
+      };
+      
+      // Note: We're using a local state update here since we don't have access to context setters
+      setLocalRide(updatedRide);
+    }
+  }, [currentRide, estimate, userBid]);
+
+  // Local state to override current ride when needed
+  const [localRide, setLocalRide] = useState<Ride | null>(null);
+  
+  // Use local ride if available, otherwise use the one from context
+  const displayRide = localRide || currentRide;
+
   const handleCompleteRide = async () => {
-    if (!user?.id || !currentRide?.id) {
+    if (!user?.id || !displayRide?.id) {
       toast({
         title: 'Error',
         description: 'Unable to complete ride due to missing information',
@@ -191,7 +201,7 @@ const RideProgress: React.FC = () => {
       
       toast({
         title: "Ride Completed",
-        description: currentRide.paymentMethod === 'wallet' 
+        description: displayRide.paymentMethod === 'wallet' 
           ? "Payment has been processed automatically" 
           : "Please collect cash payment from the passenger",
         duration: 5000
@@ -232,7 +242,7 @@ const RideProgress: React.FC = () => {
       <RideMap />
       
       <div className="bg-white rounded-t-3xl -mt-6 relative z-10 p-6">
-        {currentRide && <RideDetails />}
+        {displayRide && <RideDetails />}
         
         {isCalculating ? (
           <div className="flex flex-col items-center justify-center py-8">
@@ -269,7 +279,7 @@ const RideProgress: React.FC = () => {
               </div>
 
               {/* Only show bid input when ride is not yet started */}
-              {(!currentRide || currentRide.status === 'searching') && (
+              {(!displayRide || displayRide.status === 'searching') && (
                 <div>
                   <label className="text-sm text-gray-500 mb-2 block">
                     Your Bid (RS)
@@ -298,7 +308,7 @@ const RideProgress: React.FC = () => {
         )}
 
         {/* Show different buttons based on ride status */}
-        {currentRide?.status === 'confirmed' && (
+        {displayRide?.status === 'confirmed' && (
           <Button
             className="w-full bg-green-600 text-white hover:bg-green-700 py-6 text-xl rounded-xl"
             onClick={() => startRide()}
@@ -307,7 +317,7 @@ const RideProgress: React.FC = () => {
           </Button>
         )}
 
-        {currentRide?.status === 'in_progress' && (
+        {displayRide?.status === 'in_progress' && (
           <Button
             className="w-full bg-black text-white hover:bg-gray-800 py-6 text-xl rounded-xl"
             onClick={handleCompleteRide}
@@ -324,7 +334,7 @@ const RideProgress: React.FC = () => {
           </Button>
         )}
 
-        {!currentRide && estimate && (
+        {!displayRide && estimate && (
           <Button
             className="w-full bg-black text-white hover:bg-gray-800 py-6 text-xl rounded-xl"
             disabled={isSearchingRides || !estimate || !userBid || userBid < (estimate?.baseFare || 0)}
@@ -335,13 +345,13 @@ const RideProgress: React.FC = () => {
         )}
 
         {/* Cancel button for in-progress rides */}
-        {currentRide && currentRide.status !== 'completed' && (
+        {displayRide && displayRide.status !== 'completed' && (
           <Button
             variant="outline"
             className="w-full mt-2 border-red-300 text-red-500 hover:bg-red-50"
             onClick={() => {
-              if (currentRide?.id) {
-                cancelRide(currentRide.id, "Cancelled by driver");
+              if (displayRide?.id) {
+                cancelRide(displayRide.id, "Cancelled by driver");
                 navigate('/home');
               }
             }}
