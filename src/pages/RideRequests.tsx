@@ -6,14 +6,11 @@ import { useRide } from '@/lib/context/RideContext';
 import { useToast } from '@/hooks/use-toast';
 import ModeSwitcher from '@/components/shared/ModeSwitcher';
 import { AlertTriangle, Map, MapPin, Star, Wallet } from 'lucide-react';
-import { getDriverRegistrationStatus, testDriverDetailsPermissions } from '@/lib/utils/driverUtils';
+import { getDriverRegistrationStatus } from '@/lib/utils/driverUtils';
 import { 
   getNearbyPendingRides,
   subscribeToNearbyPendingRides,
-  acceptRideRequest,
-  updateRideStatus,
-  updateDriverStatus,
-  acceptRideRequestSafe
+  updateDriverStatus
 } from '@/lib/utils/dbFunctions';
 
 const RideRequests: React.FC = () => {
@@ -29,78 +26,76 @@ const RideRequests: React.FC = () => {
   const [showDepositAlert, setShowDepositAlert] = useState(false);
   const [driverLocation, setDriverLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [isOnline, setIsOnline] = useState(false);
+  const [locationWatchId, setLocationWatchId] = useState<number | null>(null);
 
-  // Get driver's current location and update status
+  // Initialize location tracking
   useEffect(() => {
-    if (!user?.id || driverStatus !== 'approved') return;
+    const setupLocation = async () => {
+      try {
+        // First check if geolocation is available
+        if (!navigator.geolocation) {
+          throw new Error('Geolocation is not supported by your browser');
+        }
 
-    const getInitialLocation = () => {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const newLocation = {
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude
-          };
-          setDriverLocation(newLocation);
-        },
-        (error) => {
-          console.error('Error getting initial location:', error);
-          toast({
-            title: "Location Error",
-            description: "Please enable location access in your browser settings to go online.",
-            duration: 5000
+        // Get initial location
+        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0
           });
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-      );
-    };
+        });
 
-    // Get initial location immediately
-    getInitialLocation();
-
-    const watchId = navigator.geolocation.watchPosition(
-      (position) => {
         const newLocation = {
           latitude: position.coords.latitude,
           longitude: position.coords.longitude
         };
         
         setDriverLocation(newLocation);
+        console.log('Initial location set:', newLocation);
 
-        // Update driver's location and online status in database
-        if (isOnline) {
-          updateDriverStatus(user.id, true, newLocation).catch(error => {
-            console.error('Error updating driver status:', error);
+        // Start watching location
+        const watchId = navigator.geolocation.watchPosition(
+          (position) => {
+            const updatedLocation = {
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude
+            };
+            setDriverLocation(updatedLocation);
+            console.log('Location updated:', updatedLocation);
+          },
+          (error) => {
+            console.error('Location watch error:', error);
             toast({
-              title: "Warning",
-              description: "Failed to update your location. Your status may be affected.",
-              duration: 3000
+              title: "Location Error",
+              description: "Unable to track your location. Please check your settings.",
+              duration: 5000
             });
-          });
-        }
-      },
-      (error) => {
-        console.error('Error watching location:', error);
-        if (isOnline) {
-          toast({
-            title: "Location Error",
-            description: "Lost access to your location. Please check your location settings.",
-            duration: 5000
-          });
-          // Automatically go offline if we lose location access while online
-          toggleOnlineStatus();
-        }
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    );
+          },
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
 
-    return () => {
-      navigator.geolocation.clearWatch(watchId);
-      if (user?.id && isOnline) {
-        updateDriverStatus(user.id, false);
+        setLocationWatchId(watchId);
+      } catch (error: any) {
+        console.error('Location setup error:', error);
+        toast({
+          title: "Location Error",
+          description: "Please enable location access to use the driver app.",
+          duration: 5000
+        });
       }
     };
-  }, [user?.id, driverStatus, isOnline]);
+
+    if (user?.id) {
+      setupLocation();
+    }
+
+    return () => {
+      if (locationWatchId !== null) {
+        navigator.geolocation.clearWatch(locationWatchId);
+      }
+    };
+  }, [user?.id]);
 
   // Check driver status on load
   useEffect(() => {
@@ -108,19 +103,22 @@ const RideRequests: React.FC = () => {
       if (!user?.id) return;
       
       try {
+        setIsLoading(true);
         const { status, details } = await getDriverRegistrationStatus(user.id);
         setDriverStatus(status);
         
-        if (!status || status === null) {
-          setShowDriverRegistrationAlert(true);
-        } else if (status === 'pending') {
+        if (!status || status === 'pending') {
           setShowDriverRegistrationAlert(true);
         } else if (status === 'approved') {
-          const hasSufficientDeposit = details?.has_sufficient_deposit || false;
-          setShowDepositAlert(!hasSufficientDeposit);
+          setShowDepositAlert(!details?.has_sufficient_deposit);
         }
       } catch (error) {
         console.error("Error checking driver status:", error);
+        toast({
+          title: "Error",
+          description: "Failed to check driver status",
+          duration: 3000
+        });
       } finally {
         setIsLoading(false);
       }
@@ -129,35 +127,10 @@ const RideRequests: React.FC = () => {
     checkDriverStatus();
   }, [user?.id]);
 
-  // Fetch and subscribe to nearby ride requests
+  // Subscribe to nearby rides when online
   useEffect(() => {
-    if (!user?.id || driverStatus !== 'approved' || showDepositAlert || !driverLocation || !isOnline) return;
+    if (!user?.id || !isOnline || !driverLocation) return;
 
-    const fetchRideRequests = async () => {
-      const { data, error } = await getNearbyPendingRides(
-        user.id,
-        driverLocation,
-        5 // 5km radius
-      );
-
-      if (error) {
-        console.error("Error fetching ride requests:", error);
-        toast({
-          title: "Error",
-          description: "Could not fetch ride requests",
-          duration: 3000
-        });
-        return;
-      }
-
-      if (data) {
-        setPendingRideRequests(data);
-      }
-    };
-
-    fetchRideRequests();
-
-    // Subscribe to real-time updates
     const unsubscribe = subscribeToNearbyPendingRides(
       user.id,
       driverLocation,
@@ -177,67 +150,7 @@ const RideRequests: React.FC = () => {
     return () => {
       unsubscribe();
     };
-  }, [user?.id, driverStatus, showDepositAlert, driverLocation, isOnline, toast]);
-
-  // Handle accepting a ride
-  const handleAcceptRide = async (ride: any) => {
-    if (!user?.id || !driverLocation) {
-      toast({
-        title: "Error",
-        description: "You must be logged in and have location enabled to accept rides",
-        duration: 3000
-      });
-      return;
-    }
-    
-    try {
-      const { success, error, ride: acceptedRide } = await acceptRideRequestSafe(
-        ride.id,
-        user.id,
-        driverLocation
-      );
-      
-      if (!success || error) {
-        throw new Error(error || "Failed to accept ride");
-      }
-      
-      // Remove the accepted ride from the list
-      setPendingRideRequests(prevRides => 
-        prevRides.filter(r => r.id !== ride.id)
-      );
-      
-      const formattedRide = {
-        id: acceptedRide.id,
-        pickup: acceptedRide.pickup_location,
-        dropoff: acceptedRide.dropoff_location,
-        status: 'confirmed' as 'confirmed' | 'in_progress' | 'completed' | 'cancelled' | 'searching',
-        price: acceptedRide.bid_amount,
-        currency: 'RS',
-        distance: acceptedRide.estimated_distance,
-        duration: acceptedRide.estimated_duration,
-        paymentMethod: acceptedRide.payment_method || 'cash',
-        rideOption: acceptedRide.vehicle_type,
-        passenger: acceptedRide.passengers
-      };
-      
-      setCurrentRide(formattedRide);
-      
-      toast({
-        title: "Ride Accepted",
-        description: "You have accepted the ride. Please proceed to pickup location.",
-        duration: 3000
-      });
-      
-      navigate('/ride-progress');
-    } catch (error: any) {
-      console.error("Error accepting ride:", error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to accept ride",
-        duration: 3000
-      });
-    }
-  };
+  }, [user?.id, isOnline, driverLocation]);
 
   const toggleOnlineStatus = async () => {
     if (!user?.id) {
@@ -251,38 +164,17 @@ const RideRequests: React.FC = () => {
 
     if (!driverLocation) {
       toast({
-        title: "Error",
-        description: "Location access is required to go online. Please enable location services.",
+        title: "Location Required",
+        description: "Please ensure location access is enabled and try again",
         duration: 3000
       });
       return;
     }
 
     try {
-      // First test permissions
-      const permissions = await testDriverDetailsPermissions(user.id);
-      console.log('Driver details permissions:', permissions);
-
-      if (!permissions.canSelect || !permissions.canUpdate) {
-        toast({
-          title: "Permission Error",
-          description: "Unable to access driver details. Please try logging out and back in.",
-          duration: 5000
-        });
-        return;
-      }
-
-      if (!permissions.hasRecord) {
-        toast({
-          title: "Registration Required",
-          description: "Please complete your driver registration first.",
-          duration: 5000
-        });
-        navigate('/official-driver');
-        return;
-      }
-
       const newStatus = !isOnline;
+      console.log('Attempting to go', newStatus ? 'online' : 'offline');
+      console.log('Current location:', driverLocation);
       
       const { success, error, details } = await updateDriverStatus(
         user.id,
@@ -291,16 +183,9 @@ const RideRequests: React.FC = () => {
       );
 
       if (!success || error) {
-        console.error('Error updating status:', error);
-        toast({
-          title: "Error",
-          description: error || "Failed to update status",
-          duration: 5000
-        });
-        return;
+        throw new Error(error || "Failed to update status");
       }
 
-      // Update local state
       setIsOnline(newStatus);
       
       toast({
@@ -312,15 +197,14 @@ const RideRequests: React.FC = () => {
       });
 
       if (!newStatus) {
-        // Clear pending rides when going offline
         setPendingRideRequests([]);
       }
     } catch (error: any) {
       console.error("Error toggling online status:", error);
       toast({
         title: "Error",
-        description: error.message || "Failed to update status. Please try again.",
-        duration: 3000
+        description: error.message || "Failed to update status",
+        duration: 5000
       });
     }
   };
@@ -348,7 +232,9 @@ const RideRequests: React.FC = () => {
           </div>
         </div>
       );
-    } else if (showDepositAlert) {
+    }
+    
+    if (showDepositAlert) {
       return (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
           <div className="flex items-center">
@@ -371,6 +257,7 @@ const RideRequests: React.FC = () => {
         </div>
       );
     }
+    
     return null;
   };
 
@@ -392,8 +279,9 @@ const RideRequests: React.FC = () => {
           <Button
             onClick={toggleOnlineStatus}
             className={isOnline ? "bg-green-500" : "bg-gray-500"}
+            disabled={!driverLocation}
           >
-            {isOnline ? "Online" : "Offline"}
+            {!driverLocation ? "Waiting for location..." : (isOnline ? "Online" : "Offline")}
           </Button>
         </div>
       </div>
@@ -459,17 +347,17 @@ const RideRequests: React.FC = () => {
                   <div className="flex justify-between items-center mt-4">
                     <div>
                       <div className="text-gray-500">Bid Amount</div>
-                      <div className="text-2xl font-bold">RS {request.bid_amount}</div>
+                      <div className="text-2xl font-bold">RS {request.estimated_price}</div>
                       <div className="text-xs text-green-600">
-                        Earn RS {Math.round(request.bid_amount * 0.8)}
+                        Earn RS {Math.round(request.estimated_price * 0.8)}
                       </div>
                     </div>
                     
                     <Button 
                       className="bg-black text-white px-6 py-2 rounded-full"
-                      onClick={() => handleAcceptRide(request)}
+                      onClick={() => navigate(`/ride/${request.id}`)}
                     >
-                      Accept
+                      View Details
                     </Button>
                   </div>
                 </div>
