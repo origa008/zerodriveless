@@ -1,10 +1,11 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { RideOption, Location, Driver, PaymentMethod, Ride } from '../types';
-import { createRideRequest, updateRideStatus, getRideDetails } from '../utils/rideUtils';
+import { createNewRideRequest, updateRideStatus } from '../utils/dbFunctions';
 import { useAuth } from './AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { getMockRideOptions } from '../utils/mockData';
-import { getWalletBalance, getTransactionHistory, subscribeToWalletBalance } from '../utils/walletUtils';
+import { getWalletBalance, getTransactionHistory, subscribeToWalletBalance, subscribeToRideUpdates } from '../utils/walletUtils';
+import { calculateDistance } from '../utils/mapsApi';
 
 type RideContextType = {
   pickup: Location | null;
@@ -130,7 +131,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return Math.round(baseRate * distance);
   };
   
-  const confirmRide = (paymentMethod: PaymentMethod) => {
+  const confirmRide = async (paymentMethod: PaymentMethod) => {
     if (!user?.id || !pickupLocation || !dropoffLocation || !selectedRideOption || !userBid) {
       toast({
         title: "Error",
@@ -139,26 +140,95 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       return;
     }
-    
-    if (estimatedDistance) {
-      createRideRequest(
-        user.id,
+
+    if (!estimatedDistance || !estimatedDuration) {
+      toast({
+        title: "Error",
+        description: "Please wait for ride estimation to complete",
+        duration: 3000
+      });
+      return;
+    }
+
+    setIsSearchingRides(true);
+
+    try {
+      const { data: ride, error, unsubscribe } = await createNewRideRequest({
+        passengerId: user.id,
         pickupLocation,
         dropoffLocation,
-        selectedRideOption,
-        userBid,
+        bidAmount: userBid,
+        vehicleType: selectedRideOption.name.toLowerCase(),
         estimatedDistance,
-        estimatedDuration || 0,
+        estimatedDuration,
         paymentMethod
-      ).then(({ rideId, error }) => {
-        if (error) {
-          toast({
-            title: "Error",
-            description: error,
-            duration: 3000
-          });
-        }
       });
+
+      if (error) throw new Error(error);
+
+      if (ride) {
+        // Set current ride in waiting state
+        setCurrentRide({
+          id: ride.id,
+          pickup: pickupLocation,
+          dropoff: dropoffLocation,
+          rideOption: selectedRideOption,
+          status: "searching",
+          price: userBid,
+          currency: "RS",
+          distance: estimatedDistance,
+          duration: estimatedDuration,
+          paymentMethod: paymentMethod
+        });
+
+        setWaitingForDriverAcceptance(true);
+        resetDriverAcceptanceTimer();
+
+        // Start a timer to check for ride acceptance
+        const timer = setTimeout(() => {
+          if (currentRide?.status === "searching") {
+            // Cancel the ride if no driver accepts
+            cancelRide(ride.id, "No driver found");
+            setCurrentRide(null);
+            setWaitingForDriverAcceptance(false);
+            toast({
+              title: "No Driver Found",
+              description: "Please try requesting again",
+              duration: 3000
+            });
+          }
+        }, 60000); // 1 minute timeout
+
+        // Subscribe to ride status updates
+        const statusUnsubscribe = subscribeToRideUpdates(ride.id, (updatedRide) => {
+          if (updatedRide.status === "confirmed") {
+            clearTimeout(timer);
+            setWaitingForDriverAcceptance(false);
+            setCurrentRide(updatedRide);
+            toast({
+              title: "Ride Confirmed",
+              description: "A driver has accepted your ride request",
+              duration: 3000
+            });
+          }
+        });
+
+        // Clean up on component unmount
+        return () => {
+          clearTimeout(timer);
+          unsubscribe();
+          if (statusUnsubscribe) statusUnsubscribe();
+        };
+      }
+    } catch (error: any) {
+      console.error("Error confirming ride:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Could not create ride request",
+        duration: 3000
+      });
+    } finally {
+      setIsSearchingRides(false);
     }
   };
   
