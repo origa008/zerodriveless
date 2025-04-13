@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, MapPin } from 'lucide-react';
+import { calculateDistance } from '@/lib/utils/mapsApi';
 
 // Define RideEstimate type to fix the TypeScript error
 interface RideEstimate {
@@ -32,37 +33,75 @@ const RideProgress: React.FC = () => {
     isSearchingRides,
     userBid,
     setUserBid,
-    calculateBaseFare
+    calculateBaseFare,
+    setEstimatedDistance,
+    setEstimatedDuration
   } = useRide();
   
   const [isProcessing, setIsProcessing] = useState(false);
   const [estimate, setEstimate] = useState<RideEstimate | null>(null);
+  const [isCalculating, setIsCalculating] = useState(false);
 
   // Calculate route and fare estimate when locations change
   useEffect(() => {
     const calculateEstimate = async () => {
-      if (!pickupLocation?.coordinates || !dropoffLocation?.coordinates || !window.google) {
+      if (!pickupLocation?.coordinates || !dropoffLocation?.coordinates) {
         return;
       }
 
-      const directionsService = new window.google.maps.DirectionsService();
+      setIsCalculating(true);
 
       try {
-        const result = await directionsService.route({
-          origin: {
-            lat: pickupLocation.coordinates[1],
-            lng: pickupLocation.coordinates[0]
-          },
-          destination: {
-            lat: dropoffLocation.coordinates[1],
-            lng: dropoffLocation.coordinates[0]
-          },
-          travelMode: window.google.maps.TravelMode.DRIVING
-        });
+        // Try to use Google Maps Directions API if available
+        if (window.google) {
+          const directionsService = new window.google.maps.DirectionsService();
 
-        if (result.routes[0]) {
-          const distance = result.routes[0].legs[0].distance.value / 1000; // Convert to km
-          const duration = Math.ceil(result.routes[0].legs[0].duration.value / 60); // Convert to minutes
+          const result = await directionsService.route({
+            origin: {
+              lat: pickupLocation.coordinates[1],
+              lng: pickupLocation.coordinates[0]
+            },
+            destination: {
+              lat: dropoffLocation.coordinates[1],
+              lng: dropoffLocation.coordinates[0]
+            },
+            travelMode: window.google.maps.TravelMode.DRIVING
+          });
+
+          if (result.routes[0]) {
+            const distance = result.routes[0].legs[0].distance.value / 1000; // Convert to km
+            const duration = Math.ceil(result.routes[0].legs[0].duration.value / 60); // Convert to minutes
+            const baseFare = calculateBaseFare(distance, selectedRideOption?.name || 'Bike');
+
+            setEstimate({
+              distance,
+              duration,
+              baseFare
+            });
+
+            // Update context values for other components to use
+            setEstimatedDistance(distance);
+            setEstimatedDuration(duration);
+
+            // Set initial bid to base fare
+            if (!userBid) {
+              setUserBid(baseFare);
+            }
+            
+            setIsCalculating(false);
+            return;
+          }
+        }
+
+        // Fallback to our own distance calculation API
+        const distanceResult = await calculateDistance(
+          pickupLocation.coordinates,
+          dropoffLocation.coordinates
+        );
+
+        if (distanceResult) {
+          const distance = distanceResult.distance;
+          const duration = distanceResult.duration;
           const baseFare = calculateBaseFare(distance, selectedRideOption?.name || 'Bike');
 
           setEstimate({
@@ -70,6 +109,10 @@ const RideProgress: React.FC = () => {
             duration,
             baseFare
           });
+
+          // Update context values for other components to use
+          setEstimatedDistance(distance);
+          setEstimatedDuration(duration);
 
           // Set initial bid to base fare
           if (!userBid) {
@@ -80,14 +123,56 @@ const RideProgress: React.FC = () => {
         console.error('Error calculating route:', error);
         toast({
           title: 'Error',
-          description: 'Failed to calculate route. Please try again.',
+          description: 'Failed to calculate route. Using fallback calculation method.',
           duration: 3000
         });
+
+        // If all else fails, use Haversine formula directly for basic distance calculation
+        if (pickupLocation.coordinates && dropoffLocation.coordinates) {
+          const [pickupLng, pickupLat] = pickupLocation.coordinates;
+          const [dropoffLng, dropoffLat] = dropoffLocation.coordinates;
+          
+          const R = 6371; // Radius of the earth in km
+          const dLat = deg2rad(dropoffLat - pickupLat);
+          const dLon = deg2rad(dropoffLng - pickupLng);
+          const a = 
+            Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(deg2rad(pickupLat)) * Math.cos(deg2rad(dropoffLat)) * 
+            Math.sin(dLon/2) * Math.sin(dLon/2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+          const distance = R * c;
+          
+          // Estimate duration based on average speed (30 km/h for urban areas)
+          const averageSpeedKmH = 30;
+          const duration = Math.ceil((distance / averageSpeedKmH) * 60); // Convert to minutes
+          const baseFare = calculateBaseFare(distance, selectedRideOption?.name || 'Bike');
+
+          setEstimate({
+            distance,
+            duration,
+            baseFare
+          });
+
+          // Update context values for other components to use
+          setEstimatedDistance(distance);
+          setEstimatedDuration(duration);
+
+          // Set initial bid to base fare
+          if (!userBid) {
+            setUserBid(baseFare);
+          }
+        }
+      } finally {
+        setIsCalculating(false);
       }
     };
 
     calculateEstimate();
-  }, [pickupLocation, dropoffLocation, selectedRideOption, calculateBaseFare, toast, setUserBid, userBid]);
+  }, [pickupLocation, dropoffLocation, selectedRideOption, calculateBaseFare, toast, setUserBid, userBid, setEstimatedDistance, setEstimatedDuration]);
+
+  const deg2rad = (deg: number): number => {
+    return deg * (Math.PI/180);
+  };
 
   const handleCompleteRide = async () => {
     if (!user?.id || !currentRide?.id) {
@@ -126,6 +211,22 @@ const RideProgress: React.FC = () => {
     }
   };
 
+  // Function to handle confirming a ride
+  const handleConfirmRide = () => {
+    if (!estimate || !userBid) return;
+    
+    const paymentMethod = 'cash'; // Default to cash, can be changed if needed
+    navigate('/confirm-ride', { 
+      state: { 
+        distance: estimate.distance,
+        duration: estimate.duration,
+        baseFare: estimate.baseFare,
+        userBid: userBid,
+        paymentMethod: paymentMethod
+      } 
+    });
+  };
+
   return (
     <div className="min-h-screen bg-white">
       <RideMap />
@@ -133,7 +234,12 @@ const RideProgress: React.FC = () => {
       <div className="bg-white rounded-t-3xl -mt-6 relative z-10 p-6">
         {currentRide && <RideDetails />}
         
-        {estimate ? (
+        {isCalculating ? (
+          <div className="flex flex-col items-center justify-center py-8">
+            <Loader2 className="h-8 w-8 animate-spin mb-2" />
+            <p className="text-sm text-gray-500">Calculating route and fare...</p>
+          </div>
+        ) : estimate ? (
           <Card className="p-4 mb-4">
             <div className="grid grid-cols-3 gap-4 mb-4">
               <div className="text-center">
@@ -185,8 +291,9 @@ const RideProgress: React.FC = () => {
             </div>
           </Card>
         ) : (
-          <div className="flex justify-center py-8">
-            <Loader2 className="h-8 w-8 animate-spin" />
+          <div className="flex flex-col items-center justify-center py-8">
+            <Loader2 className="h-8 w-8 animate-spin mb-2" />
+            <p className="text-sm text-gray-500">Calculating route...</p>
           </div>
         )}
 
@@ -221,6 +328,7 @@ const RideProgress: React.FC = () => {
           <Button
             className="w-full bg-black text-white hover:bg-gray-800 py-6 text-xl rounded-xl"
             disabled={isSearchingRides || !estimate || !userBid || userBid < (estimate?.baseFare || 0)}
+            onClick={handleConfirmRide}
           >
             Confirm Ride
           </Button>
