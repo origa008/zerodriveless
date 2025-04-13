@@ -5,8 +5,7 @@ import { useAuth } from '@/lib/context/AuthContext';
 import { useRide } from '@/lib/context/RideContext';
 import { useToast } from '@/hooks/use-toast';
 import ModeSwitcher from '@/components/shared/ModeSwitcher';
-import { AlertTriangle, Map, MapPin, Star, Wallet } from 'lucide-react';
-import { getDriverRegistrationStatus } from '@/lib/utils/driverUtils';
+import { Map, MapPin, Star } from 'lucide-react';
 import { 
   getNearbyPendingRides,
   subscribeToNearbyPendingRides,
@@ -17,13 +16,10 @@ const RideRequests: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
-  const { setCurrentRide, walletBalance } = useRide();
+  const { walletBalance } = useRide();
   
   const [pendingRideRequests, setPendingRideRequests] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [driverStatus, setDriverStatus] = useState<string | null>(null);
-  const [showDriverRegistrationAlert, setShowDriverRegistrationAlert] = useState(false);
-  const [showDepositAlert, setShowDepositAlert] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [driverLocation, setDriverLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [isOnline, setIsOnline] = useState(false);
   const [locationWatchId, setLocationWatchId] = useState<number | null>(null);
@@ -32,12 +28,10 @@ const RideRequests: React.FC = () => {
   useEffect(() => {
     const setupLocation = async () => {
       try {
-        // First check if geolocation is available
         if (!navigator.geolocation) {
           throw new Error('Geolocation is not supported by your browser');
         }
 
-        // Get initial location
         const position = await new Promise<GeolocationPosition>((resolve, reject) => {
           navigator.geolocation.getCurrentPosition(resolve, reject, {
             enableHighAccuracy: true,
@@ -52,9 +46,7 @@ const RideRequests: React.FC = () => {
         };
         
         setDriverLocation(newLocation);
-        console.log('Initial location set:', newLocation);
 
-        // Start watching location
         const watchId = navigator.geolocation.watchPosition(
           (position) => {
             const updatedLocation = {
@@ -62,7 +54,6 @@ const RideRequests: React.FC = () => {
               longitude: position.coords.longitude
             };
             setDriverLocation(updatedLocation);
-            console.log('Location updated:', updatedLocation);
           },
           (error) => {
             console.error('Location watch error:', error);
@@ -95,36 +86,6 @@ const RideRequests: React.FC = () => {
         navigator.geolocation.clearWatch(locationWatchId);
       }
     };
-  }, [user?.id]);
-
-  // Check driver status on load
-  useEffect(() => {
-    const checkDriverStatus = async () => {
-      if (!user?.id) return;
-      
-      try {
-        setIsLoading(true);
-        const { status, details } = await getDriverRegistrationStatus(user.id);
-        setDriverStatus(status);
-        
-        if (!status || status === 'pending') {
-          setShowDriverRegistrationAlert(true);
-        } else if (status === 'approved') {
-          setShowDepositAlert(!details?.has_sufficient_deposit);
-        }
-      } catch (error) {
-        console.error("Error checking driver status:", error);
-        toast({
-          title: "Error",
-          description: "Failed to check driver status",
-          duration: 3000
-        });
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    
-    checkDriverStatus();
   }, [user?.id]);
 
   // Subscribe to nearby rides when online
@@ -173,10 +134,7 @@ const RideRequests: React.FC = () => {
 
     try {
       const newStatus = !isOnline;
-      console.log('Attempting to go', newStatus ? 'online' : 'offline');
-      console.log('Current location:', driverLocation);
-      
-      const { success, error, details } = await updateDriverStatus(
+      const { success, error } = await updateDriverStatus(
         user.id,
         newStatus,
         driverLocation
@@ -209,58 +167,6 @@ const RideRequests: React.FC = () => {
     }
   };
 
-  const renderAlerts = () => {
-    if (showDriverRegistrationAlert) {
-      return (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
-          <div className="flex items-center">
-            <AlertTriangle className="text-amber-600 mr-3" />
-            <div>
-              <h3 className="font-medium text-amber-800">Complete Driver Registration</h3>
-              <p className="text-sm text-amber-700">
-                You need to complete your driver registration before you can accept ride requests.
-              </p>
-              <Button 
-                size="sm" 
-                variant="outline" 
-                className="mt-2 border-amber-300 text-amber-700 hover:bg-amber-100"
-                onClick={() => navigate('/official-driver')}
-              >
-                Register Now
-              </Button>
-            </div>
-          </div>
-        </div>
-      );
-    }
-    
-    if (showDepositAlert) {
-      return (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-          <div className="flex items-center">
-            <Wallet className="text-blue-600 mr-3" />
-            <div>
-              <h3 className="font-medium text-blue-800">Security Deposit Required</h3>
-              <p className="text-sm text-blue-700">
-                You need to add a security deposit of RS 3,000 to your wallet before accepting rides.
-              </p>
-              <Button 
-                size="sm" 
-                variant="outline" 
-                className="mt-2 border-blue-300 text-blue-700 hover:bg-blue-100"
-                onClick={() => navigate('/wallet')}
-              >
-                Add Funds
-              </Button>
-            </div>
-          </div>
-        </div>
-      );
-    }
-    
-    return null;
-  };
-
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
       <div className="bg-white p-6 relative">
@@ -287,15 +193,9 @@ const RideRequests: React.FC = () => {
       </div>
       
       <div className="p-4">
-        {renderAlerts()}
-        
         {isLoading ? (
           <div className="flex justify-center py-8">
             <div className="animate-spin h-8 w-8 border-4 border-violet-500 border-t-transparent rounded-full"></div>
-          </div>
-        ) : showDriverRegistrationAlert || showDepositAlert ? (
-          <div className="text-center py-10 bg-white rounded-lg shadow-sm">
-            <p className="text-gray-700 text-lg">Complete the requirements to see ride requests</p>
           </div>
         ) : !isOnline ? (
           <div className="text-center py-10 bg-white rounded-lg shadow-sm">
