@@ -358,20 +358,59 @@ export const updateDriverStatus = async (
   location?: { latitude: number; longitude: number }
 ) => {
   try {
-    // First check if the driver is approved and has sufficient deposit
+    console.log('Updating driver status for:', driverId, 'isOnline:', isOnline);
+
+    // First verify the user exists in profiles
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('id, is_verified_driver')
+      .eq('id', driverId)
+      .single();
+
+    if (profileError) {
+      console.error('Error fetching profile:', profileError);
+      return { 
+        success: false, 
+        error: 'Failed to fetch user profile' 
+      };
+    }
+
+    if (!profile) {
+      console.error('Profile not found for user:', driverId);
+      return { 
+        success: false, 
+        error: 'User profile not found' 
+      };
+    }
+
+    console.log('Found profile:', profile);
+
+    // Check driver_details with explicit error logging
     const { data: driverDetails, error: detailsError } = await supabase
       .from('driver_details')
       .select(`
+        id,
+        user_id,
         status,
         has_sufficient_deposit,
         vehicle_type,
-        deposit_amount_required
+        deposit_amount_required,
+        current_status
       `)
       .eq('user_id', driverId)
       .single();
 
+    console.log('Driver details query result:', { driverDetails, detailsError });
+
     if (detailsError) {
       console.error('Error fetching driver details:', detailsError);
+      // Check if this is a permissions error
+      if (detailsError.message.includes('permission') || detailsError.code === 'PGRST301') {
+        return { 
+          success: false, 
+          error: 'Permission denied accessing driver details. Please contact support.' 
+        };
+      }
       return { 
         success: false, 
         error: 'Failed to fetch driver status' 
@@ -379,28 +418,41 @@ export const updateDriverStatus = async (
     }
 
     if (!driverDetails) {
+      console.error('No driver details found for user:', driverId);
       return { 
         success: false, 
-        error: 'Driver registration not found' 
+        error: 'Driver registration not found. Please complete registration first.' 
       };
     }
 
-    console.log('Driver details:', driverDetails);
+    console.log('Current driver status:', driverDetails.status);
 
+    // Check approval status
     if (driverDetails.status !== 'approved') {
+      console.log('Driver not approved. Current status:', driverDetails.status);
       return { 
         success: false, 
-        error: 'Driver must be approved to go online' 
+        error: `Driver account is ${driverDetails.status}. Must be approved to go online.` 
       };
     }
 
     // Check wallet balance if trying to go online
     if (isOnline) {
-      const { data: wallet } = await supabase
+      const { data: wallet, error: walletError } = await supabase
         .from('wallets')
         .select('balance')
         .eq('user_id', driverId)
         .single();
+
+      if (walletError) {
+        console.error('Error fetching wallet:', walletError);
+        return {
+          success: false,
+          error: 'Failed to verify deposit balance'
+        };
+      }
+
+      console.log('Wallet balance:', wallet?.balance, 'Required:', driverDetails.deposit_amount_required);
 
       const hasEnoughDeposit = wallet && wallet.balance >= (driverDetails.deposit_amount_required || 3000);
       
@@ -441,6 +493,8 @@ export const updateDriverStatus = async (
       };
     }
 
+    console.log('Updating profile with:', updateData);
+
     const { error: updateError } = await supabase
       .from('profiles')
       .update(updateData)
@@ -465,13 +519,16 @@ export const updateDriverStatus = async (
       // Don't throw here as the main update was successful
     }
 
+    console.log('Successfully updated driver status');
+
     return { 
       success: true, 
       error: null,
       details: {
         is_online: isOnline,
         vehicle_type: driverDetails.vehicle_type,
-        has_sufficient_deposit: true
+        has_sufficient_deposit: true,
+        status: driverDetails.status
       }
     };
   } catch (error: any) {

@@ -6,7 +6,7 @@ import { useRide } from '@/lib/context/RideContext';
 import { useToast } from '@/hooks/use-toast';
 import ModeSwitcher from '@/components/shared/ModeSwitcher';
 import { AlertTriangle, Map, MapPin, Star, Wallet } from 'lucide-react';
-import { getDriverRegistrationStatus } from '@/lib/utils/driverUtils';
+import { getDriverRegistrationStatus, testDriverDetailsPermissions } from '@/lib/utils/driverUtils';
 import { 
   getNearbyPendingRides,
   subscribeToNearbyPendingRides,
@@ -249,92 +249,72 @@ const RideRequests: React.FC = () => {
       return;
     }
 
-    // Request location permission if not already granted
     if (!driverLocation) {
-      const permissionResult = await navigator.permissions.query({ name: 'geolocation' });
-      
-      if (permissionResult.state === 'denied') {
+      toast({
+        title: "Error",
+        description: "Location access is required to go online. Please enable location services.",
+        duration: 3000
+      });
+      return;
+    }
+
+    try {
+      // First test permissions
+      const permissions = await testDriverDetailsPermissions(user.id);
+      console.log('Driver details permissions:', permissions);
+
+      if (!permissions.canSelect || !permissions.canUpdate) {
         toast({
-          title: "Location Access Required",
-          description: "Please enable location access in your browser settings to go online.",
+          title: "Permission Error",
+          description: "Unable to access driver details. Please try logging out and back in.",
           duration: 5000
         });
         return;
       }
 
-      if (permissionResult.state === 'prompt') {
-        // This will trigger the browser's location permission prompt
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            const newLocation = {
-              latitude: position.coords.latitude,
-              longitude: position.coords.longitude
-            };
-            setDriverLocation(newLocation);
-            // Retry going online after getting location
-            toggleOnlineStatus();
-          },
-          (error) => {
-            console.error('Error getting location:', error);
-            toast({
-              title: "Location Error",
-              description: "Unable to get your location. Please check your browser settings.",
-              duration: 5000
-            });
-          },
-          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-        );
+      if (!permissions.hasRecord) {
+        toast({
+          title: "Registration Required",
+          description: "Please complete your driver registration first.",
+          duration: 5000
+        });
+        navigate('/official-driver');
         return;
       }
-    }
 
-    try {
       const newStatus = !isOnline;
       
-      const { success, error } = await updateDriverStatus(
+      const { success, error, details } = await updateDriverStatus(
         user.id,
         newStatus,
         driverLocation
       );
 
       if (!success || error) {
-        throw new Error(error || "Failed to update status");
+        console.error('Error updating status:', error);
+        toast({
+          title: "Error",
+          description: error || "Failed to update status",
+          duration: 5000
+        });
+        return;
       }
 
-      // Only update UI state after successful backend update
+      // Update local state
       setIsOnline(newStatus);
+      
+      toast({
+        title: newStatus ? "You're Online" : "You're Offline",
+        description: newStatus 
+          ? "You can now receive ride requests" 
+          : "You won't receive any ride requests",
+        duration: 3000
+      });
 
-      if (newStatus) {
-        // Immediately fetch nearby rides when going online
-        const { data: nearbyRides, error: ridesError } = await getNearbyPendingRides(
-          user.id,
-          driverLocation,
-          5 // 5km radius
-        );
-
-        if (ridesError) {
-          console.error("Error fetching nearby rides:", ridesError);
-          toast({
-            title: "Warning",
-            description: "You're online but we couldn't fetch nearby rides. Please try refreshing.",
-            duration: 5000
-          });
-        } else {
-          setPendingRideRequests(nearbyRides || []);
-          
-          if (nearbyRides && nearbyRides.length > 0) {
-            toast({
-              title: "Rides Available",
-              description: `Found ${nearbyRides.length} nearby ride requests`,
-              duration: 3000
-            });
-          }
-        }
-      } else {
+      if (!newStatus) {
         // Clear pending rides when going offline
         setPendingRideRequests([]);
       }
-
     } catch (error: any) {
       console.error("Error toggling online status:", error);
       toast({

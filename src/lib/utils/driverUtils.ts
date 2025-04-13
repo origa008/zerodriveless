@@ -336,3 +336,45 @@ export const isEligibleDriver = async (userId: string): Promise<boolean> => {
     return false;
   }
 };
+
+/**
+ * Test driver_details table permissions
+ */
+export const testDriverDetailsPermissions = async (userId: string) => {
+  try {
+    console.log('Testing driver_details permissions for user:', userId);
+
+    // Test SELECT permission
+    const { data: selectData, error: selectError } = await supabase
+      .from('driver_details')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+
+    console.log('SELECT test result:', { data: selectData, error: selectError });
+
+    // Test UPDATE permission
+    const { data: updateData, error: updateError } = await supabase
+      .from('driver_details')
+      .update({ last_status_update: new Date().toISOString() })
+      .eq('user_id', userId)
+      .select();
+
+    console.log('UPDATE test result:', { data: updateData, error: updateError });
+
+    return {
+      canSelect: !selectError,
+      canUpdate: !updateError,
+      selectError: selectError?.message,
+      updateError: updateError?.message,
+      hasRecord: !!selectData
+    };
+  } catch (error: any) {
+    console.error('Error testing permissions:', error);
+    return {
+      canSelect: false,
+      canUpdate: false,
+      error: error.message
+    };
+  }
+};
