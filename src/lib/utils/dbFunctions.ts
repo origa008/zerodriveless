@@ -375,18 +375,7 @@ export const updateDriverStatus = async (
       };
     }
 
-    // Update driver status in profiles table
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .update({
-        is_online: isOnline,
-        last_online: isOnline ? new Date().toISOString() : null
-      })
-      .eq('id', driverId);
-
-    if (profileError) throw profileError;
-
-    // Update driver_details table with current status and location
+    // Update only driver_details table
     const { error: detailsError } = await supabase
       .from('driver_details')
       .update({
