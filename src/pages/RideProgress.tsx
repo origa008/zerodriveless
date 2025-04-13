@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -6,6 +5,7 @@ import { useRide } from '@/lib/context/RideContext';
 import { useAuth } from '@/lib/context/AuthContext';
 import RideMap from '@/components/map/RideMap';
 import RideDetails from '@/components/ride/RideDetails';
+import RealTimeStats from '@/components/ride/RealTimeStats';
 import { completeRideAndProcessPayment } from '@/lib/utils/rideUtils';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
@@ -91,6 +91,8 @@ const RideProgress: React.FC = () => {
       <RideMap />
       
       <div className="bg-white rounded-t-3xl -mt-6 relative z-10 p-6">
+        {currentRide.status === 'in_progress' && <RealTimeStats />}
+        
         {/* Vehicle image */}
         <div className="mb-4 flex justify-center">
           {currentRide.rideOption.name === 'Bike' ? (
@@ -123,7 +125,7 @@ const RideProgress: React.FC = () => {
                   Processing...
                 </>
               ) : (
-                'Completed'
+                'Complete Ride'
               )}
             </Button>
           ) : (

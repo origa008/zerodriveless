@@ -6,6 +6,7 @@ import { useToast } from '@/hooks/use-toast';
 import { getMockRideOptions } from '../utils/mockData';
 import { getWalletBalance, getTransactionHistory, subscribeToWalletBalance, subscribeToRideUpdates } from '../utils/walletUtils';
 import { calculateDistance } from '../utils/mapsApi';
+import { supabase } from '@/integrations/supabase/client';
 
 type RideContextType = {
   pickup: Location | null;
@@ -56,6 +57,7 @@ type RideContextType = {
   updateWalletBalance: (amount: number) => void;
   rideHistory: Ride[];
   transactions: any[];
+  driverLocation: { latitude: number; longitude: number } | null;
 };
 
 const RideContext = createContext<RideContextType | undefined>(undefined);
@@ -87,6 +89,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [rideHistory, setRideHistory] = useState<Ride[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
+  const [driverLocation, setDriverLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   
   useEffect(() => {
     if (user?.id) {
@@ -345,6 +348,74 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setWalletBalance(prev => prev + amount);
   };
   
+  // Watch driver location when in driver mode
+  useEffect(() => {
+    if (!isDriverMode || !user?.id) return;
+
+    let watchId: number | null = null;
+
+    const setupLocationWatch = () => {
+      if (!navigator.geolocation) return;
+
+      watchId = navigator.geolocation.watchPosition(
+        (position) => {
+          setDriverLocation({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
+          });
+        },
+        (error) => {
+          console.error('Location watch error:', error);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    };
+
+    setupLocationWatch();
+
+    return () => {
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+      }
+    };
+  }, [isDriverMode, user?.id]);
+
+  // Start ride timer when ride is in progress
+  useEffect(() => {
+    if (!currentRide || currentRide.status !== 'in_progress') {
+      setRideTimer(0);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setRideTimer(prev => prev + 1);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [currentRide]);
+
+  // Fetch wallet balance
+  useEffect(() => {
+    const fetchWalletBalance = async () => {
+      if (!user?.id) return;
+
+      try {
+        const { data, error } = await supabase
+          .from('wallets')
+          .select('balance')
+          .eq('user_id', user.id)
+          .single();
+
+        if (error) throw error;
+        setWalletBalance(data.balance || 0);
+      } catch (error) {
+        console.error('Error fetching wallet balance:', error);
+      }
+    };
+
+    fetchWalletBalance();
+  }, [user?.id]);
+  
   return (
     <RideContext.Provider
       value={{
@@ -392,7 +463,8 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
         cancelRide,
         updateWalletBalance,
         rideHistory,
-        transactions
+        transactions,
+        driverLocation
       }}
     >
       {children}
