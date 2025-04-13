@@ -1,33 +1,17 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useUser } from '@supabase/auth-helpers-react';
 import { useToast } from '@/components/ui/use-toast';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 import { Database } from '@/types/supabase';
 import { calculateDistance } from '@/lib/utils/distance';
 import { acceptRideRequestSafe } from '@/lib/utils/dbFunctions';
 import { toast } from 'react-hot-toast';
 
-interface Ride {
-  id: string;
-  pickup_lat: number;
-  pickup_lng: number;
-  dropoff_lat: number;
-  dropoff_lng: number;
-  status: 'pending' | 'accepted' | 'completed' | 'cancelled';
-  bid_amount: number;
-  created_at: string;
-}
-
-interface Location {
-  lat: number;
-  lng: number;
-}
-
-const supabase = createClientComponentClient<Database>();
+type Ride = Database['public']['Tables']['rides']['Row'];
 
 export default function RideRequests() {
   const { user } = useUser();
@@ -35,8 +19,8 @@ export default function RideRequests() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [rideRequests, setRideRequests] = useState<Ride[]>([]);
-  const [userLocation, setUserLocation] = useState<Location | null>(null);
-  const [driverProfile, setDriverProfile] = useState<any>(null);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [driverProfile, setDriverProfile] = useState<Database['public']['Tables']['driver_details']['Row'] | null>(null);
   const [walletBalance, setWalletBalance] = useState<number>(0);
 
   useEffect(() => {
@@ -99,34 +83,66 @@ export default function RideRequests() {
   }, [user]);
 
   useEffect(() => {
-    // Subscribe to ride requests
+    if (!userLocation || !user) return;
+
+    // Subscribe to nearby ride requests
+    const fetchNearbyRides = async () => {
+      const { data: rides, error } = await supabase
+        .rpc('get_nearby_rides', {
+          driver_lat: userLocation.lat,
+          driver_lng: userLocation.lng,
+          max_distance_km: 5
+        });
+
+      if (error) {
+        console.error('Error fetching nearby rides:', error);
+        return;
+      }
+
+      setRideRequests(rides || []);
+    };
+
+    fetchNearbyRides();
+
     const subscription = supabase
       .channel('ride_requests')
       .on('postgres_changes', {
-        event: 'INSERT',
+        event: '*',
         schema: 'public',
         table: 'rides',
         filter: 'status=eq.searching'
       }, (payload) => {
-        setRideRequests(current => [...current, payload.new as Ride]);
+        if (payload.eventType === 'INSERT') {
+          setRideRequests(current => [...current, payload.new as Ride]);
+        } else if (payload.eventType === 'DELETE' || payload.eventType === 'UPDATE') {
+          setRideRequests(current => current.filter(ride => ride.id !== payload.old.id));
+        }
       })
       .subscribe();
 
     return () => {
       subscription.unsubscribe();
     };
-  }, [user, supabase]);
+  }, [userLocation, user]);
 
   const handleAcceptRide = async (rideId: string) => {
+    if (!user || !userLocation) return;
+
     try {
-      const result = await acceptRideRequestSafe(rideId, user!.id);
+      const result = await acceptRideRequestSafe(rideId, user.id, {
+        latitude: userLocation.lat,
+        longitude: userLocation.lng
+      });
+      
       if (result.error) {
         throw new Error(result.error);
       }
+      
       toast({
         title: "Success",
         description: "Ride accepted successfully",
       });
+      
       navigate(`/ride/${rideId}`);
     } catch (error) {
       toast({
@@ -187,6 +203,7 @@ export default function RideRequests() {
                   <div>
                     <h3 className="font-semibold">Pickup: {ride.pickup_location}</h3>
                     <p className="text-gray-600">Dropoff: {ride.dropoff_location}</p>
+                    <p className="text-sm text-gray-500">Vehicle: {ride.vehicle_type}</p>
                   </div>
                   <div className="text-right">
                     <p className="font-semibold">₹{ride.bid_amount}</p>

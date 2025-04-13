@@ -554,145 +554,37 @@ export const subscribeToNearbyPendingRides = (
 /**
  * Safely accept a ride request with race condition prevention
  */
-export const acceptRideRequestSafe = async (
+export async function acceptRideRequestSafe(
   rideId: string,
   driverId: string,
   driverLocation: { latitude: number; longitude: number }
-) => {
-  try {
-    // First check if driver is online and eligible
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('is_online, is_verified_driver')
-      .eq('id', driverId)
-      .single();
+) {
+  const { data: driverProfile, error: driverError } = await supabase
+    .from('driver_details')
+    .select('status, vehicle_type')
+    .eq('user_id', driverId)
+    .single();
 
-    if (profileError) throw profileError;
-
-    if (!profile?.is_online || !profile?.is_verified_driver) {
-      return { 
-        success: false, 
-        error: 'Driver must be online and verified to accept rides' 
-      };
-    }
-
-    // Get driver details
-    const { data: driverDetails, error: detailsError } = await supabase
-      .from('driver_details')
-      .select('vehicle_type, status, has_sufficient_deposit')
-      .eq('user_id', driverId)
-      .single();
-
-    if (detailsError) throw detailsError;
-
-    if (!driverDetails || driverDetails.status !== 'approved') {
-      return { 
-        success: false, 
-        error: 'Driver must be approved to accept rides' 
-      };
-    }
-
-    if (!driverDetails.has_sufficient_deposit) {
-      return { 
-        success: false, 
-        error: 'Insufficient deposit balance to accept rides' 
-      };
-    }
-
-    // Begin transaction with row-level locking
-    const { data: ride, error: lockError } = await supabase
-      .from('ride_requests')
-      .select('*')
-      .eq('id', rideId)
-      .eq('status', 'searching')
-      .is('driver_id', null)
-      .single();
-
-    if (lockError || !ride) {
-      return { success: false, error: 'This ride is no longer available' };
-    }
-
-    // Verify vehicle type matches
-    if (driverDetails.vehicle_type !== ride.vehicle_type) {
-      return { 
-        success: false, 
-        error: `This ride requires a ${ride.vehicle_type} vehicle` 
-      };
-    }
-
-    // Update ride with driver information
-    const { error: updateError } = await supabase
-      .from('ride_requests')
-      .update({
-        driver_id: driverId,
-        status: 'confirmed',
-        started_at: new Date().toISOString(),
-        driver_location: {
-          latitude: driverLocation.latitude,
-          longitude: driverLocation.longitude,
-          updated_at: new Date().toISOString()
-        }
-      })
-      .eq('id', rideId)
-      .eq('status', 'searching')
-      .is('driver_id', null);
-
-    if (updateError) throw updateError;
-
-    // Update driver details
-    const { error: driverUpdateError } = await supabase
-      .from('driver_details')
-      .update({
-        current_status: 'on_ride',
-        current_ride_id: rideId,
-        last_ride_accepted_at: new Date().toISOString()
-      })
-      .eq('user_id', driverId);
-
-    if (driverUpdateError) {
-      // Attempt to rollback ride assignment if driver update fails
-      await supabase
-        .from('ride_requests')
-        .update({
-          driver_id: null,
-          status: 'searching',
-          started_at: null,
-          driver_location: null
-        })
-        .eq('id', rideId);
-      
-      throw driverUpdateError;
-    }
-
-    // Get updated ride details with passenger info
-    const { data: updatedRide, error: rideError } = await supabase
-      .from('ride_requests')
-      .select(`
-        *,
-        passenger:profiles!passenger_id (
-          id,
-          name,
-          avatar,
-          rating,
-          phone
-        )
-      `)
-      .eq('id', rideId)
-      .single();
-
-    if (rideError) throw rideError;
-
-    return { 
-      success: true, 
-      error: null, 
-      ride: updatedRide 
-    };
-  } catch (error: any) {
-    console.error('Error accepting ride:', error);
-    return { 
-      success: false, 
-      error: error.message || 'Failed to accept ride', 
-      ride: null 
-    };
+  if (driverError) {
+    return { error: 'Failed to fetch driver profile' };
   }
-}; 
+
+  if (driverProfile.status !== 'approved') {
+    return { error: 'Driver must be approved to accept rides' };
+  }
+
+  // Start a transaction
+  const { data, error } = await supabase.rpc('accept_ride_request', {
+    p_ride_id: rideId,
+    p_driver_id: driverId,
+    p_driver_lat: driverLocation.latitude,
+    p_driver_lng: driverLocation.longitude,
+    p_vehicle_type: driverProfile.vehicle_type
+  });
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  return { success: true, data };
+} 
