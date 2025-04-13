@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -9,10 +8,13 @@ import ModeSwitcher from '@/components/shared/ModeSwitcher';
 import { 
   getAvailableRideRequests, 
   subscribeToNewRideRequests,
-  acceptRideRequest as acceptRide
+  acceptRideRequest as acceptRide,
+  getRideDetails,
+  updateRideStatus,
+  completeRideAndProcessPayment
 } from '@/lib/utils/rideUtils';
 import { getDriverRegistrationStatus } from '@/lib/utils/driverUtils';
-import { AlertTriangle, Map, MapPin, RefreshCw, Star, Wallet } from 'lucide-react';
+import { AlertTriangle, Map, MapPin, Star, Wallet } from 'lucide-react';
 import { Ride } from '@/lib/types';
 
 const RideRequests: React.FC = () => {
@@ -23,10 +25,39 @@ const RideRequests: React.FC = () => {
   
   const [pendingRideRequests, setPendingRideRequests] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [driverStatus, setDriverStatus] = useState<string | null>(null);
   const [showDriverRegistrationAlert, setShowDriverRegistrationAlert] = useState(false);
   const [showDepositAlert, setShowDepositAlert] = useState(false);
+  const [driverLocation, setDriverLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+
+  // Get driver's current location
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.watchPosition(
+        (position) => {
+          setDriverLocation({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
+          });
+        },
+        (error) => {
+          console.error('Error getting location:', error);
+          toast({
+            title: "Location Error",
+            description: "Unable to get your location. Some features may be limited.",
+            duration: 3000
+          });
+        },
+        { enableHighAccuracy: true }
+      );
+    } else {
+      toast({
+        title: "Location Not Supported",
+        description: "Your browser doesn't support location services. Please use a modern browser.",
+        duration: 3000
+      });
+    }
+  }, [toast]);
 
   // Check driver status on load
   useEffect(() => {
@@ -37,7 +68,6 @@ const RideRequests: React.FC = () => {
         const { status, details } = await getDriverRegistrationStatus(user.id);
         setDriverStatus(status);
         
-        // Show alerts based on driver status and deposit
         if (!status || status === null) {
           setShowDriverRegistrationAlert(true);
         } else if (status === 'pending') {
@@ -56,62 +86,51 @@ const RideRequests: React.FC = () => {
     checkDriverStatus();
   }, [user?.id]);
 
-  // Fetch ride requests
-  const fetchRideRequests = async () => {
-    if (!user?.id || driverStatus !== 'approved' || showDepositAlert) {
-      setIsLoading(false);
-      return;
-    }
-    
-    setIsRefreshing(true);
-    try {
-      const { rides, error } = await getAvailableRideRequests();
-      
-      if (!error) {
-        console.log("Fetched rides:", rides);
-        setPendingRideRequests(rides || []);
-      } else {
-        console.error("Error fetching rides:", error);
-      }
-    } catch (err) {
-      console.error("Exception fetching rides:", err);
-    } finally {
-      setIsRefreshing(false);
-      setIsLoading(false);
-    }
-  };
-
   // Fetch and subscribe to nearby ride requests
   useEffect(() => {
-    if (!user?.id || driverStatus !== 'approved' || showDepositAlert) return;
+    if (!user?.id || driverStatus !== 'approved' || showDepositAlert || !driverLocation) return;
+    
+    const fetchRideRequests = async () => {
+      const { rides, error } = await getAvailableRideRequests(
+        driverLocation.latitude,
+        driverLocation.longitude,
+        5 // 5km radius
+      );
+      
+      if (!error) {
+        setPendingRideRequests(rides || []);
+      }
+    };
     
     fetchRideRequests();
     
     // Subscribe to real-time ride request updates
-    const unsubscribe = subscribeToNewRideRequests((newRide) => {
-      console.log("New ride request received:", newRide);
-      setPendingRideRequests(prevRides => {
-        // Check if ride already exists
-        if (prevRides.some(ride => ride.id === newRide.id)) {
-          return prevRides;
-        }
-        return [...prevRides, newRide];
-      });
-      
-      toast({
-        title: "New Ride Request",
-        description: "A new ride request is available nearby",
-        duration: 3000
-      });
-    });
+    const unsubscribe = subscribeToNewRideRequests(
+      (newRide) => {
+        setPendingRideRequests(prevRides => {
+          // Remove any existing ride with the same ID
+          const filteredRides = prevRides.filter(r => r.id !== newRide.id);
+          return [...filteredRides, newRide];
+        });
+        
+        toast({
+          title: "New Ride Request",
+          description: "A new ride request is available nearby",
+          duration: 3000
+        });
+      },
+      driverLocation,
+      5 // 5km radius
+    );
     
-    return () => unsubscribe();
-  }, [user?.id, driverStatus, showDepositAlert, toast]);
-
-  // Handle refreshing ride requests
-  const handleRefresh = () => {
-    fetchRideRequests();
-  };
+    // Refresh ride requests every 30 seconds
+    const refreshInterval = setInterval(fetchRideRequests, 30000);
+    
+    return () => {
+      unsubscribe();
+      clearInterval(refreshInterval);
+    };
+  }, [user?.id, driverStatus, showDepositAlert, driverLocation, toast]);
 
   // Handle accepting a ride
   const handleAcceptRide = async (ride: any) => {
@@ -125,38 +144,34 @@ const RideRequests: React.FC = () => {
     }
     
     try {
-      const { success, error } = await acceptRide(ride.id, user.id);
+      const { success, error } = await acceptRideRequest(ride.id, user.id);
       
       if (!success) {
         throw new Error(error || "Failed to accept ride");
       }
       
-      const formattedRide: Ride = {
+      // Remove the accepted ride from the list
+      setPendingRideRequests(prevRides => 
+        prevRides.filter(r => r.id !== ride.id)
+      );
+      
+      const formattedRide = {
         id: ride.id,
         pickup: ride.pickup_location,
         dropoff: ride.dropoff_location,
-        rideOption: ride.ride_option,
-        driver: {
-          id: user.id,
-          name: user.name,
-          rating: user.rating || 5.0,
-          licensePlate: "Default",
-          avatar: user.avatar || "/lovable-uploads/498e0bf1-4c8a-4cad-8ee2-6f43fdccc511.png"
-        },
         status: 'confirmed',
-        price: ride.price,
-        currency: ride.currency,
-        distance: ride.distance,
-        duration: ride.duration,
-        paymentMethod: ride.payment_method
+        price: ride.estimated_price,
+        currency: 'RS',
+        distance: ride.estimated_distance,
+        duration: ride.estimated_duration,
+        paymentMethod: ride.payment_method || 'cash'
       };
       
-      acceptRideRequest(ride.id);
       setCurrentRide(formattedRide);
       
       toast({
-        title: "Ride accepted",
-        description: "You have accepted the ride. Navigating to passenger...",
+        title: "Ride Accepted",
+        description: "You have accepted the ride. Please proceed to pickup location.",
         duration: 3000
       });
       
@@ -238,32 +253,6 @@ const RideRequests: React.FC = () => {
       
       <div className="p-4">
         {renderAlerts()}
-        
-        <div className="flex justify-between items-center mb-4">
-          <p className="text-gray-700">
-            {!isLoading && !showDriverRegistrationAlert && !showDepositAlert && 
-             `${pendingRideRequests.length} ride requests available`}
-          </p>
-          <Button 
-            size="sm"
-            variant="outline"
-            className="flex items-center"
-            onClick={handleRefresh}
-            disabled={isRefreshing || isLoading}
-          >
-            {isRefreshing ? (
-              <>
-                <RefreshCw className="mr-1 h-4 w-4 animate-spin" />
-                Refreshing...
-              </>
-            ) : (
-              <>
-                <RefreshCw className="mr-1 h-4 w-4" />
-                Refresh
-              </>
-            )}
-          </Button>
-        </div>
         
         {isLoading ? (
           <div className="flex justify-center py-8">
