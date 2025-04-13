@@ -73,7 +73,18 @@ const PassengerPanel: React.FC = () => {
     }
   }, [isWaitingForDriverAcceptance, driverAcceptanceTimer]);
 
-  const handleFindRides = () => {
+  const handleFindRides = async () => {
+    // Check if both locations are selected
+    if (!pickupLocation?.latitude || !pickupLocation?.longitude || 
+        !dropoffLocation?.latitude || !dropoffLocation?.longitude) {
+      toast({
+        title: "Missing locations",
+        description: "Please select both pickup and dropoff locations",
+        duration: 3000
+      });
+      return;
+    }
+
     // Check if user has completed their profile
     if (!user?.phone) {
       toast({
@@ -81,10 +92,22 @@ const PassengerPanel: React.FC = () => {
         description: "Please update your phone number and address in your profile",
         duration: 5000
       });
+      navigate('/profile');
       return;
     }
     
-    findRides();
+    try {
+      await findRides();
+      // Navigate to RideProgress page after finding rides
+      navigate('/ride-progress');
+    } catch (error) {
+      console.error('Error finding rides:', error);
+      toast({
+        title: "Error",
+        description: "Failed to calculate route. Please try again.",
+        duration: 3000
+      });
+    }
   };
 
   const handleSelectRideOption = (option: any) => {

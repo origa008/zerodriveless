@@ -19,6 +19,7 @@ export interface Location {
   latitude: number;
   longitude: number;
   placeId?: string;
+  address?: string;
 }
 
 export interface RideOption {
