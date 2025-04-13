@@ -205,22 +205,76 @@ const RideRequests: React.FC = () => {
   };
 
   const toggleOnlineStatus = async () => {
-    if (!user?.id) return;
-
-    const newStatus = !isOnline;
-    setIsOnline(newStatus);
-    
-    const { success, error } = await updateDriverStatus(
-      user.id,
-      newStatus,
-      driverLocation || undefined
-    );
-
-    if (!success) {
-      setIsOnline(!newStatus); // Revert on failure
+    if (!user?.id) {
       toast({
         title: "Error",
-        description: error || "Failed to update status",
+        description: "You must be logged in to go online",
+        duration: 3000
+      });
+      return;
+    }
+
+    if (!driverLocation) {
+      toast({
+        title: "Error",
+        description: "Location access is required to go online. Please enable location services.",
+        duration: 3000
+      });
+      return;
+    }
+
+    try {
+      const newStatus = !isOnline;
+      
+      const { success, error } = await updateDriverStatus(
+        user.id,
+        newStatus,
+        driverLocation
+      );
+
+      if (!success || error) {
+        throw new Error(error || "Failed to update status");
+      }
+
+      // Only update UI state after successful backend update
+      setIsOnline(newStatus);
+
+      if (newStatus) {
+        // Immediately fetch nearby rides when going online
+        const { data: nearbyRides, error: ridesError } = await getNearbyPendingRides(
+          user.id,
+          driverLocation,
+          5 // 5km radius
+        );
+
+        if (ridesError) {
+          console.error("Error fetching nearby rides:", ridesError);
+          toast({
+            title: "Warning",
+            description: "You're online but we couldn't fetch nearby rides. Please try refreshing.",
+            duration: 5000
+          });
+        } else {
+          setPendingRideRequests(nearbyRides || []);
+          
+          if (nearbyRides && nearbyRides.length > 0) {
+            toast({
+              title: "Rides Available",
+              description: `Found ${nearbyRides.length} nearby ride requests`,
+              duration: 3000
+            });
+          }
+        }
+      } else {
+        // Clear pending rides when going offline
+        setPendingRideRequests([]);
+      }
+
+    } catch (error: any) {
+      console.error("Error toggling online status:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update status. Please try again.",
         duration: 3000
       });
     }
