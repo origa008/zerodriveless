@@ -380,24 +380,19 @@ export const updateDriverStatus = async (
       .from('profiles')
       .update({
         is_online: isOnline,
-        current_location: location ? {
-          latitude: location.latitude,
-          longitude: location.longitude,
-          updated_at: new Date().toISOString()
-        } : null,
         last_online: isOnline ? new Date().toISOString() : null
       })
       .eq('id', driverId);
 
     if (profileError) throw profileError;
 
-    // Also update driver_details table with current status
+    // Update driver_details table with current status and location
     const { error: detailsError } = await supabase
       .from('driver_details')
       .update({
         current_status: isOnline ? 'available' : 'offline',
         last_status_update: new Date().toISOString(),
-        current_location: location ? {
+        last_location: location ? {
           lat: location.latitude,
           lng: location.longitude,
           updated_at: new Date().toISOString()
