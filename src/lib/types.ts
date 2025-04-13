@@ -14,59 +14,51 @@ export type User = {
   rating?: number; // Add rating field for drivers
 };
 
-export interface Location {
+export type Location = {
   name: string;
-  latitude: number;
-  longitude: number;
-  placeId?: string;
   address?: string;
-}
+  placeId?: string;
+  coordinates?: [number, number]; // [longitude, latitude]
+};
 
-export interface RideOption {
+export type RideOption = {
   id: string;
   name: string;
   image: string;
-  basePrice: number;
-  pricePerKm: number;
-  pricePerMinute: number;
-  maxDistance?: number;
-  description?: string;
-}
+  description?: string; // Added description as optional property
+  basePrice?: number;
+  price?: number;
+  currency?: string;
+  duration?: number;
+  capacity?: number;
+  eta?: string;
+};
 
-export interface Driver {
+export type Driver = {
   id: string;
   name: string;
-  avatar?: string;
-  rating?: number;
-  licensePlate?: string;
-  vehicleType?: string;
-}
+  rating: number;
+  licensePlate: string;
+  avatar: string;
+};
 
 export type PaymentMethod = 'cash' | 'wallet';
 
-export type RideStatus = 'searching' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
-
-export interface Ride {
+export type Ride = {
   id: string;
   pickup: Location;
   dropoff: Location;
-  status: RideStatus;
+  rideOption: RideOption;
+  driver?: Driver;
+  status: "searching" | "confirmed" | "in_progress" | "completed" | "cancelled";
   price: number;
   currency: string;
   distance: number;
   duration: number;
-  paymentMethod: PaymentMethod;
-  rideOption: RideOption;
-  driver?: Driver;
-  passenger?: {
-    id: string;
-    name: string;
-    avatar?: string;
-  };
-  endTime?: string;
   startTime?: string;
-  createdAt?: string;
-}
+  endTime?: string;
+  paymentMethod?: PaymentMethod;
+};
 
 export type ChatMessage = {
   id: string;

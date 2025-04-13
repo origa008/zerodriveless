@@ -356,45 +356,187 @@ export const updateDriverStatus = async (
   driverId: string,
   isOnline: boolean,
   location?: { latitude: number; longitude: number }
-): Promise<{ success: boolean; error: string | null }> => {
+) => {
   try {
-    // Get driver's wallet balance
-    const { data: wallet, error: walletError } = await supabase
-      .from('wallets')
-      .select('balance')
-      .eq('user_id', driverId)
+    console.log('Updating driver status for:', driverId, 'isOnline:', isOnline);
+
+    // First verify the user exists in profiles
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('id, is_verified_driver')
+      .eq('id', driverId)
       .single();
 
-    if (walletError) throw walletError;
-
-    // Check if driver has sufficient security deposit
-    if (isOnline && (!wallet || wallet.balance < 3000)) {
-      return {
-        success: false,
-        error: 'Insufficient security deposit. Please add RS 3,000 to your wallet.'
+    if (profileError) {
+      console.error('Error fetching profile:', profileError);
+      return { 
+        success: false, 
+        error: 'Failed to fetch user profile' 
       };
     }
 
-    // Update only driver_details table
-    const { error: detailsError } = await supabase
+    if (!profile) {
+      console.error('Profile not found for user:', driverId);
+      return { 
+        success: false, 
+        error: 'User profile not found' 
+      };
+    }
+
+    console.log('Found profile:', profile);
+
+    // Check driver_details with explicit error logging
+    const { data: driverDetails, error: detailsError } = await supabase
+      .from('driver_details')
+      .select(`
+        id,
+        user_id,
+        status,
+        has_sufficient_deposit,
+        vehicle_type,
+        deposit_amount_required,
+        current_status
+      `)
+      .eq('user_id', driverId)
+      .single();
+
+    console.log('Driver details query result:', { driverDetails, detailsError });
+
+    if (detailsError) {
+      console.error('Error fetching driver details:', detailsError);
+      // Check if this is a permissions error
+      if (detailsError.message.includes('permission') || detailsError.code === 'PGRST301') {
+        return { 
+          success: false, 
+          error: 'Permission denied accessing driver details. Please contact support.' 
+        };
+      }
+      return { 
+        success: false, 
+        error: 'Failed to fetch driver status' 
+      };
+    }
+
+    if (!driverDetails) {
+      console.error('No driver details found for user:', driverId);
+      return { 
+        success: false, 
+        error: 'Driver registration not found. Please complete registration first.' 
+      };
+    }
+
+    console.log('Current driver status:', driverDetails.status);
+
+    // Check approval status
+    if (driverDetails.status !== 'approved') {
+      console.log('Driver not approved. Current status:', driverDetails.status);
+      return { 
+        success: false, 
+        error: `Driver account is ${driverDetails.status}. Must be approved to go online.` 
+      };
+    }
+
+    // Check wallet balance if trying to go online
+    if (isOnline) {
+      const { data: wallet, error: walletError } = await supabase
+        .from('wallets')
+        .select('balance')
+        .eq('user_id', driverId)
+        .single();
+
+      if (walletError) {
+        console.error('Error fetching wallet:', walletError);
+        return {
+          success: false,
+          error: 'Failed to verify deposit balance'
+        };
+      }
+
+      console.log('Wallet balance:', wallet?.balance, 'Required:', driverDetails.deposit_amount_required);
+
+      const hasEnoughDeposit = wallet && wallet.balance >= (driverDetails.deposit_amount_required || 3000);
+      
+      if (!hasEnoughDeposit) {
+        // Update driver_details to reflect deposit status
+        await supabase
+          .from('driver_details')
+          .update({ has_sufficient_deposit: false })
+          .eq('user_id', driverId);
+
+        return { 
+          success: false, 
+          error: `Insufficient deposit balance. Required: RS ${driverDetails.deposit_amount_required || 3000}` 
+        };
+      }
+
+      // Update deposit status if it was previously insufficient
+      if (!driverDetails.has_sufficient_deposit) {
+        await supabase
+          .from('driver_details')
+          .update({ has_sufficient_deposit: true })
+          .eq('user_id', driverId);
+      }
+    }
+
+    // Update profile with online status and location
+    const updateData: any = {
+      is_verified_driver: true,
+      is_online: isOnline,
+      last_online: new Date().toISOString()
+    };
+
+    if (location) {
+      updateData.current_location = {
+        latitude: location.latitude,
+        longitude: location.longitude,
+        updated_at: new Date().toISOString()
+      };
+    }
+
+    console.log('Updating profile with:', updateData);
+
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update(updateData)
+      .eq('id', driverId);
+
+    if (updateError) {
+      console.error('Error updating profile:', updateError);
+      throw updateError;
+    }
+
+    // Also update driver_details with current status
+    const { error: detailsUpdateError } = await supabase
       .from('driver_details')
       .update({
-        status: isOnline ? 'available' : 'offline',
-        last_status_update: new Date().toISOString(),
-        last_location: location ? {
-          lat: location.latitude,
-          lng: location.longitude,
-          updated_at: new Date().toISOString()
-        } : null
+        current_status: isOnline ? 'available' : 'offline',
+        last_status_update: new Date().toISOString()
       })
       .eq('user_id', driverId);
 
-    if (detailsError) throw detailsError;
+    if (detailsUpdateError) {
+      console.error('Error updating driver details:', detailsUpdateError);
+      // Don't throw here as the main update was successful
+    }
 
-    return { success: true, error: null };
+    console.log('Successfully updated driver status');
+
+    return { 
+      success: true, 
+      error: null,
+      details: {
+        is_online: isOnline,
+        vehicle_type: driverDetails.vehicle_type,
+        has_sufficient_deposit: true,
+        status: driverDetails.status
+      }
+    };
   } catch (error: any) {
     console.error('Error updating driver status:', error);
-    return { success: false, error: error.message };
+    return { 
+      success: false, 
+      error: error.message || 'Failed to update driver status' 
+    };
   }
 };
 
@@ -554,37 +696,145 @@ export const subscribeToNearbyPendingRides = (
 /**
  * Safely accept a ride request with race condition prevention
  */
-export async function acceptRideRequestSafe(
+export const acceptRideRequestSafe = async (
   rideId: string,
   driverId: string,
   driverLocation: { latitude: number; longitude: number }
-) {
-  const { data: driverProfile, error: driverError } = await supabase
-    .from('driver_details')
-    .select('status, vehicle_type')
-    .eq('user_id', driverId)
-    .single();
+) => {
+  try {
+    // First check if driver is online and eligible
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('is_online, is_verified_driver')
+      .eq('id', driverId)
+      .single();
 
-  if (driverError) {
-    return { error: 'Failed to fetch driver profile' };
+    if (profileError) throw profileError;
+
+    if (!profile?.is_online || !profile?.is_verified_driver) {
+      return { 
+        success: false, 
+        error: 'Driver must be online and verified to accept rides' 
+      };
+    }
+
+    // Get driver details
+    const { data: driverDetails, error: detailsError } = await supabase
+      .from('driver_details')
+      .select('vehicle_type, status, has_sufficient_deposit')
+      .eq('user_id', driverId)
+      .single();
+
+    if (detailsError) throw detailsError;
+
+    if (!driverDetails || driverDetails.status !== 'approved') {
+      return { 
+        success: false, 
+        error: 'Driver must be approved to accept rides' 
+      };
+    }
+
+    if (!driverDetails.has_sufficient_deposit) {
+      return { 
+        success: false, 
+        error: 'Insufficient deposit balance to accept rides' 
+      };
+    }
+
+    // Begin transaction with row-level locking
+    const { data: ride, error: lockError } = await supabase
+      .from('ride_requests')
+      .select('*')
+      .eq('id', rideId)
+      .eq('status', 'searching')
+      .is('driver_id', null)
+      .single();
+
+    if (lockError || !ride) {
+      return { success: false, error: 'This ride is no longer available' };
+    }
+
+    // Verify vehicle type matches
+    if (driverDetails.vehicle_type !== ride.vehicle_type) {
+      return { 
+        success: false, 
+        error: `This ride requires a ${ride.vehicle_type} vehicle` 
+      };
+    }
+
+    // Update ride with driver information
+    const { error: updateError } = await supabase
+      .from('ride_requests')
+      .update({
+        driver_id: driverId,
+        status: 'confirmed',
+        started_at: new Date().toISOString(),
+        driver_location: {
+          latitude: driverLocation.latitude,
+          longitude: driverLocation.longitude,
+          updated_at: new Date().toISOString()
+        }
+      })
+      .eq('id', rideId)
+      .eq('status', 'searching')
+      .is('driver_id', null);
+
+    if (updateError) throw updateError;
+
+    // Update driver details
+    const { error: driverUpdateError } = await supabase
+      .from('driver_details')
+      .update({
+        current_status: 'on_ride',
+        current_ride_id: rideId,
+        last_ride_accepted_at: new Date().toISOString()
+      })
+      .eq('user_id', driverId);
+
+    if (driverUpdateError) {
+      // Attempt to rollback ride assignment if driver update fails
+      await supabase
+        .from('ride_requests')
+        .update({
+          driver_id: null,
+          status: 'searching',
+          started_at: null,
+          driver_location: null
+        })
+        .eq('id', rideId);
+      
+      throw driverUpdateError;
+    }
+
+    // Get updated ride details with passenger info
+    const { data: updatedRide, error: rideError } = await supabase
+      .from('ride_requests')
+      .select(`
+        *,
+        passenger:profiles!passenger_id (
+          id,
+          name,
+          avatar,
+          rating,
+          phone
+        )
+      `)
+      .eq('id', rideId)
+      .single();
+
+    if (rideError) throw rideError;
+
+    return { 
+      success: true, 
+      error: null, 
+      ride: updatedRide 
+    };
+  } catch (error: any) {
+    console.error('Error accepting ride:', error);
+    return { 
+      success: false, 
+      error: error.message || 'Failed to accept ride', 
+      ride: null 
+    };
   }
-
-  if (driverProfile.status !== 'approved') {
-    return { error: 'Driver must be approved to accept rides' };
-  }
-
-  // Start a transaction
-  const { data, error } = await supabase.rpc('accept_ride_request', {
-    p_ride_id: rideId,
-    p_driver_id: driverId,
-    p_driver_lat: driverLocation.latitude,
-    p_driver_lng: driverLocation.longitude,
-    p_vehicle_type: driverProfile.vehicle_type
-  });
-
-  if (error) {
-    return { error: error.message };
-  }
-
-  return { success: true, data };
-} 
+}; 

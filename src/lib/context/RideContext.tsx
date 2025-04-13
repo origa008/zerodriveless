@@ -6,7 +6,6 @@ import { useToast } from '@/hooks/use-toast';
 import { getMockRideOptions } from '../utils/mockData';
 import { getWalletBalance, getTransactionHistory, subscribeToWalletBalance, subscribeToRideUpdates } from '../utils/walletUtils';
 import { calculateDistance } from '../utils/mapsApi';
-import { supabase } from '@/integrations/supabase/client';
 
 type RideContextType = {
   pickup: Location | null;
@@ -57,7 +56,6 @@ type RideContextType = {
   updateWalletBalance: (amount: number) => void;
   rideHistory: Ride[];
   transactions: any[];
-  driverLocation: { latitude: number; longitude: number } | null;
 };
 
 const RideContext = createContext<RideContextType | undefined>(undefined);
@@ -89,7 +87,6 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [rideHistory, setRideHistory] = useState<Ride[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
-  const [driverLocation, setDriverLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   
   useEffect(() => {
     if (user?.id) {
@@ -115,81 +112,18 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [user?.id]);
   
-  const findRides = async () => {
-    if (!pickupLocation?.latitude || !pickupLocation?.longitude || 
-        !dropoffLocation?.latitude || !dropoffLocation?.longitude || 
-        !window.google) {
-      toast({
-        title: "Error",
-        description: "Please select both pickup and dropoff locations",
-        duration: 3000
-      });
-      return;
-    }
+  const findRides = () => {
+    if (!pickupLocation || !dropoffLocation) return;
     
     setIsSearchingRides(true);
     
-    try {
-      const directionsService = new window.google.maps.DirectionsService();
-      
-      const result = await directionsService.route({
-        origin: {
-          lat: pickupLocation.latitude,
-          lng: pickupLocation.longitude
-        },
-        destination: {
-          lat: dropoffLocation.latitude,
-          lng: dropoffLocation.longitude
-        },
-        travelMode: window.google.maps.TravelMode.DRIVING
-      });
-
-      if (result.routes[0]) {
-        const distance = result.routes[0].legs[0].distance.value / 1000; // Convert to km
-        const duration = Math.ceil(result.routes[0].legs[0].duration.value / 60); // Convert to minutes
-        
-        setEstimatedDistance(distance);
-        setEstimatedDuration(duration);
-        
-        // Get available ride options with real prices
-        const options = [
-          {
-            id: 'bike',
-            name: 'Bike',
-            description: 'Affordable bike ride',
-            image: '/assets/bike.png',
-            basePrice: calculateBaseFare(distance, 'Bike'),
-            estimatedTime: duration,
-            pricePerKm: 20,
-            pricePerMinute: 2
-          },
-          {
-            id: 'auto',
-            name: 'Auto',
-            description: 'Comfortable auto ride',
-            image: '/assets/auto.png',
-            basePrice: calculateBaseFare(distance, 'Auto'),
-            estimatedTime: duration,
-            pricePerKm: 35,
-            pricePerMinute: 3
-          }
-        ];
-        
-        setAvailableRideOptions(options);
-        setSelectedRideOption(options[0]); // Default to bike
-        setUserBid(options[0].basePrice); // Set initial bid to base price
-      }
-    } catch (error) {
-      console.error('Error calculating route:', error);
-      toast({
-        title: "Error",
-        description: "Failed to calculate route. Please try again.",
-        duration: 3000
-      });
-    } finally {
+    setTimeout(() => {
+      setEstimatedDistance(5.2);
+      setEstimatedDuration(12);
+      setAvailableRideOptions(getMockRideOptions());
       setIsSearchingRides(false);
       setPanelOpen(true);
-    }
+    }, 1500);
   };
   
   const calculateBaseFare = (distance: number, vehicleType: string): number => {
@@ -411,74 +345,6 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setWalletBalance(prev => prev + amount);
   };
   
-  // Watch driver location when in driver mode
-  useEffect(() => {
-    if (!isDriverMode || !user?.id) return;
-
-    let watchId: number | null = null;
-
-    const setupLocationWatch = () => {
-      if (!navigator.geolocation) return;
-
-      watchId = navigator.geolocation.watchPosition(
-        (position) => {
-          setDriverLocation({
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude
-          });
-        },
-        (error) => {
-          console.error('Location watch error:', error);
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-      );
-    };
-
-    setupLocationWatch();
-
-    return () => {
-      if (watchId !== null) {
-        navigator.geolocation.clearWatch(watchId);
-      }
-    };
-  }, [isDriverMode, user?.id]);
-
-  // Start ride timer when ride is in progress
-  useEffect(() => {
-    if (!currentRide || currentRide.status !== 'in_progress') {
-      setRideTimer(0);
-      return;
-    }
-
-    const interval = setInterval(() => {
-      setRideTimer(prev => prev + 1);
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [currentRide]);
-
-  // Fetch wallet balance
-  useEffect(() => {
-    const fetchWalletBalance = async () => {
-      if (!user?.id) return;
-
-      try {
-        const { data, error } = await supabase
-          .from('wallets')
-          .select('balance')
-          .eq('user_id', user.id)
-          .single();
-
-        if (error) throw error;
-        setWalletBalance(data.balance || 0);
-      } catch (error) {
-        console.error('Error fetching wallet balance:', error);
-      }
-    };
-
-    fetchWalletBalance();
-  }, [user?.id]);
-  
   return (
     <RideContext.Provider
       value={{
@@ -526,8 +392,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
         cancelRide,
         updateWalletBalance,
         rideHistory,
-        transactions,
-        driverLocation
+        transactions
       }}
     >
       {children}

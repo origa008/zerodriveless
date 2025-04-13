@@ -46,8 +46,10 @@ export const getPlaceDetails = async (placeId: string): Promise<Location | null>
         name: result.name,
         address: result.formatted_address,
         placeId: result.place_id,
-        latitude: result.geometry.location.lat,
-        longitude: result.geometry.location.lng
+        coordinates: [
+          result.geometry.location.lng,
+          result.geometry.location.lat
+        ],
       };
     }
     
@@ -119,7 +121,6 @@ export const getDefaultLocation = (): Location => {
   return {
     name: 'Lahore, Pakistan',
     address: 'Lahore, Punjab, Pakistan',
-    latitude: DEFAULT_COORDINATES[1],
-    longitude: DEFAULT_COORDINATES[0]
+    coordinates: DEFAULT_COORDINATES
   };
 };

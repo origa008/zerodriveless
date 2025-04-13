@@ -1,20 +1,15 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useRide } from '@/lib/context/RideContext';
 import { useAuth } from '@/lib/context/AuthContext';
 import RideMap from '@/components/map/RideMap';
+import RideDetails from '@/components/ride/RideDetails';
+import RealTimeStats from '@/components/ride/RealTimeStats';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, MapPin } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
-
-interface RideEstimate {
-  distance: number;
-  duration: number;
-  baseFare: number;
-}
+import { Loader2 } from 'lucide-react';
 
 const RideProgress: React.FC = () => {
   const navigate = useNavigate();
@@ -22,183 +17,65 @@ const RideProgress: React.FC = () => {
   const { user } = useAuth();
   const {
     currentRide,
-    pickupLocation,
-    dropoffLocation,
-    selectedRideOption,
-    setUserBid,
-    userBid,
-    confirmRide,
-    isSearchingRides,
-    calculateBaseFare
+    startRide,
+    completeRide,
+    cancelRide
   } = useRide();
-
   const [isProcessing, setIsProcessing] = useState(false);
   const [estimate, setEstimate] = useState<RideEstimate | null>(null);
-  const [currentLocation, setCurrentLocation] = useState<{lat: number, lng: number} | null>(null);
-  const [elapsedTime, setElapsedTime] = useState(0);
-  const [actualDistance, setActualDistance] = useState(0);
-  const [actualFare, setActualFare] = useState(0);
-  const watchIdRef = useRef<number | null>(null);
-  const startTimeRef = useRef<number | null>(null);
-  const lastPositionRef = useRef<{lat: number, lng: number} | null>(null);
 
-  // Initial route calculation when locations change
+  // Calculate route and fare estimate when locations change
   useEffect(() => {
-    calculateInitialEstimate();
-  }, [pickupLocation, dropoffLocation, selectedRideOption]);
-
-  // Start tracking for actual ride metrics when the component mounts
-  useEffect(() => {
-    startTracking();
-    
-    return () => {
-      if (watchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
+    const calculateEstimate = async () => {
+      if (!pickupLocation?.latitude || !pickupLocation?.longitude || 
+          !dropoffLocation?.latitude || !dropoffLocation?.longitude || 
+          !window.google) {
+        return;
       }
-    };
-  }, []);
 
-  // Update fare in real-time based on elapsed time and distance
-  useEffect(() => {
-    if (selectedRideOption && actualDistance > 0) {
-      const ratePerKm = selectedRideOption.name === 'Bike' ? 20 : 35;
-      const ratePerMinute = selectedRideOption.name === 'Bike' ? 2 : 3;
-      
-      const distanceFare = actualDistance * ratePerKm;
-      const timeFare = (elapsedTime / 60) * ratePerMinute;
-      
-      setActualFare(Math.round(distanceFare + timeFare));
-    }
-  }, [actualDistance, elapsedTime, selectedRideOption]);
+      const directionsService = new window.google.maps.DirectionsService();
 
-  const calculateInitialEstimate = async () => {
-    if (!pickupLocation?.latitude || !pickupLocation?.longitude || 
-        !dropoffLocation?.latitude || !dropoffLocation?.longitude || 
-        !window.google) {
-      return;
-    }
-
-    const directionsService = new window.google.maps.DirectionsService();
-
-    try {
-      const result = await directionsService.route({
-        origin: {
-          lat: pickupLocation.latitude,
-          lng: pickupLocation.longitude
-        },
-        destination: {
-          lat: dropoffLocation.latitude,
-          lng: dropoffLocation.longitude
-        },
-        travelMode: window.google.maps.TravelMode.DRIVING
-      });
-
-      if (result.routes[0]) {
-        const distance = result.routes[0].legs[0].distance.value / 1000; // Convert to km
-        const duration = Math.ceil(result.routes[0].legs[0].duration.value / 60); // Convert to minutes
-        const baseFare = calculateBaseFare(distance, selectedRideOption?.name || 'Bike');
-
-        setEstimate({
-          distance,
-          duration,
-          baseFare
+      try {
+        const result = await directionsService.route({
+          origin: {
+            lat: pickupLocation.latitude,
+            lng: pickupLocation.longitude
+          },
+          destination: {
+            lat: dropoffLocation.latitude,
+            lng: dropoffLocation.longitude
+          },
+          travelMode: window.google.maps.TravelMode.DRIVING
         });
 
-        // Set initial bid to base fare
-        if (!userBid) {
-          setUserBid(baseFare);
-        }
-      }
-    } catch (error) {
-      console.error('Error calculating route:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to calculate route. Please try again.',
-        duration: 3000
-      });
-    }
-  };
+        if (result.routes[0]) {
+          const distance = result.routes[0].legs[0].distance.value / 1000; // Convert to km
+          const duration = Math.ceil(result.routes[0].legs[0].duration.value / 60); // Convert to minutes
+          const baseFare = calculateBaseFare(distance, selectedRideOption?.name || 'Bike');
 
-  const startTracking = () => {
-    if (!navigator.geolocation) {
-      toast({
-        title: 'Error',
-        description: 'Geolocation is not supported by your browser.',
-        duration: 3000
-      });
-      return;
-    }
+          setEstimate({
+            distance,
+            duration,
+            baseFare
+          });
 
-    startTimeRef.current = Date.now();
-    
-    // Start timer
-    const timerInterval = setInterval(() => {
-      if (startTimeRef.current) {
-        const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
-        setElapsedTime(elapsed);
-      }
-    }, 1000);
-
-    // Start location tracking
-    watchIdRef.current = navigator.geolocation.watchPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-        const newPosition = { lat: latitude, lng: longitude };
-        
-        setCurrentLocation(newPosition);
-        
-        // Calculate distance traveled since last position
-        if (lastPositionRef.current) {
-          const newDistance = calculateHaversineDistance(
-            lastPositionRef.current.lat,
-            lastPositionRef.current.lng,
-            latitude,
-            longitude
-          );
-          
-          if (newDistance > 0.01) { // Only count movements greater than 10 meters
-            setActualDistance(prevDistance => prevDistance + newDistance);
-            lastPositionRef.current = newPosition;
+          // Set initial bid to base fare
+          if (!userBid) {
+            setUserBid(baseFare);
           }
-        } else {
-          lastPositionRef.current = newPosition;
         }
-      },
-      (error) => {
-        console.error('Error getting location:', error);
+      } catch (error) {
+        console.error('Error calculating route:', error);
         toast({
-          title: 'Location Error',
-          description: 'Unable to track your location.',
+          title: 'Error',
+          description: 'Failed to calculate route. Please try again.',
           duration: 3000
         });
-      },
-      { 
-        enableHighAccuracy: true,
-        maximumAge: 0,
-        timeout: 5000
-      }
-    );
-
-    return () => {
-      clearInterval(timerInterval);
-      if (watchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
       }
     };
-  };
 
-  // Haversine formula to calculate distance between two coordinates
-  const calculateHaversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-    const R = 6371; // Radius of the Earth in km
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = 
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-      Math.sin(dLon/2) * Math.sin(dLon/2); 
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
-    return R * c;
-  };
+    calculateEstimate();
+  }, [pickupLocation, dropoffLocation, selectedRideOption]);
 
   const handleConfirmRide = async () => {
     if (!user?.id || !estimate || !userBid) {
@@ -211,71 +88,39 @@ const RideProgress: React.FC = () => {
     }
 
     setIsProcessing(true);
-
+    
     try {
-      // Create ride request in Supabase
-      const { data: ride, error } = await supabase
-        .from('rides')
-        .insert({
-          passenger_id: user.id,
-          pickup_location: {
-            name: pickupLocation?.name,
-            latitude: pickupLocation?.latitude,
-            longitude: pickupLocation?.longitude,
-            placeId: pickupLocation?.placeId
-          },
-          dropoff_location: {
-            name: dropoffLocation?.name,
-            latitude: dropoffLocation?.latitude,
-            longitude: dropoffLocation?.longitude,
-            placeId: dropoffLocation?.placeId
-          },
-          vehicle_type: selectedRideOption?.name.toLowerCase(),
-          bid_amount: userBid,
-          estimated_distance: estimate.distance,
-          estimated_duration: estimate.duration,
-          status: 'searching',
-          created_at: new Date().toISOString()
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      // Call the confirmRide function from context
-      await confirmRide('wallet');
-
+      // Process payment if needed and complete the ride
+      const { success, error } = await completeRideAndProcessPayment(currentRide.id);
+      
+      if (!success || error) {
+        throw new Error(error || "Failed to complete ride");
+      }
+      
+      completeRide();
+      
       toast({
-        title: 'Success',
-        description: 'Your ride request has been created. Waiting for a driver...',
+        title: "Ride Completed",
+        description: currentRide.paymentMethod === 'wallet' 
+          ? "Payment has been processed automatically" 
+          : "Please collect cash payment from the passenger",
         duration: 5000
       });
-
-      // Navigate to waiting screen
-      navigate('/waiting-driver');
     } catch (error: any) {
-      console.error('Error creating ride request:', error);
+      console.error("Failed to complete ride:", error);
       toast({
-        title: 'Error',
-        description: error.message || 'Failed to create ride request',
-        duration: 3000
+        title: "Error",
+        description: error.message || "Failed to complete ride",
+        duration: 5000
       });
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const formatTime = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
-  };
-
   return (
     <div className="min-h-screen bg-white">
-      <div className="h-[60vh]">
-        <RideMap />
-      </div>
+      <RideMap />
       
       <div className="bg-white rounded-t-3xl -mt-6 relative z-10 p-6">
         {estimate ? (
@@ -283,15 +128,15 @@ const RideProgress: React.FC = () => {
             <div className="grid grid-cols-3 gap-4 mb-4">
               <div className="text-center">
                 <p className="text-sm text-gray-500">Distance</p>
-                <p className="font-semibold">{actualDistance > 0 ? actualDistance.toFixed(1) : estimate.distance.toFixed(1)} km</p>
+                <p className="font-semibold">{estimate.distance.toFixed(1)} km</p>
               </div>
               <div className="text-center border-x border-gray-200">
                 <p className="text-sm text-gray-500">Time</p>
-                <p className="font-semibold">{elapsedTime > 0 ? formatTime(elapsedTime) : `${estimate.duration} mins`}</p>
+                <p className="font-semibold">{estimate.duration} mins</p>
               </div>
               <div className="text-center">
-                <p className="text-sm text-gray-500">{selectedRideOption?.name || 'Bike'} Fare</p>
-                <p className="font-semibold">₹ {actualFare > 0 ? actualFare : estimate.baseFare}</p>
+                <p className="text-sm text-gray-500">Base Fare</p>
+                <p className="font-semibold">RS {estimate.baseFare}</p>
               </div>
             </div>
 
@@ -309,7 +154,7 @@ const RideProgress: React.FC = () => {
 
               <div>
                 <label className="text-sm text-gray-500 mb-2 block">
-                  Your Bid (₹)
+                  Your Bid (RS)
                 </label>
                 <Input
                   type="number"
