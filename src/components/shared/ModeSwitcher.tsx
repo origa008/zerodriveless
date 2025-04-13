@@ -2,7 +2,7 @@
 import React from 'react';
 import { useRide } from '@/lib/context/RideContext';
 import { Button } from '@/components/ui/button';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 interface ModeSwitcherProps {
   isDriverEligible?: boolean;
@@ -11,7 +11,6 @@ interface ModeSwitcherProps {
 const ModeSwitcher: React.FC<ModeSwitcherProps> = ({ isDriverEligible = false }) => {
   const { isDriverMode, setDriverMode } = useRide();
   const navigate = useNavigate();
-  const location = useLocation();
 
   const handleModeSwitch = () => {
     const newMode = !isDriverMode;

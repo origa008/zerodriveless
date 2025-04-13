@@ -1,0 +1,626 @@
+import { supabase } from '@/integrations/supabase/client';
+import { Location, RideOption } from '../types';
+
+/**
+ * Create a new ride request
+ */
+export const createRideRequest = async ({
+  passengerId,
+  pickupLocation,
+  dropoffLocation,
+  vehicleType,
+  estimatedPrice,
+  estimatedDistance,
+  estimatedDuration,
+  paymentMethod = 'cash'
+}: {
+  passengerId: string;
+  pickupLocation: { lat: number; lng: number; name: string };
+  dropoffLocation: { lat: number; lng: number; name: string };
+  vehicleType: 'car' | 'bike' | 'auto';
+  estimatedPrice: number;
+  estimatedDistance: number;
+  estimatedDuration: number;
+  paymentMethod?: string;
+}) => {
+  try {
+    const { data, error } = await supabase
+      .from('ride_requests')
+      .insert({
+        passenger_id: passengerId,
+        pickup_location: { name: pickupLocation.name, coordinates: [pickupLocation.lat, pickupLocation.lng] },
+        dropoff_location: { name: dropoffLocation.name, coordinates: [dropoffLocation.lat, dropoffLocation.lng] },
+        pickup_lat: pickupLocation.lat,
+        pickup_lng: pickupLocation.lng,
+        dropoff_lat: dropoffLocation.lat,
+        dropoff_lng: dropoffLocation.lng,
+        vehicle_type: vehicleType,
+        estimated_price: estimatedPrice,
+        estimated_distance: estimatedDistance,
+        estimated_duration: estimatedDuration,
+        payment_method: paymentMethod,
+        status: 'searching'
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return { data, error: null };
+  } catch (error: any) {
+    console.error('Error creating ride request:', error);
+    return { data: null, error: error.message };
+  }
+};
+
+/**
+ * Get nearby ride requests for a driver
+ */
+export const getNearbyRideRequests = async (
+  driverLat: number,
+  driverLng: number,
+  radiusKm: number = 5
+) => {
+  try {
+    // First get all active ride requests
+    const { data: rides, error: ridesError } = await supabase
+      .from('rides')
+      .select('*')
+      .eq('status', 'searching')
+      .is('driver_id', null);
+
+    if (ridesError) throw ridesError;
+
+    if (!rides || rides.length === 0) {
+      return { data: [], error: null };
+    }
+
+    // Filter rides by distance
+    const nearbyRides = rides.filter(ride => {
+      const distance = getDistanceFromLatLonInKm(
+        driverLat,
+        driverLng,
+        ride.pickup_lat,
+        ride.pickup_lng
+      );
+      return distance <= radiusKm;
+    });
+
+    // Get passenger details for nearby rides
+    const ridesWithPassengers = await Promise.all(
+      nearbyRides.map(async (ride) => {
+        const { data: passenger } = await supabase
+          .from('profiles')
+          .select('name, avatar')
+          .eq('id', ride.passenger_id)
+          .single();
+
+        const distance = getDistanceFromLatLonInKm(
+          driverLat,
+          driverLng,
+          ride.pickup_lat,
+          ride.pickup_lng
+        );
+
+        return {
+          ...ride,
+          passenger: passenger || null,
+          distance_to_pickup: Number(distance.toFixed(1))
+        };
+      })
+    );
+
+    return { data: ridesWithPassengers, error: null };
+  } catch (error: any) {
+    console.error('Error getting nearby rides:', error);
+    return { data: [], error: error.message };
+  }
+};
+
+/**
+ * Accept a ride request
+ */
+export const acceptRideRequest = async (rideId: string, driverId: string) => {
+  try {
+    // First check if ride is still available
+    const { data: ride } = await supabase
+      .from('ride_requests')
+      .select('status')
+      .eq('id', rideId)
+      .single();
+
+    if (!ride || ride.status !== 'searching') {
+      return { success: false, error: 'This ride is no longer available' };
+    }
+
+    // Update ride status and assign driver
+    const { error } = await supabase
+      .from('ride_requests')
+      .update({
+        driver_id: driverId,
+        status: 'confirmed',
+        started_at: new Date().toISOString()
+      })
+      .eq('id', rideId)
+      .eq('status', 'searching');
+
+    if (error) throw error;
+    return { success: true, error: null };
+  } catch (error: any) {
+    console.error('Error accepting ride:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Update ride status
+ */
+export const updateRideStatus = async (
+  rideId: string,
+  status: 'confirmed' | 'in_progress' | 'completed' | 'cancelled',
+  additionalData: any = {}
+) => {
+  try {
+    const updateData = {
+      status,
+      ...additionalData
+    };
+
+    if (status === 'completed') {
+      updateData.completed_at = new Date().toISOString();
+    } else if (status === 'cancelled') {
+      updateData.cancelled_at = new Date().toISOString();
+    }
+
+    const { error } = await supabase
+      .from('ride_requests')
+      .update(updateData)
+      .eq('id', rideId);
+
+    if (error) throw error;
+    return { success: true, error: null };
+  } catch (error: any) {
+    console.error('Error updating ride status:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Subscribe to nearby ride requests
+ */
+export const subscribeToNearbyRides = (
+  callback: (ride: any) => void,
+  driverLocation: { latitude: number; longitude: number },
+  radiusKm: number = 5
+) => {
+  const channel = supabase
+    .channel('nearby_rides')
+    .on(
+      'postgres_changes',
+      {
+        event: '*', // Listen for all changes
+        schema: 'public',
+        table: 'rides',
+        filter: `status=eq.searching`
+      },
+      async (payload) => {
+        try {
+          if (payload.eventType === 'DELETE') return;
+
+          const newRide = payload.new;
+          
+          // Calculate distance to new ride
+          const distance = getDistanceFromLatLonInKm(
+            driverLocation.latitude,
+            driverLocation.longitude,
+            newRide.pickup_lat,
+            newRide.pickup_lng
+          );
+          
+          // Only notify if ride is within radius and not assigned to a driver
+          if (distance <= radiusKm && !newRide.driver_id) {
+            // Get passenger details
+            const { data: passenger } = await supabase
+              .from('profiles')
+              .select('name, avatar')
+              .eq('id', newRide.passenger_id)
+              .single();
+            
+            callback({
+              ...newRide,
+              distance_to_pickup: Number(distance.toFixed(1)),
+              passenger
+            });
+          }
+        } catch (error) {
+          console.error('Error processing ride update:', error);
+        }
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+};
+
+/**
+ * Calculate distance between two points in km using Haversine formula
+ */
+const getDistanceFromLatLonInKm = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+  const R = 6371; // Radius of the earth in km
+  const dLat = deg2rad(lat2 - lat1);
+  const dLon = deg2rad(lon2 - lon1);
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * 
+    Math.sin(dLon/2) * Math.sin(dLon/2); 
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+  return R * c;
+};
+
+const deg2rad = (deg: number): number => {
+  return deg * (Math.PI/180);
+};
+
+/**
+ * Create a new ride request in the rides table
+ */
+export const createNewRideRequest = async ({
+  passengerId,
+  pickupLocation,
+  dropoffLocation,
+  bidAmount,
+  vehicleType,
+  estimatedDistance,
+  estimatedDuration,
+  paymentMethod = 'cash'
+}: {
+  passengerId: string;
+  pickupLocation: Location;
+  dropoffLocation: Location;
+  bidAmount: number;
+  vehicleType: string;
+  estimatedDistance: number;
+  estimatedDuration: number;
+  paymentMethod?: string;
+}) => {
+  try {
+    // First validate the coordinates
+    if (!pickupLocation.coordinates || !dropoffLocation.coordinates) {
+      throw new Error('Invalid location coordinates');
+    }
+
+    const [pickupLng, pickupLat] = pickupLocation.coordinates;
+    const [dropoffLng, dropoffLat] = dropoffLocation.coordinates;
+
+    // Insert the ride request
+    const { data, error } = await supabase
+      .from('rides')
+      .insert({
+        passenger_id: passengerId,
+        pickup_location: {
+          name: pickupLocation.name,
+          address: pickupLocation.address,
+          coordinates: pickupLocation.coordinates
+        },
+        dropoff_location: {
+          name: dropoffLocation.name,
+          address: dropoffLocation.address,
+          coordinates: dropoffLocation.coordinates
+        },
+        pickup_lat: pickupLat,
+        pickup_lng: pickupLng,
+        dropoff_lat: dropoffLat,
+        dropoff_lng: dropoffLng,
+        bid_amount: bidAmount,
+        vehicle_type: vehicleType,
+        estimated_distance: estimatedDistance,
+        estimated_duration: estimatedDuration,
+        payment_method: paymentMethod,
+        status: 'searching',
+        created_at: new Date().toISOString()
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    // Set up real-time subscription for this ride
+    const channel = supabase
+      .channel(`ride_status:${data.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'rides',
+          filter: `id=eq.${data.id}`
+        },
+        (payload) => {
+          console.log('Ride status updated:', payload.new);
+        }
+      )
+      .subscribe();
+
+    return { data, error: null, unsubscribe: () => supabase.removeChannel(channel) };
+  } catch (error: any) {
+    console.error('Error creating ride request:', error);
+    return { data: null, error: error.message, unsubscribe: () => {} };
+  }
+};
+
+/**
+ * Update driver's online status and location
+ */
+export const updateDriverStatus = async (
+  driverId: string,
+  isOnline: boolean,
+  location?: { latitude: number; longitude: number }
+) => {
+  try {
+    const updateData: any = {
+      is_online: isOnline,
+      last_online: new Date().toISOString()
+    };
+
+    if (location) {
+      updateData.current_location = `POINT(${location.longitude} ${location.latitude})`;
+      updateData.last_location_update = new Date().toISOString();
+    }
+
+    const { error } = await supabase
+      .from('drivers')
+      .update(updateData)
+      .eq('id', driverId);
+
+    if (error) throw error;
+    return { success: true, error: null };
+  } catch (error: any) {
+    console.error('Error updating driver status:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Get nearby pending rides using PostGIS
+ */
+export const getNearbyPendingRides = async (
+  driverId: string,
+  location: { latitude: number; longitude: number },
+  radiusKm: number = 5
+) => {
+  try {
+    // First check if driver is online
+    const { data: driver, error: driverError } = await supabase
+      .from('drivers')
+      .select('is_online')
+      .eq('id', driverId)
+      .single();
+
+    if (driverError) throw driverError;
+
+    if (!driver?.is_online) {
+      return { data: [], error: 'Driver is offline' };
+    }
+
+    // Get nearby rides using PostGIS
+    const { data: rides, error: ridesError } = await supabase
+      .rpc('get_nearby_pending_rides', {
+        driver_lat: location.latitude,
+        driver_lng: location.longitude,
+        search_radius_km: radiusKm
+      });
+
+    if (ridesError) throw ridesError;
+
+    if (!rides || rides.length === 0) {
+      return { data: [], error: null };
+    }
+
+    // Get passenger details for each ride
+    const ridesWithDetails = await Promise.all(
+      rides.map(async (ride) => {
+        const { data: passenger } = await supabase
+          .from('profiles')
+          .select('id, name, avatar, rating')
+          .eq('id', ride.passenger_id)
+          .single();
+
+        return {
+          ...ride,
+          passenger: passenger || null,
+          distance_to_pickup: Number(ride.distance_to_pickup.toFixed(1))
+        };
+      })
+    );
+
+    return { data: ridesWithDetails, error: null };
+  } catch (error: any) {
+    console.error('Error getting nearby rides:', error);
+    return { data: [], error: error.message };
+  }
+};
+
+/**
+ * Subscribe to nearby pending rides
+ */
+export const subscribeToNearbyPendingRides = (
+  driverId: string,
+  location: { latitude: number; longitude: number },
+  callback: (rides: any[]) => void,
+  radiusKm: number = 5
+) => {
+  // Set up subscription for new ride requests
+  const channel = supabase
+    .channel('nearby_pending_rides')
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'rides',
+        filter: `status=eq.searching`
+      },
+      async () => {
+        // When changes occur, fetch the updated list of nearby rides
+        const { data, error } = await getNearbyPendingRides(driverId, location, radiusKm);
+        if (!error && data) {
+          callback(data);
+        }
+      }
+    )
+    .subscribe();
+
+  // Also set up subscription for driver status changes
+  const statusChannel = supabase
+    .channel(`driver_status:${driverId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'drivers',
+        filter: `id=eq.${driverId}`
+      },
+      async (payload) => {
+        const driver = payload.new;
+        if (!driver.is_online) {
+          callback([]); // Clear rides list when driver goes offline
+        } else {
+          // Refresh rides list when driver comes online
+          const { data, error } = await getNearbyPendingRides(driverId, location, radiusKm);
+          if (!error && data) {
+            callback(data);
+          }
+        }
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+    supabase.removeChannel(statusChannel);
+  };
+};
+
+/**
+ * Safely accept a ride request with race condition prevention
+ */
+export const acceptRideRequestSafe = async (
+  rideId: string,
+  driverId: string,
+  driverLocation: { latitude: number; longitude: number }
+) => {
+  try {
+    // First check if driver is online and eligible
+    const { data: driver, error: driverError } = await supabase
+      .from('drivers')
+      .select('is_online, current_status, vehicle_type')
+      .eq('id', driverId)
+      .single();
+
+    if (driverError) throw driverError;
+
+    if (!driver?.is_online) {
+      return { success: false, error: 'Driver must be online to accept rides' };
+    }
+
+    if (driver.current_status !== 'available') {
+      return { success: false, error: 'Driver must be available to accept new rides' };
+    }
+
+    // Begin transaction with row-level locking
+    const { data: ride, error: lockError } = await supabase
+      .from('rides')
+      .select('*')
+      .eq('id', rideId)
+      .eq('status', 'searching')
+      .is('driver_id', null)
+      .single();
+
+    if (lockError || !ride) {
+      return { success: false, error: 'This ride is no longer available' };
+    }
+
+    // Verify vehicle type matches
+    if (driver.vehicle_type !== ride.vehicle_type) {
+      return { 
+        success: false, 
+        error: `This ride requires a ${ride.vehicle_type} vehicle` 
+      };
+    }
+
+    // Update ride with driver information
+    const { error: updateError } = await supabase
+      .from('rides')
+      .update({
+        driver_id: driverId,
+        status: 'confirmed',
+        driver_assigned_at: new Date().toISOString(),
+        driver_location: {
+          latitude: driverLocation.latitude,
+          longitude: driverLocation.longitude,
+          updated_at: new Date().toISOString()
+        },
+        last_status_update: new Date().toISOString()
+      })
+      .eq('id', rideId)
+      .eq('status', 'searching') // Double-check status hasn't changed
+      .is('driver_id', null);    // Ensure no driver has been assigned
+
+    if (updateError) throw updateError;
+
+    // Update driver status
+    const { error: driverUpdateError } = await supabase
+      .from('drivers')
+      .update({
+        current_status: 'on_ride',
+        current_ride_id: rideId,
+        last_ride_accepted_at: new Date().toISOString()
+      })
+      .eq('id', driverId);
+
+    if (driverUpdateError) {
+      // Attempt to rollback ride assignment if driver update fails
+      await supabase
+        .from('rides')
+        .update({
+          driver_id: null,
+          status: 'searching',
+          driver_assigned_at: null,
+          driver_location: null
+        })
+        .eq('id', rideId);
+      
+      throw driverUpdateError;
+    }
+
+    // Get updated ride details with passenger info
+    const { data: updatedRide } = await supabase
+      .from('rides')
+      .select(`
+        *,
+        passengers:profiles!passenger_id (
+          id,
+          name,
+          avatar,
+          rating
+        )
+      `)
+      .eq('id', rideId)
+      .single();
+
+    return { 
+      success: true, 
+      error: null, 
+      ride: updatedRide 
+    };
+  } catch (error: any) {
+    console.error('Error accepting ride:', error);
+    return { 
+      success: false, 
+      error: error.message || 'Failed to accept ride', 
+      ride: null 
+    };
+  }
+}; 
