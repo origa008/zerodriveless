@@ -2,9 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, AlertCircle, Clock } from 'lucide-react';
+import { Loader2, AlertCircle, Clock, ArrowRight, MapPin } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { acceptRideRequest } from '@/lib/utils/rideUtils';
 
@@ -66,34 +65,34 @@ const RideRequests: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [rideRequests, setRideRequests] = useState<Ride[]>([]);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
-  const [driverProfile, setDriverProfile] = useState<DriverProfile | null>(null);
-  const [walletBalance, setWalletBalance] = useState<number>(0);
-  const [subscribed, setSubscribed] = useState(false);
   const [isRegistered, setIsRegistered] = useState<boolean>(false);
   const [registrationStatus, setRegistrationStatus] = useState<string>('');
+  const [walletBalance, setWalletBalance] = useState<number>(0);
 
   // Check driver registration status and wallet balance
   useEffect(() => {
     const checkDriverStatus = async () => {
       if (!user?.id) return;
       
+      setLoading(true);
+      
       try {
-        // Get driver profile
-        const { data: driverData, error: driverError } = await supabase
-          .from('driver_profiles')
+        // First check if user has submitted driver registration
+        const { data: driverDetails, error: driverError } = await supabase
+          .from('driver_details')
           .select('*')
           .eq('user_id', user.id)
           .single();
 
         if (driverError) {
           if (driverError.code !== 'PGRST116') { // Not found error
-            console.error("Error fetching driver profile:", driverError);
+            console.error("Error fetching driver details:", driverError);
           }
           setIsRegistered(false);
+          setRegistrationStatus('');
         } else {
-          setDriverProfile(driverData);
           setIsRegistered(true);
-          setRegistrationStatus(driverData.status);
+          setRegistrationStatus(driverDetails.status);
         }
 
         // Get wallet balance
@@ -154,10 +153,10 @@ const RideRequests: React.FC = () => {
   useEffect(() => {
     // Only proceed if:
     // 1. User location is available
-    // 2. User is registered (any status)
-    // 3. User has sufficient deposit
-    // 4. Not already subscribed
-    if (!userLocation || !isRegistered || walletBalance < 3000 || subscribed) return;
+    // 2. User is registered 
+    // 3. Registration status is approved
+    // 4. User has sufficient deposit
+    if (!userLocation || !isRegistered || registrationStatus !== 'approved' || walletBalance < 3000) return;
 
     const fetchNearbyRides = async () => {
       try {
@@ -169,11 +168,22 @@ const RideRequests: React.FC = () => {
           .from('rides')
           .select('*')
           .eq('status', 'searching')
-          .eq('vehicle_type', driverProfile?.vehicle_type || 'car')
-          .order('created_at', { ascending: false }) // Order by newest first
+          .order('created_at', { ascending: false }); // Order by newest first
         
         if (error) throw error;
-        setRideRequests(data || []);
+        
+        // Filter rides by distance and driver vehicle type
+        const filteredRides = data?.filter(ride => {
+          const distance = calculateDistance(
+            userLocation.lat,
+            userLocation.lng,
+            ride.pickup_lat,
+            ride.pickup_lng
+          );
+          return distance <= 10; // Only show rides within 10km
+        }) || [];
+        
+        setRideRequests(filteredRides);
       } catch (error: any) {
         console.error('Error fetching nearby rides:', error);
       }
@@ -189,7 +199,7 @@ const RideRequests: React.FC = () => {
         event: '*',
         schema: 'public',
         table: 'rides',
-        filter: `status=eq.searching AND vehicle_type=eq.${driverProfile?.vehicle_type || 'car'}`
+        filter: `status=eq.searching`
       }, (payload) => {
         if (payload.eventType === 'INSERT') {
           // Add new ride request to the list if within range
@@ -202,7 +212,7 @@ const RideRequests: React.FC = () => {
               newRide.pickup_lng
             );
             if (distance <= 10) { // 10km radius
-              setRideRequests(current => [...current, newRide]);
+              setRideRequests(current => [newRide, ...current]);
             }
           }
         } else if (payload.eventType === 'UPDATE') {
@@ -219,14 +229,11 @@ const RideRequests: React.FC = () => {
       })
       .subscribe();
 
-    setSubscribed(true);
-
     // Clean up subscription
     return () => {
       subscription.unsubscribe();
-      setSubscribed(false);
     };
-  }, [userLocation, isRegistered, driverProfile, walletBalance, subscribed]);
+  }, [userLocation, isRegistered, registrationStatus, walletBalance]);
 
   const handleAcceptRide = async (rideId: string) => {
     if (!user?.id || !userLocation || !isRegistered) return;
@@ -269,134 +276,154 @@ const RideRequests: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin" />
+      <div className="flex items-center justify-center min-h-screen bg-white">
+        <Loader2 className="h-8 w-8 animate-spin mr-2" />
+        <p>Loading...</p>
       </div>
     );
   }
 
-  // Show registration prompt if user is not registered as a driver
+  // Not registered, direct to OfficialDriver page
   if (!isRegistered) {
     return (
-      <Card className="m-4">
-        <CardContent className="p-6">
-          <h2 className="text-xl font-semibold mb-4">Driver Registration Required</h2>
-          <p className="mb-4">You need to complete your driver registration before you can accept rides.</p>
-          <Button onClick={() => navigate('/official-driver')} className="w-full">
-            Register as Driver
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="flex flex-col items-center justify-center min-h-screen bg-white p-6">
+        <AlertCircle className="h-16 w-16 text-red-500 mb-6" />
+        <h1 className="text-2xl font-bold text-center mb-3">Driver Registration Required</h1>
+        <p className="text-gray-600 text-center mb-6">
+          You need to complete your driver registration before you can access ride requests.
+        </p>
+        <Button onClick={() => navigate('/official-driver')} className="w-full max-w-xs">
+          Register as Driver
+          <ArrowRight className="ml-2 h-5 w-5" />
+        </Button>
+      </div>
+    );
+  }
+
+  // Application pending
+  if (registrationStatus === 'pending') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-white p-6">
+        <Clock className="h-16 w-16 text-amber-500 mb-6" />
+        <h1 className="text-2xl font-bold text-center mb-3">Application Under Review</h1>
+        <p className="text-gray-600 text-center mb-6">
+          Your driver registration is currently being reviewed by our team. 
+          This typically takes 1-2 business days.
+        </p>
+        <Button onClick={() => navigate('/')} variant="outline" className="w-full max-w-xs">
+          Return to Home
+        </Button>
+      </div>
+    );
+  }
+
+  // Application rejected
+  if (registrationStatus === 'rejected') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-white p-6">
+        <AlertCircle className="h-16 w-16 text-red-500 mb-6" />
+        <h1 className="text-2xl font-bold text-center mb-3">Application Rejected</h1>
+        <p className="text-gray-600 text-center mb-6">
+          Unfortunately, your driver registration application was not approved. 
+          Please contact our support team for more information.
+        </p>
+        <Button onClick={() => navigate('/official-driver')} className="w-full max-w-xs">
+          Update Application
+          <ArrowRight className="ml-2 h-5 w-5" />
+        </Button>
+      </div>
     );
   }
 
   // Show security deposit message if balance is insufficient
   if (walletBalance < 3000) {
     return (
-      <Card className="m-4">
-        <CardContent className="p-6">
-          <h2 className="text-xl font-semibold mb-4">Security Deposit Required</h2>
-          <p className="mb-4">Please add a minimum security deposit of RS 3000 to start accepting rides.</p>
-          <p className="text-sm text-gray-500 mb-4">Your current balance: RS {walletBalance}</p>
-          <Button onClick={() => navigate('/wallet')} className="w-full">
-            Add Funds
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="flex flex-col items-center justify-center min-h-screen bg-white p-6">
+        <AlertCircle className="h-16 w-16 text-amber-500 mb-6" />
+        <h1 className="text-2xl font-bold text-center mb-3">Security Deposit Required</h1>
+        <p className="text-gray-600 text-center mb-3">
+          Please add a minimum security deposit of RS 3000 to start accepting rides.
+        </p>
+        <p className="text-sm text-gray-500 mb-6">Your current balance: RS {walletBalance}</p>
+        <Button onClick={() => navigate('/wallet')} className="w-full max-w-xs">
+          Add Funds
+          <ArrowRight className="ml-2 h-5 w-5" />
+        </Button>
+      </div>
     );
   }
 
-  // Show pending approval message if registration status is pending
-  if (registrationStatus === 'pending') {
-    return (
-      <Card className="m-4">
-        <CardContent className="p-6 flex flex-col items-center">
-          <Clock className="h-16 w-16 text-amber-500 mb-4" />
-          <h2 className="text-xl font-semibold mb-4">Application Under Review</h2>
-          <p className="mb-4 text-center">
-            Your driver registration is currently being reviewed by our team. 
-            You'll be able to accept rides once approved.
-          </p>
-          <p className="text-sm text-gray-500 mb-4">
-            While you wait, you can browse available ride requests below.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  // Show rejection message if registration status is rejected
-  if (registrationStatus === 'rejected') {
-    return (
-      <Card className="m-4">
-        <CardContent className="p-6 flex flex-col items-center">
-          <AlertCircle className="h-16 w-16 text-red-500 mb-4" />
-          <h2 className="text-xl font-semibold mb-4">Application Rejected</h2>
-          <p className="mb-4 text-center">
-            Unfortunately, your driver registration application was not approved. 
-            Please review our driver requirements and apply again.
-          </p>
-          <Button onClick={() => navigate('/official-driver')} className="w-full">
-            Update Application
-          </Button>
-        </CardContent>
-      </Card>
-    );
-  }
-
+  // Main ride request list UI for approved drivers
   return (
-    <div className="p-4 pb-24">
-      <h1 className="text-2xl font-bold mb-6">Available Ride Requests</h1>
+    <div className="min-h-screen bg-white p-4 pb-24">
+      <h1 className="text-3xl font-bold mb-6">Ride Request</h1>
       
-      {rideRequests.length === 0 ? (
-        <div className="text-center py-12">
-          <p className="text-gray-500 mb-2">No ride requests available at the moment.</p>
-          <p className="text-sm text-gray-400">Requests will appear here automatically.</p>
-        </div>
-      ) : (
-        <div className="grid gap-4">
-          {rideRequests.map((ride) => (
-            <Card key={ride.id} className="overflow-hidden">
-              <CardContent className="p-0">
-                <div className="p-4">
-                  <div className="flex justify-between items-start mb-4">
-                    <div>
-                      <h3 className="font-semibold">
-                        Pickup: {typeof ride.pickup_location === 'object' ? ride.pickup_location.name : ride.pickup_location}
-                      </h3>
-                      <p className="text-gray-600">
-                        Dropoff: {typeof ride.dropoff_location === 'object' ? ride.dropoff_location.name : ride.dropoff_location}
-                      </p>
-                      <p className="text-sm text-gray-500 mt-1">Vehicle: {ride.vehicle_type}</p>
+      <div className="divide-y">
+        {rideRequests.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16">
+            <p className="text-gray-400 mb-2">No ride requests available</p>
+            <p className="text-sm text-gray-400">New requests will appear here automatically</p>
+          </div>
+        ) : (
+          rideRequests.map((ride) => (
+            <div key={ride.id} className="py-4">
+              <div className="flex flex-col">
+                <div className="flex justify-between items-start mb-6">
+                  <div className="space-y-4 flex-1">
+                    <div className="flex items-start">
+                      <div className="text-gray-400 mr-4 mt-1">
+                        <MapPin className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-gray-400 font-medium">
+                          {typeof ride.pickup_location === 'object' ? ride.pickup_location.name : ride.pickup_location}
+                        </h3>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <p className="font-semibold text-lg">RS {ride.bid_amount}</p>
-                      <p className="text-xs text-green-600 font-medium">Bid Amount</p>
-                      {userLocation && (
-                        <p className="text-sm text-gray-500">
-                          {calculateDistance(
-                            userLocation.lat,
-                            userLocation.lng,
-                            ride.pickup_lat,
-                            ride.pickup_lng
-                          ).toFixed(1)} km away
-                        </p>
-                      )}
+                    
+                    <div className="flex items-start">
+                      <div className="text-gray-900 mr-4 mt-1">
+                        <MapPin className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-gray-900 font-medium">
+                          {typeof ride.dropoff_location === 'object' ? ride.dropoff_location.name : ride.dropoff_location}
+                        </h3>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="text-right">
+                    <div className="mb-2">
+                      <h4 className="text-gray-500">Distance</h4>
+                      <p className="text-2xl font-bold">
+                        {userLocation ? calculateDistance(
+                          userLocation.lat,
+                          userLocation.lng,
+                          ride.pickup_lat,
+                          ride.pickup_lng
+                        ).toFixed(1) : "?"} km
+                      </p>
+                    </div>
+                    
+                    <div>
+                      <h4 className="text-gray-500">Price</h4>
+                      <p className="text-2xl font-bold">{ride.bid_amount}<span className="text-base ml-1">RS</span></p>
                     </div>
                   </div>
                 </div>
+                
                 <Button 
                   onClick={() => handleAcceptRide(ride.id)}
-                  className="w-full rounded-none py-4"
-                  disabled={registrationStatus !== 'approved'}
+                  className="w-full bg-black text-white hover:bg-gray-800 py-6 text-xl rounded-xl mt-2"
                 >
-                  {registrationStatus === 'approved' ? 'Accept Ride' : 'Awaiting Approval'}
+                  Accept
                 </Button>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 };
