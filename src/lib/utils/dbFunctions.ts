@@ -379,7 +379,7 @@ export const updateDriverStatus = async (
     const { error: detailsError } = await supabase
       .from('driver_details')
       .update({
-        current_status: isOnline ? 'available' : 'offline',
+        status: isOnline ? 'available' : 'offline',
         last_status_update: new Date().toISOString(),
         last_location: location ? {
           lat: location.latitude,
