@@ -241,9 +241,17 @@ export type Database = {
           email: string
           id: string
           is_verified_driver: boolean | null
+          is_online: boolean | null
+          current_location: {
+            latitude: number
+            longitude: number
+            updated_at: string
+          } | null
+          last_online: string | null
           name: string
           phone: string | null
           referral_code: string | null
+          rating: number | null
         }
         Insert: {
           address?: string | null
@@ -252,9 +260,17 @@ export type Database = {
           email: string
           id: string
           is_verified_driver?: boolean | null
+          is_online?: boolean | null
+          current_location?: {
+            latitude: number
+            longitude: number
+            updated_at: string
+          } | null
+          last_online?: string | null
           name: string
           phone?: string | null
           referral_code?: string | null
+          rating?: number | null
         }
         Update: {
           address?: string | null
@@ -263,9 +279,17 @@ export type Database = {
           email?: string
           id?: string
           is_verified_driver?: boolean | null
+          is_online?: boolean | null
+          current_location?: {
+            latitude: number
+            longitude: number
+            updated_at: string
+          } | null
+          last_online?: string | null
           name?: string
           phone?: string | null
           referral_code?: string | null
+          rating?: number | null
         }
         Relationships: []
       }

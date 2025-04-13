@@ -358,31 +358,63 @@ export const updateDriverStatus = async (
   location?: { latitude: number; longitude: number }
 ) => {
   try {
+    // First check if the driver is approved and has sufficient deposit
+    const { data: driverDetails, error: detailsError } = await supabase
+      .from('driver_details')
+      .select('status, has_sufficient_deposit')
+      .eq('user_id', driverId)
+      .single();
+
+    if (detailsError) throw detailsError;
+
+    if (!driverDetails || driverDetails.status !== 'approved') {
+      return { 
+        success: false, 
+        error: 'Driver must be approved to go online' 
+      };
+    }
+
+    if (!driverDetails.has_sufficient_deposit) {
+      return { 
+        success: false, 
+        error: 'Insufficient deposit balance to go online' 
+      };
+    }
+
+    // Update profile with online status and location
     const updateData: any = {
+      is_verified_driver: true,
       is_online: isOnline,
       last_online: new Date().toISOString()
     };
 
     if (location) {
-      updateData.current_location = `POINT(${location.longitude} ${location.latitude})`;
-      updateData.last_location_update = new Date().toISOString();
+      updateData.current_location = {
+        latitude: location.latitude,
+        longitude: location.longitude,
+        updated_at: new Date().toISOString()
+      };
     }
 
-    const { error } = await supabase
-      .from('drivers')
+    const { error: updateError } = await supabase
+      .from('profiles')
       .update(updateData)
       .eq('id', driverId);
 
-    if (error) throw error;
+    if (updateError) throw updateError;
+
     return { success: true, error: null };
   } catch (error: any) {
     console.error('Error updating driver status:', error);
-    return { success: false, error: error.message };
+    return { 
+      success: false, 
+      error: error.message || 'Failed to update driver status' 
+    };
   }
 };
 
 /**
- * Get nearby pending rides using PostGIS
+ * Get nearby pending rides
  */
 export const getNearbyPendingRides = async (
   driverId: string,
@@ -390,26 +422,43 @@ export const getNearbyPendingRides = async (
   radiusKm: number = 5
 ) => {
   try {
-    // First check if driver is online
-    const { data: driver, error: driverError } = await supabase
-      .from('drivers')
-      .select('is_online')
+    // First check if driver is approved and online
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('is_online, is_verified_driver')
       .eq('id', driverId)
       .single();
 
-    if (driverError) throw driverError;
+    if (profileError) throw profileError;
 
-    if (!driver?.is_online) {
-      return { data: [], error: 'Driver is offline' };
+    if (!profile?.is_verified_driver || !profile?.is_online) {
+      return { data: [], error: 'Driver must be approved and online' };
     }
 
-    // Get nearby rides using PostGIS
+    // Get driver's vehicle type
+    const { data: driverDetails, error: detailsError } = await supabase
+      .from('driver_details')
+      .select('vehicle_type')
+      .eq('user_id', driverId)
+      .single();
+
+    if (detailsError) throw detailsError;
+
+    // Get nearby rides using manual distance calculation
+    // In production, you should use PostGIS for better performance
     const { data: rides, error: ridesError } = await supabase
-      .rpc('get_nearby_pending_rides', {
-        driver_lat: location.latitude,
-        driver_lng: location.longitude,
-        search_radius_km: radiusKm
-      });
+      .from('ride_requests')
+      .select(`
+        *,
+        passenger:profiles!passenger_id (
+          id,
+          name,
+          avatar,
+          rating
+        )
+      `)
+      .eq('status', 'searching')
+      .is('driver_id', null);
 
     if (ridesError) throw ridesError;
 
@@ -417,27 +466,41 @@ export const getNearbyPendingRides = async (
       return { data: [], error: null };
     }
 
-    // Get passenger details for each ride
-    const ridesWithDetails = await Promise.all(
-      rides.map(async (ride) => {
-        const { data: passenger } = await supabase
-          .from('profiles')
-          .select('id, name, avatar, rating')
-          .eq('id', ride.passenger_id)
-          .single();
+    // Filter rides by distance and vehicle type
+    const nearbyRides = rides.filter(ride => {
+      // Check vehicle type match
+      if (ride.vehicle_type !== driverDetails.vehicle_type) {
+        return false;
+      }
 
-        return {
-          ...ride,
-          passenger: passenger || null,
-          distance_to_pickup: Number(ride.distance_to_pickup.toFixed(1))
-        };
-      })
-    );
+      // Calculate distance using the Haversine formula
+      const distance = getDistanceFromLatLonInKm(
+        location.latitude,
+        location.longitude,
+        ride.pickup_lat,
+        ride.pickup_lng
+      );
 
-    return { data: ridesWithDetails, error: null };
+      return distance <= radiusKm;
+    }).map(ride => ({
+      ...ride,
+      distance_to_pickup: Number(
+        getDistanceFromLatLonInKm(
+          location.latitude,
+          location.longitude,
+          ride.pickup_lat,
+          ride.pickup_lng
+        ).toFixed(1)
+      )
+    }));
+
+    return { data: nearbyRides, error: null };
   } catch (error: any) {
     console.error('Error getting nearby rides:', error);
-    return { data: [], error: error.message };
+    return { 
+      data: [], 
+      error: error.message || 'Failed to fetch nearby rides' 
+    };
   }
 };
 
