@@ -101,8 +101,8 @@ export const acceptRideRequest = async (
     
     // First check if ride is still available
     const { data: ride } = await supabase
-      .from('ride_requests')
-      .select('status')
+      .from('rides')
+      .select('status, bid_amount')
       .eq('id', rideId)
       .single();
     
@@ -115,10 +115,11 @@ export const acceptRideRequest = async (
     
     // Update ride status and assign driver
     const { error } = await supabase
-      .from('ride_requests')
+      .from('rides')
       .update({ 
         driver_id: driverId,
         status: 'confirmed',
+        price: ride.bid_amount, // Ensure price is set to bid_amount
         started_at: new Date().toISOString()
       })
       .eq('id', rideId)

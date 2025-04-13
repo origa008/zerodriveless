@@ -313,6 +313,7 @@ export const createNewRideRequest = async ({
         dropoff_lat: dropoffLat,
         dropoff_lng: dropoffLng,
         bid_amount: bidAmount,
+        price: bidAmount,
         vehicle_type: vehicleType,
         estimated_distance: estimatedDistance,
         estimated_duration: estimatedDuration,

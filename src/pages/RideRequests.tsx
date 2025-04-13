@@ -28,13 +28,22 @@ const deg2rad = (deg: number): number => {
 interface Ride {
   id: string;
   passenger_id: string;
-  pickup_location: string;
-  dropoff_location: string;
+  pickup_location: {
+    name: string;
+    address?: string;
+    coordinates: number[];
+  };
+  dropoff_location: {
+    name: string;
+    address?: string;
+    coordinates: number[];
+  };
   pickup_lat: number;
   pickup_lng: number;
   dropoff_lat: number;
   dropoff_lng: number;
   bid_amount: number;
+  price: number;
   vehicle_type: string;
   status: string;
   created_at: string;
@@ -128,15 +137,17 @@ const RideRequests: React.FC = () => {
 
     const fetchNearbyRides = async () => {
       try {
-        // Get nearby ride requests based on driver location
+        // If user location not available, can't fetch nearby rides
+        if (!userLocation) return;
+        
+        // Fetch nearby ride requests
         const { data, error } = await supabase
-          .rpc('get_nearby_rides', {
-            driver_lat: userLocation.lat,
-            driver_lng: userLocation.lng,
-            max_distance_km: 10, // 10km radius
-            vehicle_type: driverProfile.vehicle_type
-          });
-
+          .from('rides')
+          .select('*')
+          .eq('status', 'searching')
+          .eq('vehicle_type', driverProfile.vehicle_type)
+          .order('created_at', { ascending: false }) // Order by newest first
+        
         if (error) throw error;
         setRideRequests(data || []);
       } catch (error: any) {
@@ -278,12 +289,17 @@ const RideRequests: React.FC = () => {
                 <div className="p-4">
                   <div className="flex justify-between items-start mb-4">
                     <div>
-                      <h3 className="font-semibold">Pickup: {ride.pickup_location}</h3>
-                      <p className="text-gray-600">Dropoff: {ride.dropoff_location}</p>
+                      <h3 className="font-semibold">
+                        Pickup: {typeof ride.pickup_location === 'object' ? ride.pickup_location.name : ride.pickup_location}
+                      </h3>
+                      <p className="text-gray-600">
+                        Dropoff: {typeof ride.dropoff_location === 'object' ? ride.dropoff_location.name : ride.dropoff_location}
+                      </p>
                       <p className="text-sm text-gray-500 mt-1">Vehicle: {ride.vehicle_type}</p>
                     </div>
                     <div className="text-right">
                       <p className="font-semibold text-lg">RS {ride.bid_amount}</p>
+                      <p className="text-xs text-green-600 font-medium">Bid Amount</p>
                       {userLocation && (
                         <p className="text-sm text-gray-500">
                           {calculateDistance(

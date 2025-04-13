@@ -36,7 +36,8 @@ const RideProgress: React.FC = () => {
     isSearchingRides,
     userBid,
     setUserBid,
-    calculateBaseFare
+    calculateBaseFare,
+    confirmRide
   } = useRide();
   
   const [isProcessing, setIsProcessing] = useState(false);
@@ -298,15 +299,29 @@ const RideProgress: React.FC = () => {
     if (!estimate || !userBid) return;
     
     const paymentMethod = 'cash'; // Default to cash, can be changed if needed
-    navigate('/confirm-ride', { 
-      state: { 
-        distance: estimate.distance,
-        duration: estimate.duration,
-        baseFare: estimate.baseFare,
-        userBid: userBid,
-        paymentMethod: paymentMethod
-      } 
-    });
+    
+    // Instead of navigating to a non-existent route, directly call confirmRide
+    setIsProcessing(true);
+    
+    // Call the confirmRide function from the RideContext
+    confirmRide(paymentMethod)
+      .then(() => {
+        toast({
+          title: "Ride Confirmed",
+          description: "Waiting for a driver to accept your request",
+          duration: 5000
+        });
+      })
+      .catch((error) => {
+        toast({
+          title: "Error",
+          description: error.message || "Failed to confirm ride",
+          duration: 5000
+        });
+      })
+      .finally(() => {
+        setIsProcessing(false);
+      });
   };
 
   // Function to handle starting a ride
