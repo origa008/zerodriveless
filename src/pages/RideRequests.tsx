@@ -1,284 +1,322 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
-import { useRide } from '@/lib/context/RideContext';
 import { useAuth } from '@/lib/context/AuthContext';
-import ModeSwitcher from '@/components/shared/ModeSwitcher';
-import { Map, MapPin, Star, Wallet } from 'lucide-react';
-import { 
-  getNearbyPendingRides,
-  subscribeToNearbyPendingRides,
-  updateDriverStatus
-} from '@/lib/utils/dbFunctions';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Loader2 } from 'lucide-react';
 
-const RideRequests: React.FC = () => {
-  const navigate = useNavigate();
+interface RideRequest {
+  id: string;
+  pickup_location: {
+    name: string;
+    lat: number;
+    lng: number;
+  };
+  dropoff_location: {
+    name: string;
+    lat: number;
+    lng: number;
+  };
+  bid_amount: number;
+  distance_to_pickup: number;
+  estimated_distance: number;
+  estimated_duration: number;
+  passenger: {
+    name: string;
+    avatar?: string;
+  };
+}
+
+export default function RideRequests() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const { walletBalance } = useRide();
+  const navigate = useNavigate();
   
-  const [pendingRideRequests, setPendingRideRequests] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [driverLocation, setDriverLocation] = useState<{ latitude: number; longitude: number } | null>(null);
-  const [isOnline, setIsOnline] = useState(false);
-  const [locationWatchId, setLocationWatchId] = useState<number | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasDriverProfile, setHasDriverProfile] = useState(false);
+  const [walletBalance, setWalletBalance] = useState(0);
+  const [rideRequests, setRideRequests] = useState<RideRequest[]>([]);
+  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
 
-  // Initialize location tracking
+  // Check driver profile and wallet balance
   useEffect(() => {
-    const setupLocation = async () => {
+    if (!user?.id) return;
+
+    const checkDriverProfile = async () => {
       try {
-        if (!navigator.geolocation) {
-          throw new Error('Geolocation is not supported by your browser');
-        }
+        // Check if driver profile exists
+        const { data: profile } = await supabase
+          .from('driver_details')
+          .select('*')
+          .eq('user_id', user.id)
+          .single();
 
-        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 0
-          });
-        });
+        setHasDriverProfile(!!profile);
 
-        const newLocation = {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude
-        };
-        
-        setDriverLocation(newLocation);
+        // Get wallet balance
+        const { data: wallet } = await supabase
+          .from('wallets')
+          .select('balance')
+          .eq('user_id', user.id)
+          .single();
 
-        const watchId = navigator.geolocation.watchPosition(
-          (position) => {
-            const updatedLocation = {
-              latitude: position.coords.latitude,
-              longitude: position.coords.longitude
-            };
-            setDriverLocation(updatedLocation);
-          },
-          (error) => {
-            console.error('Location watch error:', error);
-            toast({
-              title: "Location Error",
-              description: "Unable to track your location. Please check your settings.",
-              duration: 5000
-            });
-          },
-          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-        );
-
-        setLocationWatchId(watchId);
-      } catch (error: any) {
-        console.error('Location setup error:', error);
-        toast({
-          title: "Location Error",
-          description: "Please enable location access to use the driver app.",
-          duration: 5000
-        });
+        setWalletBalance(wallet?.balance || 0);
+        setIsLoading(false);
+      } catch (error) {
+        console.error('Error checking driver profile:', error);
+        setIsLoading(false);
       }
     };
 
-    if (user?.id) {
-      setupLocation();
-    }
-
-    return () => {
-      if (locationWatchId !== null) {
-        navigator.geolocation.clearWatch(locationWatchId);
-      }
-    };
+    checkDriverProfile();
   }, [user?.id]);
 
-  // Subscribe to nearby rides when online
+  // Get user's location and subscribe to nearby rides
   useEffect(() => {
-    if (!user?.id || !isOnline || !driverLocation) return;
+    if (!user?.id || !hasDriverProfile || walletBalance < 3000) return;
 
-    const unsubscribe = subscribeToNearbyPendingRides(
-      user.id,
-      driverLocation,
-      (rides) => {
-        setPendingRideRequests(rides);
-        if (rides.length > pendingRideRequests.length) {
-          toast({
-            title: "New Ride Request",
-            description: "New ride requests are available nearby",
-            duration: 3000
+    // Get user's location
+    if (navigator.geolocation) {
+      navigator.geolocation.watchPosition(
+        (position) => {
+          setUserLocation({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
           });
-        }
-      },
-      5 // 5km radius
-    );
-
-    return () => {
-      unsubscribe();
-    };
-  }, [user?.id, isOnline, driverLocation]);
-
-  const toggleOnlineStatus = async () => {
-    if (!user?.id) {
-      toast({
-        title: "Error",
-        description: "You must be logged in to go online",
-        duration: 3000
-      });
-      return;
+        },
+        (error) => {
+          console.error('Error getting location:', error);
+          toast({
+            title: 'Location Error',
+            description: 'Please enable location services to receive ride requests.',
+            duration: 5000
+          });
+        },
+        { enableHighAccuracy: true }
+      );
     }
 
-    if (!driverLocation) {
-      toast({
-        title: "Location Required",
-        description: "Please ensure location access is enabled and try again",
-        duration: 3000
-      });
-      return;
-    }
+    // Subscribe to real-time ride requests
+    if (userLocation) {
+      const channel = supabase
+        .channel('nearby_rides')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'rides',
+            filter: `status=eq.searching`
+          },
+          async (payload) => {
+            if (payload.eventType === 'DELETE') return;
 
-    // Check wallet balance
-    if (walletBalance < 3000) {
-      toast({
-        title: "Insufficient Security Deposit",
-        description: "Please add RS 3,000 to your wallet as security deposit to start accepting rides",
-        duration: 5000
-      });
-      navigate('/wallet');
-      return;
+            const newRide = payload.new;
+            const distance = calculateDistance(
+              userLocation.latitude,
+              userLocation.longitude,
+              newRide.pickup_lat,
+              newRide.pickup_lng
+            );
+
+            // Only show rides within 5km
+            if (distance <= 5) {
+              const { data: passenger } = await supabase
+                .from('profiles')
+                .select('name, avatar')
+                .eq('id', newRide.passenger_id)
+                .single();
+
+              const formattedRide = {
+                ...newRide,
+                distance_to_pickup: Number(distance.toFixed(1)),
+                passenger
+              };
+
+              setRideRequests(prev => {
+                const exists = prev.some(r => r.id === formattedRide.id);
+                if (!exists) {
+                  return [...prev, formattedRide];
+                }
+                return prev;
+              });
+            }
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
     }
+  }, [user?.id, hasDriverProfile, walletBalance, userLocation]);
+
+  const handleAcceptRide = async (rideId: string) => {
+    if (!user?.id || !userLocation) return;
 
     try {
-      const newStatus = !isOnline;
-      const { success, error } = await updateDriverStatus(
-        user.id,
-        newStatus,
-        driverLocation
-      );
+      const { error } = await supabase
+        .from('rides')
+        .update({
+          driver_id: user.id,
+          status: 'confirmed',
+          driver_location: userLocation
+        })
+        .eq('id', rideId)
+        .eq('status', 'searching')
+        .is('driver_id', null);
 
-      if (!success || error) {
-        throw new Error(error || "Failed to update status");
-      }
+      if (error) throw error;
 
-      setIsOnline(newStatus);
-      
       toast({
-        title: newStatus ? "You're Online" : "You're Offline",
-        description: newStatus 
-          ? "You can now receive ride requests" 
-          : "You won't receive any ride requests",
+        title: 'Success',
+        description: 'Ride accepted successfully!',
         duration: 3000
       });
 
-      if (!newStatus) {
-        setPendingRideRequests([]);
-      }
-    } catch (error: any) {
-      console.error("Error toggling online status:", error);
+      // Remove the accepted ride from the list
+      setRideRequests(prev => prev.filter(r => r.id !== rideId));
+
+      // Navigate to ride details
+      navigate(`/rides/${rideId}`);
+    } catch (error) {
+      console.error('Error accepting ride:', error);
       toast({
-        title: "Error",
-        description: error.message || "Failed to update status",
-        duration: 5000
+        title: 'Error',
+        description: 'Failed to accept ride. Please try again.',
+        duration: 3000
       });
     }
   };
 
-  return (
-    <div className="min-h-screen bg-gray-50 pb-20">
-      <div className="bg-white p-6 relative">
-        <ModeSwitcher isDriverEligible={true} />
-        <div className="flex justify-between mt-2">
-          <h1 className="text-2xl font-bold">Ride Requests</h1>
-          <div className="text-right">
-            <div className="flex items-center justify-end">
-              <Star className="text-yellow-500 mr-1" size={16} />
-              <span className="text-gray-700">{user?.rating || 5.0}</span>
-            </div>
-            <div className="text-sm text-gray-500">Balance: RS {walletBalance}</div>
-          </div>
-        </div>
-        <div className="mt-4">
-          <Button
-            onClick={toggleOnlineStatus}
-            className={isOnline ? "bg-green-500" : "bg-gray-500"}
-            disabled={!driverLocation}
-          >
-            {!driverLocation ? "Waiting for location..." : (isOnline ? "Online" : "Offline")}
-          </Button>
-        </div>
+  // Helper function to calculate distance using Haversine formula
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const R = 6371; // Earth's radius in km
+    const dLat = deg2rad(lat2 - lat1);
+    const dLon = deg2rad(lon2 - lon1);
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * 
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  };
+
+  const deg2rad = (deg: number): number => {
+    return deg * (Math.PI/180);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin" />
       </div>
+    );
+  }
+
+  if (!hasDriverProfile) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center p-4">
+        <Card className="w-full max-w-md">
+          <CardContent className="pt-6">
+            <h2 className="mb-4 text-2xl font-bold">Driver Registration Required</h2>
+            <p className="mb-6 text-gray-600">
+              You need to complete your driver registration before you can accept rides.
+            </p>
+            <Button 
+              className="w-full" 
+              onClick={() => navigate('/driver-registration')}
+            >
+              Register as Driver
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (walletBalance < 3000) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center p-4">
+        <Card className="w-full max-w-md">
+          <CardContent className="pt-6">
+            <h2 className="mb-4 text-2xl font-bold">Security Deposit Required</h2>
+            <p className="mb-2 text-gray-600">
+              You need to maintain a minimum balance of RS 3,000 as security deposit.
+            </p>
+            <p className="mb-6 text-gray-600">
+              Current balance: RS {walletBalance}
+            </p>
+            <Button 
+              className="w-full" 
+              onClick={() => navigate('/wallet')}
+            >
+              Add Money to Wallet
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="container mx-auto p-4">
+      <h1 className="mb-6 text-2xl font-bold">Available Ride Requests</h1>
       
-      <div className="p-4">
-        {isLoading ? (
-          <div className="flex justify-center py-8">
-            <div className="animate-spin h-8 w-8 border-4 border-violet-500 border-t-transparent rounded-full"></div>
-          </div>
-        ) : !isOnline ? (
-          <div className="text-center py-10 bg-white rounded-lg shadow-sm">
-            <p className="text-gray-700 text-lg">Go online to see ride requests</p>
-          </div>
-        ) : pendingRideRequests.length === 0 ? (
-          <div className="text-center py-10 bg-white rounded-lg shadow-sm">
-            <p className="text-gray-700 text-lg">No ride requests available at the moment</p>
-            <p className="text-gray-500 mt-2">Check back later for new requests</p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {pendingRideRequests.map((request) => (
-              <div key={request.id} className="bg-white rounded-lg shadow-sm overflow-hidden">
-                <div className="p-5">
-                  <div className="flex justify-between">
-                    <div className="flex items-center space-x-2">
-                      <Map className="text-gray-500" size={16} />
-                      <span className="font-medium">{request.distance_to_pickup.toFixed(1)} km away</span>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-gray-500 text-sm">Estimate</div>
-                      <div className="font-bold">{Math.round(request.estimated_duration)} mins</div>
-                    </div>
+      {rideRequests.length === 0 ? (
+        <div className="flex h-[60vh] items-center justify-center">
+          <p className="text-gray-500">No ride requests available at the moment...</p>
+        </div>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {rideRequests.map((ride) => (
+            <Card key={ride.id} className="overflow-hidden">
+              <CardContent className="p-6">
+                <div className="mb-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold">RS {ride.bid_amount}</h3>
+                    <span className="text-sm text-gray-500">
+                      {ride.distance_to_pickup}km away
+                    </span>
                   </div>
                   
-                  <div className="border-t border-b border-gray-200 py-4 my-4 space-y-4">
-                    <div className="flex items-start">
-                      <div className="mt-1 mr-3 bg-emerald-100 p-1 rounded-full">
-                        <MapPin className="text-emerald-700" size={14} />
-                      </div>
+                  <div className="mt-4 space-y-2">
+                    <div className="flex items-start space-x-2">
+                      <div className="mt-1 h-2 w-2 rounded-full bg-blue-500" />
                       <div>
-                        <div className="text-sm font-medium">Pickup</div>
-                        <div className="text-gray-600">{request.pickup_location.name}</div>
+                        <p className="text-sm font-medium">Pickup</p>
+                        <p className="text-sm text-gray-500">{ride.pickup_location.name}</p>
                       </div>
                     </div>
                     
-                    <div className="flex items-start">
-                      <div className="mt-1 mr-3 bg-red-100 p-1 rounded-full">
-                        <MapPin className="text-red-700" size={14} />
-                      </div>
+                    <div className="flex items-start space-x-2">
+                      <div className="mt-1 h-2 w-2 rounded-full bg-green-500" />
                       <div>
-                        <div className="text-sm font-medium">Dropoff</div>
-                        <div className="text-gray-600">{request.dropoff_location.name}</div>
+                        <p className="text-sm font-medium">Dropoff</p>
+                        <p className="text-sm text-gray-500">{ride.dropoff_location.name}</p>
                       </div>
                     </div>
                   </div>
-                  
-                  <div className="flex justify-between items-center mt-4">
-                    <div>
-                      <div className="text-gray-500">Bid Amount</div>
-                      <div className="text-2xl font-bold">RS {request.estimated_price}</div>
-                      <div className="text-xs text-green-600">
-                        Earn RS {Math.round(request.estimated_price * 0.8)}
-                      </div>
-                    </div>
-                    
-                    <Button 
-                      className="bg-black text-white px-6 py-2 rounded-full"
-                      onClick={() => navigate(`/ride/${request.id}`)}
-                    >
-                      View Details
-                    </Button>
+
+                  <div className="mt-4 flex items-center justify-between text-sm text-gray-500">
+                    <span>{ride.estimated_distance}km total</span>
+                    <span>~{ride.estimated_duration} mins</span>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+
+                <Button 
+                  className="w-full"
+                  onClick={() => handleAcceptRide(ride.id)}
+                >
+                  Accept Ride
+                </Button>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
-};
-
-export default RideRequests;
+}
