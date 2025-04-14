@@ -4,17 +4,24 @@ import { Database } from '@/integrations/supabase/types'
 // Types for ride request status and data
 type RideStatus = 'searching' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled'
 
-interface RideRequest {
+export interface RideRequest {
   id: string
   passenger_id: string
-  driver_id?: string
-  pickup_location: { lat: number; lng: number }
-  dropoff_location: { lat: number; lng: number }
-  status: RideStatus
+  driver_id?: string | null
+  pickup_location: any
+  dropoff_location: any
+  ride_option: any
+  status: 'searching' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled'
+  ride_column: number
+  currency: string
+  distance: number
+  duration: number
+  start_time?: string
+  end_time?: string
+  payment_method: string
   created_at: string
-  started_at?: string
-  completed_at?: string
-  cancelled_at?: string
+  bid_amount?: number
+  passenger?: any
 }
 
 // Create a new ride request
@@ -64,26 +71,44 @@ export async function getNearbyRideRequests(
 }
 
 // Accept a ride request
-export async function acceptRideRequest(
-  rideRequestId: string,
-  driverId: string
-): Promise<boolean> {
-  const { error } = await supabase
-    .from('ride_requests')
-    .update({
-      driver_id: driverId,
-      status: 'confirmed' as RideStatus,
-    })
-    .eq('id', rideRequestId)
-    .eq('status', 'searching')
+export const acceptRideRequest = async (
+  rideId: string,
+  driverId: string,
+  location?: { latitude: number; longitude: number }
+): Promise<{ success: boolean; error?: string }> => {
+  try {
+    // Check if ride is still available
+    const { data: ride, error: rideError } = await supabase
+      .from('rides')
+      .select('*')
+      .eq('id', rideId)
+      .eq('status', 'searching')
+      .is('driver_id', null)
+      .single();
 
-  if (error) {
-    console.error('Error accepting ride request:', error)
-    return false
+    if (rideError || !ride) {
+      return { success: false, error: 'This ride is no longer available' };
+    }
+
+    // Update ride with driver info
+    const { error } = await supabase
+      .from('rides')
+      .update({
+        driver_id: driverId,
+        status: 'confirmed',
+        start_time: new Date().toISOString(),
+        driver_location: location
+      })
+      .eq('id', rideId);
+
+    if (error) throw error;
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error accepting ride:', error);
+    return { success: false, error: error.message };
   }
-
-  return true
-}
+};
 
 // Start a ride
 export async function startRide(rideRequestId: string): Promise<boolean> {
@@ -91,7 +116,7 @@ export async function startRide(rideRequestId: string): Promise<boolean> {
     .from('ride_requests')
     .update({
       status: 'in_progress' as RideStatus,
-      started_at: new Date().toISOString(),
+      start_time: new Date().toISOString(),
     })
     .eq('id', rideRequestId)
     .eq('status', 'confirmed')
@@ -105,46 +130,50 @@ export async function startRide(rideRequestId: string): Promise<boolean> {
 }
 
 // Complete a ride
-export async function completeRide(rideRequestId: string): Promise<boolean> {
-  const { error } = await supabase
-    .from('ride_requests')
-    .update({
-      status: 'completed' as RideStatus,
-      completed_at: new Date().toISOString(),
-    })
-    .eq('id', rideRequestId)
-    .eq('status', 'in_progress')
+export const completeRide = async (
+  rideId: string
+): Promise<{ success: boolean; error?: string }> => {
+  try {
+    const { error } = await supabase
+      .from('rides')
+      .update({
+        status: 'completed',
+        end_time: new Date().toISOString()
+      })
+      .eq('id', rideId);
 
-  if (error) {
-    console.error('Error completing ride:', error)
-    return false
+    if (error) throw error;
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error completing ride:', error);
+    return { success: false, error: error.message };
   }
-
-  return true
-}
+};
 
 // Cancel a ride
-export async function cancelRide(
-  rideRequestId: string,
+export const cancelRide = async (
+  rideId: string,
   reason?: string
-): Promise<boolean> {
-  const { error } = await supabase
-    .from('ride_requests')
-    .update({
-      status: 'cancelled' as RideStatus,
-      cancelled_at: new Date().toISOString(),
-      cancellation_reason: reason,
-    })
-    .eq('id', rideRequestId)
-    .not('status', 'in', ['completed', 'cancelled'])
+): Promise<{ success: boolean; error?: string }> => {
+  try {
+    const { error } = await supabase
+      .from('rides')
+      .update({
+        status: 'cancelled',
+        end_time: new Date().toISOString(),
+        cancellation_reason: reason || 'Cancelled by user'
+      })
+      .eq('id', rideId);
 
-  if (error) {
-    console.error('Error cancelling ride:', error)
-    return false
+    if (error) throw error;
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error cancelling ride:', error);
+    return { success: false, error: error.message };
   }
-
-  return true
-}
+};
 
 // Subscribe to ride request updates
 export function subscribeToRideRequests(

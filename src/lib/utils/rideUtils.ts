@@ -356,7 +356,7 @@ export const completeRideAndProcessPayment = async (rideId: string): Promise<{ s
       await processWalletPayment(
         ride.passenger_id,
         ride.driver_id,
-        ride.price,
+        ride.ride_column, // Use ride_column instead of price
         rideId
       );
     }

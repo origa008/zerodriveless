@@ -70,8 +70,8 @@ const RideProgress: React.FC = () => {
           
           // Set estimate based on the actual ride data
           setEstimate({
-            distance: data.estimated_distance || 0,
-            duration: data.estimated_duration || 0,
+            distance: data.distance || 0,
+            duration: data.duration || 0,
             baseFare: data.bid_amount || 0
           });
         }
@@ -240,8 +240,8 @@ const RideProgress: React.FC = () => {
     status: rideDetails.status,
     price: rideDetails.bid_amount,
     currency: "RS",
-    distance: rideDetails.estimated_distance,
-    duration: rideDetails.estimated_duration,
+    distance: rideDetails.distance,
+    duration: rideDetails.duration,
     paymentMethod: rideDetails.payment_method
   } : (localRide || currentRide);
 
@@ -263,7 +263,7 @@ const RideProgress: React.FC = () => {
         .from('rides')
         .update({
           status: 'completed',
-          completed_at: new Date().toISOString()
+          end_time: new Date().toISOString()
         })
         .eq('id', displayRide.id);
       
@@ -335,7 +335,7 @@ const RideProgress: React.FC = () => {
         .from('rides')
         .update({
           status: 'in_progress',
-          started_at: new Date().toISOString()
+          start_time: new Date().toISOString()
         })
         .eq('id', displayRide.id);
       
@@ -373,7 +373,7 @@ const RideProgress: React.FC = () => {
         .from('rides')
         .update({
           status: 'cancelled',
-          cancelled_at: new Date().toISOString(),
+          end_time: new Date().toISOString(),
           cancellation_reason: 'Cancelled by driver'
         })
         .eq('id', displayRide.id);
@@ -430,7 +430,7 @@ const RideProgress: React.FC = () => {
                 <p className="text-sm text-gray-500">Distance</p>
                 <p className="font-semibold">
                   {rideDetails ? 
-                    `${rideDetails.estimated_distance.toFixed(1)} km` : 
+                    `${rideDetails.distance.toFixed(1)} km` : 
                     `${estimate?.distance.toFixed(1)} km`
                   }
                 </p>
@@ -439,7 +439,7 @@ const RideProgress: React.FC = () => {
                 <p className="text-sm text-gray-500">Time</p>
                 <p className="font-semibold">
                   {rideDetails ? 
-                    `${rideDetails.estimated_duration} mins` : 
+                    `${rideDetails.duration} mins` : 
                     `${estimate?.duration} mins`
                   }
                 </p>

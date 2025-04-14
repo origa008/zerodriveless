@@ -175,13 +175,13 @@ export const updateRideStatus = async (
     };
 
     if (status === 'completed') {
-      updateData.completed_at = new Date().toISOString();
+      updateData.end_time = new Date().toISOString();
     } else if (status === 'cancelled') {
-      updateData.cancelled_at = new Date().toISOString();
+      updateData.end_time = new Date().toISOString();
     }
 
     const { error } = await supabase
-      .from('ride_requests')
+      .from('rides')
       .update(updateData)
       .eq('id', rideId);
 
@@ -323,11 +323,16 @@ export const createNewRideRequest = async ({
           address: dropoffLocation.address,
           coordinates: dropoffLocation.coordinates
         },
+        ride_option: {
+          name: vehicleType,
+          type: vehicleType,
+          basePrice: bidAmount
+        },
         bid_amount: bidAmount,
-        price: bidAmount,
-        vehicle_type: vehicleType,
-        estimated_distance: estimatedDistance,
-        estimated_duration: estimatedDuration,
+        ride_column: bidAmount, // Use ride_column instead of price
+        currency: 'RS',
+        distance: estimatedDistance,
+        duration: estimatedDuration,
         payment_method: paymentMethod,
         status: 'searching',
         created_at: new Date().toISOString()
@@ -553,49 +558,27 @@ export const updateDriverStatus = async (
 };
 
 /**
- * Get nearby pending rides
+ * Get nearby pending rides for a driver
  */
 export const getNearbyPendingRides = async (
   driverId: string,
   location: { latitude: number; longitude: number },
   radiusKm: number = 5
-) => {
+): Promise<{ data: any[]; error: string | null }> => {
   try {
-    // First check if driver is approved and online
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('is_online, is_verified_driver')
-      .eq('id', driverId)
-      .single();
-
-    if (profileError) throw profileError;
-
-    if (!profile?.is_verified_driver || !profile?.is_online) {
-      return { data: [], error: 'Driver must be approved and online' };
-    }
-
-    // Get driver's vehicle type
-    const { data: driverDetails, error: detailsError } = await supabase
+    // Get driver details
+    const { data: driverDetails, error: driverError } = await supabase
       .from('driver_details')
-      .select('vehicle_type')
+      .select('*')
       .eq('user_id', driverId)
       .single();
 
-    if (detailsError) throw detailsError;
+    if (driverError) throw driverError;
 
-    // Get nearby rides using manual distance calculation
-    // In production, you should use PostGIS for better performance
+    // Get all available ride requests
     const { data: rides, error: ridesError } = await supabase
-      .from('ride_requests')
-      .select(`
-        *,
-        passenger:profiles!passenger_id (
-          id,
-          name,
-          avatar,
-          rating
-        )
-      `)
+      .from('rides')
+      .select('*')
       .eq('status', 'searching')
       .is('driver_id', null);
 
@@ -607,8 +590,8 @@ export const getNearbyPendingRides = async (
 
     // Filter rides by distance and vehicle type
     const nearbyRides = rides.filter(ride => {
-      // Check vehicle type match
-      if (ride.vehicle_type !== driverDetails.vehicle_type) {
+      // Check vehicle type match - get type from ride_option
+      if (!ride.ride_option?.name || ride.ride_option.name.toLowerCase() !== driverDetails.vehicle_type) {
         return false;
       }
 
@@ -775,7 +758,7 @@ export const acceptRideRequestSafe = async (
 
     // Begin transaction with row-level locking
     const { data: ride, error: lockError } = await supabase
-      .from('ride_requests')
+      .from('rides')
       .select('*')
       .eq('id', rideId)
       .eq('status', 'searching')
@@ -787,20 +770,20 @@ export const acceptRideRequestSafe = async (
     }
 
     // Verify vehicle type matches
-    if (driverDetails.vehicle_type !== ride.vehicle_type) {
+    if (driverDetails.vehicle_type !== ride.ride_option?.name?.toLowerCase()) {
       return { 
         success: false, 
-        error: `This ride requires a ${ride.vehicle_type} vehicle` 
+        error: `This ride requires a ${ride.ride_option?.name || 'compatible'} vehicle` 
       };
     }
 
     // Update ride with driver information
     const { error: updateError } = await supabase
-      .from('ride_requests')
+      .from('rides')
       .update({
         driver_id: driverId,
         status: 'confirmed',
-        started_at: new Date().toISOString(),
+        start_time: new Date().toISOString(),
         driver_location: {
           latitude: driverLocation.latitude,
           longitude: driverLocation.longitude,
@@ -826,11 +809,11 @@ export const acceptRideRequestSafe = async (
     if (driverUpdateError) {
       // Attempt to rollback ride assignment if driver update fails
       await supabase
-        .from('ride_requests')
+        .from('rides')
         .update({
           driver_id: null,
           status: 'searching',
-          started_at: null,
+          start_time: null,
           driver_location: null
         })
         .eq('id', rideId);
@@ -840,7 +823,7 @@ export const acceptRideRequestSafe = async (
 
     // Get updated ride details with passenger info
     const { data: updatedRide, error: rideError } = await supabase
-      .from('ride_requests')
+      .from('rides')
       .select(`
         *,
         passenger:profiles!passenger_id (

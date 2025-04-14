@@ -39,11 +39,15 @@ interface Ride {
     address?: string;
     coordinates: number[];
   };
+  ride_option: {
+    name: string;
+    type: string;
+    basePrice: number;
+  };
   bid_amount: number;
-  price: number;
-  vehicle_type: string;
-  estimated_distance: number;
-  estimated_duration: number;
+  ride_column: number; // Using ride_column instead of price
+  distance: number;
+  duration: number;
   status: string;
   created_at: string;
   payment_method: string;
@@ -70,11 +74,11 @@ const RideCard = ({ ride, onAccept }: { ride: Ride; onAccept: (ride: Ride) => vo
               {formatCurrency(ride.bid_amount)}
             </h3>
             <p className="text-sm text-gray-500">
-              {ride.estimated_distance.toFixed(1)}km • {formatDuration(ride.estimated_duration)}
+              {ride.distance.toFixed(1)}km • {formatDuration(ride.duration)}
             </p>
           </div>
           <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded">
-            {ride.vehicle_type}
+            {ride.ride_option?.name || 'Vehicle'}
           </span>
         </div>
         
