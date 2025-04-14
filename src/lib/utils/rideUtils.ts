@@ -100,15 +100,15 @@ export const acceptRideRequest = async (
     const { data: { user } } = await supabase.auth.getUser();
     
     // Check if driver is approved
-    const { data: driverProfile, error: driverError } = await supabase
-      .from('driver_profiles')
-      .select('status')
+    const { data: driverDetails, error: driverError } = await supabase
+      .from('driver_details')
+      .select('status, vehicle_type')
       .eq('user_id', driverId)
       .single();
     
     if (driverError) throw driverError;
     
-    if (!driverProfile || driverProfile.status !== 'approved') {
+    if (!driverDetails || driverDetails.status !== 'approved') {
       return { 
         success: false, 
         error: 'Your driver account must be approved to accept rides' 
@@ -129,14 +129,25 @@ export const acceptRideRequest = async (
       };
     }
     
+    // Get driver profile information to include with the ride
+    const { data: driverProfile } = await supabase
+      .from('profiles')
+      .select('name, avatar')
+      .eq('id', driverId)
+      .single();
+    
     // Update ride status and assign driver
     const { error } = await supabase
       .from('rides')
       .update({ 
         driver_id: driverId,
+        driver_email: user?.email || null,
+        driver_name: driverProfile?.name || 'Driver',
+        driver_avatar: driverProfile?.avatar || null,
+        driver_vehicle_type: driverDetails.vehicle_type,
         status: 'confirmed',
         price: ride.bid_amount, // Ensure price is set to bid_amount
-        started_at: new Date().toISOString()
+        confirmed_at: new Date().toISOString()
       })
       .eq('id', rideId)
       .eq('status', 'searching');

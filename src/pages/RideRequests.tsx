@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2, AlertCircle, Clock, ArrowRight, MapPin } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { acceptRideRequest } from '@/lib/utils/rideUtils';
+import { FaMapMarkerAlt, FaFlag } from 'react-icons/fa';
 
 // Simple distance calculation using Haversine formula
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
@@ -27,6 +28,7 @@ const deg2rad = (deg: number): number => {
 interface Ride {
   id: string;
   passenger_id: string;
+  passenger_email?: string;
   pickup_location: {
     name: string;
     address?: string;
@@ -44,8 +46,12 @@ interface Ride {
   bid_amount: number;
   price: number;
   vehicle_type: string;
+  estimated_distance: number;
+  estimated_duration: number;
   status: string;
   created_at: string;
+  payment_method: string;
+  currency?: string;
 }
 
 interface DriverProfile {
@@ -56,6 +62,79 @@ interface DriverProfile {
   license_plate: string;
   created_at: string;
 }
+
+// Component to display a single ride request card
+const RideCard = ({ ride, onAccept }: { ride: Ride; onAccept: (ride: Ride) => void }) => {
+  return (
+    <div className="bg-white rounded-xl shadow-md overflow-hidden mb-4 border border-gray-200">
+      <div className="p-4">
+        <div className="flex justify-between items-start mb-3">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">
+              {formatCurrency(ride.bid_amount)}
+            </h3>
+            <p className="text-sm text-gray-500">
+              {ride.estimated_distance.toFixed(1)}km • {formatDuration(ride.estimated_duration)}
+            </p>
+          </div>
+          <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded">
+            {ride.vehicle_type}
+          </span>
+        </div>
+        
+        <div className="space-y-3 mb-4">
+          <div className="flex items-start">
+            <div className="flex-shrink-0 w-8 flex justify-center">
+              <div className="h-6 w-6 rounded-full bg-green-500 flex items-center justify-center">
+                <FaMapMarkerAlt className="text-white text-xs" />
+              </div>
+            </div>
+            <div className="ml-2">
+              <p className="text-sm font-medium text-gray-900">Pickup</p>
+              <p className="text-sm text-gray-600">{ride.pickup_location.name}</p>
+            </div>
+          </div>
+          
+          <div className="flex items-start">
+            <div className="flex-shrink-0 w-8 flex justify-center">
+              <div className="h-6 w-6 rounded-full bg-red-500 flex items-center justify-center">
+                <FaFlag className="text-white text-xs" />
+              </div>
+            </div>
+            <div className="ml-2">
+              <p className="text-sm font-medium text-gray-900">Dropoff</p>
+              <p className="text-sm text-gray-600">{ride.dropoff_location.name}</p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="border-t pt-3">
+          <button
+            onClick={() => onAccept(ride)}
+            className="w-full bg-black text-white py-2 px-4 rounded-lg font-medium hover:bg-gray-800 transition duration-200"
+          >
+            Accept Ride
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Helper function to format currency
+const formatCurrency = (amount: number) => {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'NGN',
+    minimumFractionDigits: 0,
+  }).format(amount);
+};
+
+// Helper function to format duration in minutes
+const formatDuration = (seconds: number) => {
+  const minutes = Math.round(seconds / 60);
+  return `${minutes} min`;
+};
 
 const RideRequests: React.FC = () => {
   const navigate = useNavigate();
@@ -160,20 +239,21 @@ const RideRequests: React.FC = () => {
 
     const fetchNearbyRides = async () => {
       try {
-        // If user location not available, can't fetch nearby rides
         if (!userLocation) return;
         
-        // Fetch nearby ride requests
+        // Fetch all available ride requests with status 'searching'
         const { data, error } = await supabase
           .from('rides')
           .select('*')
           .eq('status', 'searching')
+          .is('driver_id', null) // Only rides that haven't been accepted by a driver
           .order('created_at', { ascending: false }); // Order by newest first
         
         if (error) throw error;
         
-        // Filter rides by distance and driver vehicle type
+        // Filter rides by distance
         const filteredRides = data?.filter(ride => {
+          // Calculate distance between driver and pickup location
           const distance = calculateDistance(
             userLocation.lat,
             userLocation.lng,
@@ -216,9 +296,9 @@ const RideRequests: React.FC = () => {
             }
           }
         } else if (payload.eventType === 'UPDATE') {
-          // Remove rides that are no longer searching
+          // Remove rides that are no longer searching or have been accepted
           const updatedRide = payload.new as Ride;
-          if (updatedRide.status !== 'searching') {
+          if (updatedRide.status !== 'searching' || updatedRide.driver_id) {
             setRideRequests(current => current.filter(ride => ride.id !== updatedRide.id));
           }
         } else if (payload.eventType === 'DELETE') {
@@ -235,40 +315,29 @@ const RideRequests: React.FC = () => {
     };
   }, [userLocation, isRegistered, registrationStatus, walletBalance]);
 
-  const handleAcceptRide = async (rideId: string) => {
-    if (!user?.id || !userLocation || !isRegistered) return;
-
-    // Additional check for registration status
-    if (registrationStatus !== 'approved') {
-      toast({
-        title: "Not Approved",
-        description: "You cannot accept rides until your registration is approved.",
-        variant: "destructive"
-      });
-      return;
-    }
-
+  // Function to handle accepting a ride request
+  const handleAcceptRide = async (ride: Ride) => {
     try {
       setLoading(true);
       
-      const result = await acceptRideRequest(rideId, user.id);
-      
-      if (!result.success) {
-        throw new Error(result.error || "Failed to accept ride");
+      // Check if user profile data is available
+      if (!user) {
+        toast.error('You must be logged in to accept rides');
+        return;
       }
       
-      toast({
-        title: "Success",
-        description: "Ride accepted! Navigate to pickup location.",
-      });
+      // Call the acceptRideRequest utility function
+      const result = await acceptRideRequest(ride.id, user.id);
       
-      navigate(`/ride-progress`);
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to accept ride",
-        variant: "destructive"
-      });
+      if (result.success) {
+        toast.success('Ride accepted successfully!');
+        navigate(`/rides/${ride.id}`);
+      } else {
+        toast.error(result.error || 'Failed to accept ride');
+      }
+    } catch (error) {
+      console.error('Error accepting ride:', error);
+      toast.error('Failed to accept ride');
     } finally {
       setLoading(false);
     }
@@ -366,61 +435,7 @@ const RideRequests: React.FC = () => {
           </div>
         ) : (
           rideRequests.map((ride) => (
-            <div key={ride.id} className="py-4">
-              <div className="flex flex-col">
-                <div className="flex justify-between items-start mb-6">
-                  <div className="space-y-4 flex-1">
-                    <div className="flex items-start">
-                      <div className="text-gray-400 mr-4 mt-1">
-                        <MapPin className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <h3 className="text-gray-400 font-medium">
-                          {typeof ride.pickup_location === 'object' ? ride.pickup_location.name : ride.pickup_location}
-                        </h3>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-start">
-                      <div className="text-gray-900 mr-4 mt-1">
-                        <MapPin className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <h3 className="text-gray-900 font-medium">
-                          {typeof ride.dropoff_location === 'object' ? ride.dropoff_location.name : ride.dropoff_location}
-                        </h3>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="text-right">
-                    <div className="mb-2">
-                      <h4 className="text-gray-500">Distance</h4>
-                      <p className="text-2xl font-bold">
-                        {userLocation ? calculateDistance(
-                          userLocation.lat,
-                          userLocation.lng,
-                          ride.pickup_lat,
-                          ride.pickup_lng
-                        ).toFixed(1) : "?"} km
-                      </p>
-                    </div>
-                    
-                    <div>
-                      <h4 className="text-gray-500">Price</h4>
-                      <p className="text-2xl font-bold">{ride.bid_amount}<span className="text-base ml-1">RS</span></p>
-                    </div>
-                  </div>
-                </div>
-                
-                <Button 
-                  onClick={() => handleAcceptRide(ride.id)}
-                  className="w-full bg-black text-white hover:bg-gray-800 py-6 text-xl rounded-xl mt-2"
-                >
-                  Accept
-                </Button>
-              </div>
-            </div>
+            <RideCard key={ride.id} ride={ride} onAccept={handleAcceptRide} />
           ))
         )}
       </div>
