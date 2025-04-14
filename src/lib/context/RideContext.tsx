@@ -443,6 +443,36 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setWalletBalance(prev => prev + amount);
   };
   
+  useEffect(() => {
+    // When switching to driver mode, we need to reset passenger-specific state
+    if (isDriverMode) {
+      // Clear passenger-specific state
+      setPickupLocation(null);
+      setDropoffLocation(null);
+      setSelectedRideOption(null);
+      setUserBid(null);
+      setPanelOpen(false);
+      
+      // If there's an active ride in passenger mode, don't clear it
+      // This allows the driver to switch back and still see their ride
+      if (currentRide && currentRide.status !== 'searching') {
+        console.log('Keeping current ride while switching to driver mode:', currentRide);
+      } else {
+        setCurrentRide(null);
+      }
+      
+      // Fetch pending ride requests for the driver
+      if (user?.id) {
+        console.log('Switching to driver mode, fetching ride requests');
+        // Logic to fetch pending ride requests can be added here
+        // or handled in the RideRequests component
+      }
+    } else {
+      // When switching back to passenger mode, clear driver-specific state
+      setPendingRideRequests([]);
+    }
+  }, [isDriverMode, user?.id]);
+  
   return (
     <RideContext.Provider
       value={{

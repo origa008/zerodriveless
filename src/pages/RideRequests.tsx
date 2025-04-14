@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/context/AuthContext';
+import { useRide } from '@/lib/context/RideContext';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
-import { Loader2, AlertCircle, Clock, ArrowRight, MapPin, Flag } from 'lucide-react';
+import { Loader2, AlertCircle, Clock, ArrowRight, MapPin, Flag, RefreshCw, DollarSign } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { acceptRideRequest } from '@/lib/utils/rideUtils';
+import DriverModeToggle from '@/components/ride/DriverModeToggle';
 
 // Simple distance calculation using Haversine formula
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
@@ -140,8 +142,10 @@ const RideRequests: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
+  const { isDriverMode, setDriverMode } = useRide();
   
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [rideRequests, setRideRequests] = useState<Ride[]>([]);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [isRegistered, setIsRegistered] = useState<boolean>(false);
@@ -228,6 +232,78 @@ const RideRequests: React.FC = () => {
     checkDriverStatus();
   }, [user?.id, toast]);
 
+  // Function to fetch nearby ride requests
+  const fetchNearbyRides = async () => {
+    try {
+      if (!userLocation) return;
+      
+      setRefreshing(true);
+      
+      // Fetch all available ride requests with status 'searching'
+      const { data, error } = await supabase
+        .from('rides')
+        .select('*')
+        .eq('status', 'searching')
+        .is('driver_id', null) // Only rides that haven't been accepted by a driver
+        .order('created_at', { ascending: false }); // Order by newest first
+      
+      if (error) {
+        console.error('Error fetching ride requests:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to fetch ride requests. Please try again.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      console.log('Fetched rides:', data);
+      
+      // Filter rides by distance
+      const filteredRides = data?.filter(ride => {
+        // Make sure pickup_location and coordinates exist
+        if (!ride.pickup_location?.coordinates || ride.pickup_location.coordinates.length < 2) {
+          console.log('Skipping ride due to missing coordinates:', ride.id);
+          return false;
+        }
+        
+        // Extract coordinates from the nested location objects
+        const pickupLng = ride.pickup_location.coordinates[0];
+        const pickupLat = ride.pickup_location.coordinates[1];
+        
+        // Calculate distance between driver and pickup location
+        const distance = calculateDistance(
+          userLocation.lat,
+          userLocation.lng,
+          pickupLat,
+          pickupLng
+        );
+        
+        // Only show rides within 10km and ensure it matches the driver's vehicle type
+        const isNearby = distance <= 10;
+        console.log(`Ride ${ride.id} distance: ${distance.toFixed(1)}km, is nearby: ${isNearby}`);
+        return isNearby;
+      }) || [];
+      
+      console.log('Filtered rides:', filteredRides);
+      setRideRequests(filteredRides);
+    } catch (error: any) {
+      console.error('Error fetching nearby rides:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load ride requests',
+        variant: 'destructive',
+      });
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  // Handle manual refresh
+  const handleRefresh = () => {
+    fetchNearbyRides();
+  };
+
   // Subscribe to and fetch nearby ride requests in real-time
   useEffect(() => {
     // Only proceed if:
@@ -236,47 +312,6 @@ const RideRequests: React.FC = () => {
     // 3. Registration status is approved
     // 4. User has sufficient deposit
     if (!userLocation || !isRegistered || registrationStatus !== 'approved' || walletBalance < 3000) return;
-
-    const fetchNearbyRides = async () => {
-      try {
-        if (!userLocation) return;
-        
-        // Fetch all available ride requests with status 'searching'
-        const { data, error } = await supabase
-          .from('rides')
-          .select('*')
-          .eq('status', 'searching')
-          .is('driver_id', null) // Only rides that haven't been accepted by a driver
-          .order('created_at', { ascending: false }); // Order by newest first
-        
-        if (error) throw error;
-        
-        // Filter rides by distance
-        const filteredRides = data?.filter(ride => {
-          // Make sure pickup_location and coordinates exist
-          if (!ride.pickup_location?.coordinates || ride.pickup_location.coordinates.length < 2) {
-            return false;
-          }
-          
-          // Extract coordinates from the nested location objects
-          const pickupLng = ride.pickup_location.coordinates[0];
-          const pickupLat = ride.pickup_location.coordinates[1];
-          
-          // Calculate distance between driver and pickup location
-          const distance = calculateDistance(
-            userLocation.lat,
-            userLocation.lng,
-            pickupLat,
-            pickupLng
-          );
-          return distance <= 10; // Only show rides within 10km
-        }) || [];
-        
-        setRideRequests(filteredRides);
-      } catch (error: any) {
-        console.error('Error fetching nearby rides:', error);
-      }
-    };
 
     // Initial fetch
     fetchNearbyRides();
@@ -290,6 +325,8 @@ const RideRequests: React.FC = () => {
         table: 'rides',
         filter: `status=eq.searching`
       }, (payload) => {
+        console.log('Received real-time update:', payload);
+        
         if (payload.eventType === 'INSERT') {
           // Add new ride request to the list if within range
           const newRide = payload.new as Ride;
@@ -303,7 +340,15 @@ const RideRequests: React.FC = () => {
               pickupLat, 
               pickupLng
             );
+            
+            console.log(`New ride ${newRide.id} distance: ${distance.toFixed(1)}km`);
+            
             if (distance <= 10) { // 10km radius
+              toast({
+                title: 'New Ride Request',
+                description: 'A new ride request is available nearby.',
+                duration: 5000,
+              });
               setRideRequests(current => [newRide, ...current]);
             }
           }
@@ -369,6 +414,14 @@ const RideRequests: React.FC = () => {
       setLoading(false);
     }
   };
+
+  // Ensure driver mode is set when this component is loaded
+  useEffect(() => {
+    if (!isDriverMode) {
+      setDriverMode(true);
+      console.log('Setting driver mode to true');
+    }
+  }, [isDriverMode, setDriverMode]);
 
   if (loading) {
     return (
@@ -450,6 +503,169 @@ const RideRequests: React.FC = () => {
   }
 
   // Main ride request list UI for approved drivers
+  if (isRegistered && registrationStatus === 'approved' && walletBalance >= 3000 && !loading) {
+    return (
+      <div className="min-h-screen bg-white p-4 pb-24">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-3xl font-bold">Ride Requests</h1>
+          <Button 
+            variant="outline" 
+            size="icon" 
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="rounded-full h-10 w-10"
+          >
+            <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
+          </Button>
+        </div>
+        
+        {refreshing && (
+          <div className="flex justify-center items-center py-4">
+            <Loader2 className="animate-spin h-6 w-6 mr-2" />
+            <p className="text-gray-500">Refreshing rides...</p>
+          </div>
+        )}
+        
+        <div className="space-y-4">
+          {rideRequests.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 bg-gray-50 rounded-xl border border-gray-200">
+              <div className="bg-gray-100 rounded-full p-4 mb-4">
+                <Clock className="h-8 w-8 text-gray-400" />
+              </div>
+              <p className="text-gray-600 mb-2 font-medium">No ride requests available</p>
+              <p className="text-sm text-gray-400 mb-6">New requests will appear here automatically</p>
+              <Button onClick={handleRefresh} variant="outline" className="gap-2">
+                <RefreshCw className="h-4 w-4" />
+                Refresh
+              </Button>
+            </div>
+          ) : (
+            rideRequests.map((ride) => (
+              <div key={ride.id} className="bg-white rounded-xl shadow-md overflow-hidden border border-gray-200">
+                <div className="p-5">
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <span className="inline-block bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded mb-2">
+                        {ride.ride_option?.name || 'Vehicle'}
+                      </span>
+                      <h3 className="text-xl font-bold text-gray-900 flex items-center">
+                        <DollarSign className="h-5 w-5 text-green-500 mr-1" />
+                        {ride.bid_amount || ride.ride_column} RS
+                      </h3>
+                      <p className="text-sm text-gray-500 mt-1">
+                        {ride.distance.toFixed(1)}km • {formatDuration(ride.duration)}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-gray-500">
+                        {new Date(ride.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-4 mb-4">
+                    <div className="flex items-start">
+                      <div className="flex-shrink-0 w-8 flex justify-center">
+                        <div className="h-6 w-6 rounded-full bg-green-500 flex items-center justify-center">
+                          <MapPin className="text-white text-xs" />
+                        </div>
+                      </div>
+                      <div className="ml-2 flex-1">
+                        <p className="text-sm font-semibold text-gray-900">Pickup</p>
+                        <p className="text-sm text-gray-600 break-words">{ride.pickup_location.name}</p>
+                      </div>
+                    </div>
+                    
+                    <div className="relative ml-4 h-6 border-l-2 border-dashed border-gray-300"></div>
+                    
+                    <div className="flex items-start">
+                      <div className="flex-shrink-0 w-8 flex justify-center">
+                        <div className="h-6 w-6 rounded-full bg-red-500 flex items-center justify-center">
+                          <Flag className="text-white text-xs" />
+                        </div>
+                      </div>
+                      <div className="ml-2 flex-1">
+                        <p className="text-sm font-semibold text-gray-900">Dropoff</p>
+                        <p className="text-sm text-gray-600 break-words">{ride.dropoff_location.name}</p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <Button 
+                    className="w-full bg-black text-white hover:bg-gray-800"
+                    onClick={() => handleAcceptRide(ride)}
+                    disabled={refreshing}
+                  >
+                    Accept Ride
+                  </Button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+        
+        <div className="fixed bottom-6 left-0 right-0 flex justify-center">
+          <div className="bg-white shadow-lg rounded-full px-4 py-2 border border-gray-200">
+            <DriverModeToggle />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Application pending
+  if (registrationStatus === 'pending') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-white p-6">
+        <Clock className="h-16 w-16 text-amber-500 mb-6" />
+        <h1 className="text-2xl font-bold text-center mb-3">Application Under Review</h1>
+        <p className="text-gray-600 text-center mb-6">
+          Your driver registration is currently being reviewed by our team. 
+          This typically takes 1-2 business days.
+        </p>
+        <Button onClick={() => navigate('/')} variant="outline" className="w-full max-w-xs">
+          Return to Home
+        </Button>
+      </div>
+    );
+  }
+
+  // Application rejected
+  if (registrationStatus === 'rejected') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-white p-6">
+        <AlertCircle className="h-16 w-16 text-red-500 mb-6" />
+        <h1 className="text-2xl font-bold text-center mb-3">Application Rejected</h1>
+        <p className="text-gray-600 text-center mb-6">
+          Unfortunately, your driver registration application was not approved. 
+          Please contact our support team for more information.
+        </p>
+        <Button onClick={() => navigate('/official-driver')} className="w-full max-w-xs">
+          Update Application
+          <ArrowRight className="ml-2 h-5 w-5" />
+        </Button>
+      </div>
+    );
+  }
+
+  // Show security deposit message if balance is insufficient
+  if (walletBalance < 3000) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-white p-6">
+        <AlertCircle className="h-16 w-16 text-amber-500 mb-6" />
+        <h1 className="text-2xl font-bold text-center mb-3">Security Deposit Required</h1>
+        <p className="text-gray-600 text-center mb-3">
+          Please add a minimum security deposit of RS 3000 to start accepting rides.
+        </p>
+        <p className="text-sm text-gray-500 mb-6">Your current balance: RS {walletBalance}</p>
+        <Button onClick={() => navigate('/wallet')} className="w-full max-w-xs">
+          Add Funds
+          <ArrowRight className="ml-2 h-5 w-5" />
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-white p-4 pb-24">
       <h1 className="text-3xl font-bold mb-6">Ride Request</h1>
