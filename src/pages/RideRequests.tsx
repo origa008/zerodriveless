@@ -3,10 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
-import { Loader2, AlertCircle, Clock, ArrowRight, MapPin } from 'lucide-react';
+import { Loader2, AlertCircle, Clock, ArrowRight, MapPin, Flag } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { acceptRideRequest } from '@/lib/utils/rideUtils';
-import { FaMapMarkerAlt, FaFlag } from 'react-icons/fa';
 
 // Simple distance calculation using Haversine formula
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
@@ -29,6 +28,7 @@ interface Ride {
   id: string;
   passenger_id: string;
   passenger_email?: string;
+  driver_id?: string;
   pickup_location: {
     name: string;
     address?: string;
@@ -86,7 +86,7 @@ const RideCard = ({ ride, onAccept }: { ride: Ride; onAccept: (ride: Ride) => vo
           <div className="flex items-start">
             <div className="flex-shrink-0 w-8 flex justify-center">
               <div className="h-6 w-6 rounded-full bg-green-500 flex items-center justify-center">
-                <FaMapMarkerAlt className="text-white text-xs" />
+                <MapPin className="text-white text-xs" />
               </div>
             </div>
             <div className="ml-2">
@@ -98,7 +98,7 @@ const RideCard = ({ ride, onAccept }: { ride: Ride; onAccept: (ride: Ride) => vo
           <div className="flex items-start">
             <div className="flex-shrink-0 w-8 flex justify-center">
               <div className="h-6 w-6 rounded-full bg-red-500 flex items-center justify-center">
-                <FaFlag className="text-white text-xs" />
+                <Flag className="text-white text-xs" />
               </div>
             </div>
             <div className="ml-2">
@@ -322,7 +322,11 @@ const RideRequests: React.FC = () => {
       
       // Check if user profile data is available
       if (!user) {
-        toast.error('You must be logged in to accept rides');
+        toast({
+          title: 'Error',
+          description: 'You must be logged in to accept rides',
+          variant: 'destructive',
+        });
         return;
       }
       
@@ -330,14 +334,25 @@ const RideRequests: React.FC = () => {
       const result = await acceptRideRequest(ride.id, user.id);
       
       if (result.success) {
-        toast.success('Ride accepted successfully!');
+        toast({
+          title: 'Success',
+          description: 'Ride accepted successfully!',
+        });
         navigate(`/rides/${ride.id}`);
       } else {
-        toast.error(result.error || 'Failed to accept ride');
+        toast({
+          title: 'Error',
+          description: result.error || 'Failed to accept ride',
+          variant: 'destructive',
+        });
       }
     } catch (error) {
       console.error('Error accepting ride:', error);
-      toast.error('Failed to accept ride');
+      toast({
+        title: 'Error',
+        description: 'Failed to accept ride',
+        variant: 'destructive',
+      });
     } finally {
       setLoading(false);
     }
