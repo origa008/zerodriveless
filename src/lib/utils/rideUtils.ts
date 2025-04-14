@@ -183,12 +183,21 @@ export const subscribeToNewRideRequests = (
         try {
           const newRide = payload.new;
           
+          // Ensure pickup_location has valid coordinates
+          if (!newRide.pickup_location?.coordinates || newRide.pickup_location.coordinates.length < 2) {
+            return;
+          }
+          
+          // Get coordinates from the pickup_location object
+          const pickupLng = newRide.pickup_location.coordinates[0];
+          const pickupLat = newRide.pickup_location.coordinates[1];
+          
           // Calculate distance to new ride
           const distance = getDistanceFromLatLonInKm(
             driverLocation.latitude,
             driverLocation.longitude,
-            newRide.pickup_lat,
-            newRide.pickup_lng
+            pickupLat,
+            pickupLng
           );
           
           // Only notify if ride is within radius

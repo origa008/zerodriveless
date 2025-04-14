@@ -39,10 +39,6 @@ interface Ride {
     address?: string;
     coordinates: number[];
   };
-  pickup_lat: number;
-  pickup_lng: number;
-  dropoff_lat: number;
-  dropoff_lng: number;
   bid_amount: number;
   price: number;
   vehicle_type: string;
@@ -253,12 +249,21 @@ const RideRequests: React.FC = () => {
         
         // Filter rides by distance
         const filteredRides = data?.filter(ride => {
+          // Make sure pickup_location and coordinates exist
+          if (!ride.pickup_location?.coordinates || ride.pickup_location.coordinates.length < 2) {
+            return false;
+          }
+          
+          // Extract coordinates from the nested location objects
+          const pickupLng = ride.pickup_location.coordinates[0];
+          const pickupLat = ride.pickup_location.coordinates[1];
+          
           // Calculate distance between driver and pickup location
           const distance = calculateDistance(
             userLocation.lat,
             userLocation.lng,
-            ride.pickup_lat,
-            ride.pickup_lng
+            pickupLat,
+            pickupLng
           );
           return distance <= 10; // Only show rides within 10km
         }) || [];
@@ -284,12 +289,15 @@ const RideRequests: React.FC = () => {
         if (payload.eventType === 'INSERT') {
           // Add new ride request to the list if within range
           const newRide = payload.new as Ride;
-          if (userLocation) {
+          if (userLocation && newRide.pickup_location?.coordinates) {
+            const pickupLng = newRide.pickup_location.coordinates[0];
+            const pickupLat = newRide.pickup_location.coordinates[1];
+            
             const distance = calculateDistance(
               userLocation.lat, 
               userLocation.lng, 
-              newRide.pickup_lat, 
-              newRide.pickup_lng
+              pickupLat, 
+              pickupLng
             );
             if (distance <= 10) { // 10km radius
               setRideRequests(current => [newRide, ...current]);

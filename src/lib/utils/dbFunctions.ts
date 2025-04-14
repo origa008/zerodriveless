@@ -28,12 +28,8 @@ export const createRideRequest = async ({
       .from('ride_requests')
       .insert({
         passenger_id: passengerId,
-        pickup_location: { name: pickupLocation.name, coordinates: [pickupLocation.lat, pickupLocation.lng] },
-        dropoff_location: { name: dropoffLocation.name, coordinates: [dropoffLocation.lat, dropoffLocation.lng] },
-        pickup_lat: pickupLocation.lat,
-        pickup_lng: pickupLocation.lng,
-        dropoff_lat: dropoffLocation.lat,
-        dropoff_lng: dropoffLocation.lng,
+        pickup_location: { name: pickupLocation.name, coordinates: [pickupLocation.lng, pickupLocation.lat] },
+        dropoff_location: { name: dropoffLocation.name, coordinates: [dropoffLocation.lng, dropoffLocation.lat] },
         vehicle_type: vehicleType,
         estimated_price: estimatedPrice,
         estimated_distance: estimatedDistance,
@@ -76,11 +72,20 @@ export const getNearbyRideRequests = async (
 
     // Filter rides by distance
     const nearbyRides = rides.filter(ride => {
+      // Ensure pickup_location has valid coordinates
+      if (!ride.pickup_location?.coordinates || ride.pickup_location.coordinates.length < 2) {
+        return false;
+      }
+      
+      // Get coordinates from the pickup_location object
+      const pickupLng = ride.pickup_location.coordinates[0];
+      const pickupLat = ride.pickup_location.coordinates[1];
+      
       const distance = getDistanceFromLatLonInKm(
         driverLat,
         driverLng,
-        ride.pickup_lat,
-        ride.pickup_lng
+        pickupLat,
+        pickupLng
       );
       return distance <= radiusKm;
     });
@@ -94,11 +99,15 @@ export const getNearbyRideRequests = async (
           .eq('id', ride.passenger_id)
           .single();
 
+        // Get coordinates from the pickup_location object
+        const pickupLng = ride.pickup_location.coordinates[0];
+        const pickupLat = ride.pickup_location.coordinates[1];
+        
         const distance = getDistanceFromLatLonInKm(
           driverLat,
           driverLng,
-          ride.pickup_lat,
-          ride.pickup_lng
+          pickupLat,
+          pickupLng
         );
 
         return {
@@ -208,12 +217,21 @@ export const subscribeToNearbyRides = (
 
           const newRide = payload.new;
           
+          // Ensure pickup_location has valid coordinates
+          if (!newRide.pickup_location?.coordinates || newRide.pickup_location.coordinates.length < 2) {
+            return;
+          }
+          
+          // Get coordinates from the pickup_location object
+          const pickupLng = newRide.pickup_location.coordinates[0];
+          const pickupLat = newRide.pickup_location.coordinates[1];
+          
           // Calculate distance to new ride
           const distance = getDistanceFromLatLonInKm(
             driverLocation.latitude,
             driverLocation.longitude,
-            newRide.pickup_lat,
-            newRide.pickup_lng
+            pickupLat,
+            pickupLng
           );
           
           // Only notify if ride is within radius and not assigned to a driver
@@ -290,9 +308,6 @@ export const createNewRideRequest = async ({
       throw new Error('Invalid location coordinates');
     }
 
-    const [pickupLng, pickupLat] = pickupLocation.coordinates;
-    const [dropoffLng, dropoffLat] = dropoffLocation.coordinates;
-
     // Insert the ride request
     const { data, error } = await supabase
       .from('rides')
@@ -308,10 +323,6 @@ export const createNewRideRequest = async ({
           address: dropoffLocation.address,
           coordinates: dropoffLocation.coordinates
         },
-        pickup_lat: pickupLat,
-        pickup_lng: pickupLng,
-        dropoff_lat: dropoffLat,
-        dropoff_lng: dropoffLng,
         bid_amount: bidAmount,
         price: bidAmount,
         vehicle_type: vehicleType,
@@ -601,26 +612,46 @@ export const getNearbyPendingRides = async (
         return false;
       }
 
+      // Ensure pickup_location has valid coordinates
+      if (!ride.pickup_location?.coordinates || ride.pickup_location.coordinates.length < 2) {
+        return false;
+      }
+      
+      // Extract coordinates from the pickup_location object
+      const pickupLng = ride.pickup_location.coordinates[0];
+      const pickupLat = ride.pickup_location.coordinates[1];
+
       // Calculate distance using the Haversine formula
       const distance = getDistanceFromLatLonInKm(
         location.latitude,
         location.longitude,
-        ride.pickup_lat,
-        ride.pickup_lng
+        pickupLat,
+        pickupLng
       );
 
       return distance <= radiusKm;
-    }).map(ride => ({
-      ...ride,
-      distance_to_pickup: Number(
-        getDistanceFromLatLonInKm(
-          location.latitude,
-          location.longitude,
-          ride.pickup_lat,
-          ride.pickup_lng
-        ).toFixed(1)
-      )
-    }));
+    }).map(ride => {
+      // Ensure pickup_location has valid coordinates
+      if (!ride.pickup_location?.coordinates || ride.pickup_location.coordinates.length < 2) {
+        return { ...ride, distance_to_pickup: 999 }; // Return a large distance if coordinates missing
+      }
+      
+      // Extract coordinates from the pickup_location object
+      const pickupLng = ride.pickup_location.coordinates[0];
+      const pickupLat = ride.pickup_location.coordinates[1];
+      
+      return {
+        ...ride,
+        distance_to_pickup: Number(
+          getDistanceFromLatLonInKm(
+            location.latitude,
+            location.longitude,
+            pickupLat,
+            pickupLng
+          ).toFixed(1)
+        )
+      };
+    });
 
     return { data: nearbyRides, error: null };
   } catch (error: any) {
