@@ -4,9 +4,10 @@ import { useAuth } from '@/lib/context/AuthContext';
 import { useRide } from '@/lib/context/RideContext';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
-import { Loader2, AlertCircle, Clock, ArrowRight, MapPin, Flag, RefreshCw, DollarSign } from 'lucide-react';
+import { Loader2, AlertCircle, Clock, ArrowRight, MapPin, Flag, RefreshCw, DollarSign, BugPlay } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { acceptRideRequest } from '@/lib/utils/rideUtils';
+import { createTestRide } from '@/lib/utils/dbFunctions';
 import DriverModeToggle from '@/components/ride/DriverModeToggle';
 
 // Simple distance calculation using Haversine formula
@@ -30,30 +31,32 @@ interface Ride {
   id: string;
   passenger_id: string;
   passenger_email?: string;
-  driver_id?: string;
+  driver_id?: string | null;
   pickup_location: {
     name: string;
     address?: string;
-    coordinates: number[];
+    coordinates: number[]; // [lng, lat]
   };
   dropoff_location: {
     name: string;
     address?: string;
-    coordinates: number[];
+    coordinates: number[]; // [lng, lat]
   };
   ride_option: {
     name: string;
     type: string;
     basePrice: number;
   };
-  bid_amount: number;
-  ride_column: number; // Using ride_column instead of price
+  bid_amount?: number;
+  price?: number;
   distance: number;
   duration: number;
-  status: string;
+  status: string; // 'searching', 'confirmed', 'in_progress', 'completed', 'cancelled'
   created_at: string;
   payment_method: string;
   currency?: string;
+  start_time?: string | null;
+  end_time?: string | null;
 }
 
 interface DriverProfile {
@@ -73,7 +76,7 @@ const RideCard = ({ ride, onAccept }: { ride: Ride; onAccept: (ride: Ride) => vo
         <div className="flex justify-between items-start mb-3">
           <div>
             <h3 className="text-lg font-semibold text-gray-900">
-              {formatCurrency(ride.bid_amount)}
+              {formatCurrency(ride.bid_amount || ride.price || 0)}
             </h3>
             <p className="text-sm text-gray-500">
               {ride.distance.toFixed(1)}km • {formatDuration(ride.duration)}
@@ -146,6 +149,9 @@ const SimpleRideCard = ({ ride }: { ride: any }) => {
 
   const handleAccept = async () => {
     try {
+      // Log the ride being accepted for debugging
+      console.log('Accepting ride:', ride);
+      
       const result = await acceptRideRequest(ride.id, user.id);
       if (result.success) {
         toast({
@@ -186,6 +192,12 @@ const SimpleRideCard = ({ ride }: { ride: any }) => {
     if (diffHours < 24) return `${diffHours} hours ago`;
     
     return new Date(dateString).toLocaleDateString();
+  };
+
+  // Get the ride price (check both price and bid_amount fields)
+  const getRidePrice = () => {
+    // First try bid_amount, then price, then default to 0
+    return ride.bid_amount || ride.price || 0;
   };
 
   return (
@@ -237,7 +249,7 @@ const SimpleRideCard = ({ ride }: { ride: any }) => {
       <div className="bg-gray-50 p-4 rounded-lg grid grid-cols-3 gap-4 mb-6">
         <div>
           <p className="text-sm text-gray-500 mb-1">Distance</p>
-          <p className="text-xl font-bold">{parseFloat(ride.distance).toFixed(1)} km</p>
+          <p className="text-xl font-bold">{parseFloat(ride.distance || '0').toFixed(1)} km</p>
         </div>
         <div>
           <p className="text-sm text-gray-500 mb-1">Duration</p>
@@ -246,7 +258,7 @@ const SimpleRideCard = ({ ride }: { ride: any }) => {
         <div>
           <p className="text-sm text-gray-500 mb-1">Price</p>
           <p className="text-xl font-bold text-green-600">
-            {ride.bid_amount || ride.ride_column || 0} RS
+            {getRidePrice()} RS
           </p>
         </div>
       </div>
@@ -368,6 +380,10 @@ const RideRequests: React.FC = () => {
   const fetchNearbyRides = async () => {
     try {
       setRefreshing(true);
+      console.log('Fetching nearby rides...');
+      
+      // Debug: Log user location
+      console.log('Current driver location:', userLocation);
       
       // Simpler query - just get ALL rides with 'searching' status
       const { data, error } = await supabase
@@ -387,22 +403,37 @@ const RideRequests: React.FC = () => {
         return;
       }
 
+      // Debug detailed information about the results
       console.log(`Fetched ${data?.length || 0} available rides`);
+      console.log('SQL query returned rides:', data);
       
       // Debug logging - show exactly what's coming from the database
       if (data && data.length > 0) {
-        console.log('First ride details:', {
-          id: data[0].id,
-          pickup: data[0].pickup_location,
-          dropoff: data[0].dropoff_location,
-          status: data[0].status,
-          bid: data[0].bid_amount,
-          ride_column: data[0].ride_column,
-          distance: data[0].distance,
-          duration: data[0].duration
+        data.forEach((ride, index) => {
+          console.log(`Ride ${index + 1} details:`, {
+            id: ride.id,
+            pickup: ride.pickup_location,
+            dropoff: ride.dropoff_location,
+            status: ride.status,
+            bid: ride.bid_amount,
+            price: ride.price,
+            distance: ride.distance,
+            duration: ride.duration,
+            created_at: ride.created_at
+          });
         });
       } else {
         console.log('No rides found with searching status');
+        
+        // Debug: Check if there are any rides at all, regardless of status
+        const { data: allRides, error: allRidesError } = await supabase
+          .from('rides')
+          .select('id, status, driver_id')
+          .limit(10);
+          
+        if (!allRidesError && allRides) {
+          console.log('Most recent rides in database:', allRides);
+        }
       }
       
       // Set all rides without filtering for distance yet
@@ -431,14 +462,23 @@ const RideRequests: React.FC = () => {
     // 2. User is registered 
     // 3. Registration status is approved
     // 4. User has sufficient deposit
-    if (!userLocation || !isRegistered || registrationStatus !== 'approved' || walletBalance < 3000) return;
+    if (!userLocation || !isRegistered || registrationStatus !== 'approved' || walletBalance < 3000) {
+      console.log('Not subscribing to ride changes due to:', {
+        hasLocation: !!userLocation,
+        isRegistered,
+        registrationStatus,
+        walletBalance
+      });
+      return;
+    }
 
     // Initial fetch
     fetchNearbyRides();
+    console.log('Setting up real-time subscription for new ride requests...');
 
     // Set up real-time subscription for ride requests
     const subscription = supabase
-      .channel('public:rides')
+      .channel('rides-channel') // Use a simpler channel name
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
@@ -496,8 +536,25 @@ const RideRequests: React.FC = () => {
         // Remove deleted rides
         const oldRide = payload.old as Ride;
         setRideRequests(prev => prev.filter(ride => ride.id !== oldRide.id));
-      })
-      .subscribe();
+      });
+    
+    // Try to subscribe and catch any errors
+    subscription.subscribe((status) => {
+      console.log(`Supabase subscription status: ${status}`);
+      if (status === 'SUBSCRIBED') {
+        console.log('Successfully subscribed to ride changes');
+      } else if (status === 'CLOSED') {
+        console.error('Subscription closed');
+      } else if (status === 'CHANNEL_ERROR') {
+        console.error('Error with subscription channel');
+      }
+    });
+
+    // Manual refresh every 30 seconds as a fallback
+    const intervalId = setInterval(() => {
+      console.log('Performing periodic refresh of ride requests');
+      fetchNearbyRides();
+    }, 30000);
 
     console.log('Subscribed to ride changes');
 
@@ -505,6 +562,7 @@ const RideRequests: React.FC = () => {
     return () => {
       console.log('Unsubscribing from ride changes');
       subscription.unsubscribe();
+      clearInterval(intervalId);
     };
   }, [userLocation, isRegistered, registrationStatus, walletBalance]);
 
@@ -670,10 +728,85 @@ const RideRequests: React.FC = () => {
               </div>
               <p className="text-gray-600 mb-2 font-medium">No ride requests available</p>
               <p className="text-sm text-gray-400 mb-6">New requests will appear here automatically</p>
-              <Button onClick={handleRefresh} variant="outline" className="gap-2">
-                <RefreshCw className="h-4 w-4" />
-                Refresh
-              </Button>
+              <div className="flex flex-col gap-2 w-full max-w-xs">
+                <Button onClick={handleRefresh} variant="outline" className="gap-2">
+                  <RefreshCw className="h-4 w-4" />
+                  Refresh
+                </Button>
+                
+                {/* Development mode only: test button */}
+                {process.env.NODE_ENV === 'development' && (
+                  <Button 
+                    onClick={async () => {
+                      if (!user?.id) return;
+                      try {
+                        toast({
+                          title: 'Creating test ride',
+                          description: 'Please wait...'
+                        });
+                        const result = await createTestRide(user.id);
+                        if (result.success) {
+                          toast({
+                            title: 'Test ride created',
+                            description: 'A test ride has been created and should appear shortly.'
+                          });
+                          // Fetch rides immediately
+                          fetchNearbyRides();
+                        } else {
+                          toast({
+                            title: 'Error',
+                            description: result.error || 'Failed to create test ride',
+                            variant: 'destructive'
+                          });
+                        }
+                      } catch (error: any) {
+                        toast({
+                          title: 'Error',
+                          description: error.message || 'Failed to create test ride',
+                          variant: 'destructive'
+                        });
+                      }
+                    }}
+                    variant="secondary" 
+                    className="gap-2"
+                  >
+                    <BugPlay className="h-4 w-4" />
+                    Create Test Ride
+                  </Button>
+                )}
+
+                {/* Add this after the Create Test Ride button */}
+                {process.env.NODE_ENV === 'development' && (
+                  <Button 
+                    onClick={() => {
+                      const debugInfo = {
+                        userLocation,
+                        isRegistered,
+                        registrationStatus,
+                        walletBalance,
+                        isDriverMode,
+                        rideRequestsCount: rideRequests.length
+                      };
+                      console.log('Debug info:', debugInfo);
+                      toast({
+                        title: 'Debug Info',
+                        description: `Location: ${userLocation ? '✓' : '✗'}, 
+                                      Registered: ${isRegistered ? '✓' : '✗'}, 
+                                      Status: ${registrationStatus || 'none'}, 
+                                      Balance: ${walletBalance}, 
+                                      Driver Mode: ${isDriverMode ? '✓' : '✗'}, 
+                                      Rides: ${rideRequests.length}`,
+                        duration: 5000
+                      });
+                    }}
+                    variant="outline" 
+                    className="gap-2"
+                  >
+                    <AlertCircle className="h-4 w-4" />
+                    Show Debug Info
+                  </Button>
+                )}
+              </div>
             </div>
           ) : (
             rideRequests.map((ride) => (

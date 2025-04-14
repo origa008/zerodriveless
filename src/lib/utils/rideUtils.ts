@@ -97,6 +97,7 @@ export const acceptRideRequest = async (
   driverId: string
 ): Promise<{ success: boolean; error: string | null }> => {
   try {
+    console.log(`Attempting to accept ride ${rideId} for driver ${driverId}`);
     const { data: { user } } = await supabase.auth.getUser();
     
     // Check if driver is approved
@@ -106,9 +107,13 @@ export const acceptRideRequest = async (
       .eq('user_id', driverId)
       .single();
     
-    if (driverError) throw driverError;
+    if (driverError) {
+      console.error('Driver details error:', driverError);
+      throw driverError;
+    }
     
     if (!driverDetails || driverDetails.status !== 'approved') {
+      console.log('Driver not approved:', driverDetails);
       return { 
         success: false, 
         error: 'Your driver account must be approved to accept rides' 
@@ -116,13 +121,19 @@ export const acceptRideRequest = async (
     }
     
     // First check if ride is still available
-    const { data: ride } = await supabase
+    const { data: ride, error: rideError } = await supabase
       .from('rides')
-      .select('status, bid_amount')
+      .select('status, bid_amount, price')
       .eq('id', rideId)
       .single();
     
+    if (rideError) {
+      console.error('Error fetching ride:', rideError);
+      throw rideError;
+    }
+    
     if (!ride || ride.status !== 'searching') {
+      console.log('Ride no longer available:', ride);
       return { 
         success: false, 
         error: 'This ride is no longer available' 
@@ -130,11 +141,20 @@ export const acceptRideRequest = async (
     }
     
     // Get driver profile information to include with the ride
-    const { data: driverProfile } = await supabase
+    const { data: driverProfile, error: profileError } = await supabase
       .from('profiles')
       .select('name, avatar')
       .eq('id', driverId)
       .single();
+    
+    if (profileError) {
+      console.warn('Could not fetch driver profile:', profileError);
+    }
+    
+    // Get the price (either bid_amount or price field)
+    const ridePrice = ride.bid_amount || ride.price;
+    
+    console.log(`Accepting ride ${rideId} with price ${ridePrice}`);
     
     // Update ride status and assign driver
     const { error } = await supabase
@@ -146,18 +166,25 @@ export const acceptRideRequest = async (
         driver_avatar: driverProfile?.avatar || null,
         driver_vehicle_type: driverDetails.vehicle_type,
         status: 'confirmed',
-        price: ride.bid_amount, // Ensure price is set to bid_amount
+        price: ridePrice, // Ensure price field is set
         confirmed_at: new Date().toISOString()
       })
       .eq('id', rideId)
       .eq('status', 'searching');
     
-    if (error) throw error;
+    if (error) {
+      console.error('Error updating ride status:', error);
+      throw error;
+    }
     
+    console.log(`Successfully accepted ride ${rideId}`);
     return { success: true, error: null };
   } catch (error: any) {
-    console.error("Accept ride request error:", error.message);
-    return { success: false, error: error.message };
+    console.error('Error accepting ride:', error);
+    return { 
+      success: false, 
+      error: error.message || 'Failed to accept ride request' 
+    };
   }
 };
 

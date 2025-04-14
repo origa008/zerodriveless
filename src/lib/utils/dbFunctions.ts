@@ -308,6 +308,23 @@ export const createNewRideRequest = async ({
       throw new Error('Invalid location coordinates');
     }
 
+    console.log('Creating new ride with data:', {
+      passengerId,
+      pickupLocation: {
+        name: pickupLocation.name,
+        address: pickupLocation.address,
+        coordinates: pickupLocation.coordinates
+      },
+      dropoffLocation: {
+        name: dropoffLocation.name,
+        address: dropoffLocation.address,
+        coordinates: dropoffLocation.coordinates
+      },
+      bidAmount,
+      vehicleType,
+      status: 'searching'
+    });
+
     // Insert the ride request
     const { data, error } = await supabase
       .from('rides')
@@ -316,12 +333,12 @@ export const createNewRideRequest = async ({
         pickup_location: {
           name: pickupLocation.name,
           address: pickupLocation.address,
-          coordinates: pickupLocation.coordinates
+          coordinates: pickupLocation.coordinates // Ensure this is [lng, lat]
         },
         dropoff_location: {
           name: dropoffLocation.name,
           address: dropoffLocation.address,
-          coordinates: dropoffLocation.coordinates
+          coordinates: dropoffLocation.coordinates // Ensure this is [lng, lat]
         },
         ride_option: {
           name: vehicleType,
@@ -329,8 +346,7 @@ export const createNewRideRequest = async ({
           basePrice: bidAmount
         },
         bid_amount: bidAmount,
-        ride_column: bidAmount, // Use ride_column instead of price
-        currency: 'RS',
+        price: bidAmount, // Set both price and bid_amount for consistency
         distance: estimatedDistance,
         duration: estimatedDuration,
         payment_method: paymentMethod,
@@ -342,26 +358,16 @@ export const createNewRideRequest = async ({
 
     if (error) throw error;
 
-    // Set up real-time subscription for this ride
-    const channel = supabase
-      .channel(`ride_status:${data.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'rides',
-          filter: `id=eq.${data.id}`
-        },
-        (payload) => {
-          console.log('Ride status updated:', payload.new);
-        }
-      )
-      .subscribe();
-
-    return { data, error: null, unsubscribe: () => supabase.removeChannel(channel) };
+    console.log('Successfully created ride with ID:', data.id);
+    
+    // Setup cleanup function that can be called if needed
+    const unsubscribe = () => {
+      console.log('Cleanup called for ride creation');
+    };
+    
+    return { data, error: null, unsubscribe };
   } catch (error: any) {
-    console.error('Error creating ride request:', error);
+    console.error('Error creating ride:', error.message);
     return { data: null, error: error.message, unsubscribe: () => {} };
   }
 };
@@ -851,5 +857,59 @@ export const acceptRideRequestSafe = async (
       error: error.message || 'Failed to accept ride', 
       ride: null 
     };
+  }
+};
+
+/**
+ * Creates a test ride for debugging purposes (only for development)
+ * This helps verify if ride requests are showing up correctly
+ */
+export const createTestRide = async (userId: string) => {
+  try {
+    const testRide = {
+      passenger_id: userId,
+      pickup_location: {
+        name: "Test Pickup Location",
+        address: "123 Test Street",
+        coordinates: [73.1234, 33.5678] // [lng, lat]
+      },
+      dropoff_location: {
+        name: "Test Dropoff Location",
+        address: "456 Test Avenue",
+        coordinates: [73.2345, 33.6789] // [lng, lat]
+      },
+      ride_option: {
+        name: "Car",
+        type: "Car",
+        basePrice: 250
+      },
+      bid_amount: 250,
+      price: 250,
+      distance: 5.2,
+      duration: 900, // 15 minutes in seconds
+      status: "searching", 
+      payment_method: "cash",
+      currency: "RS",
+      created_at: new Date().toISOString()
+    };
+
+    console.log('Creating test ride', testRide);
+
+    const { data, error } = await supabase
+      .from('rides')
+      .insert(testRide)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error creating test ride:', error);
+      return { success: false, error: error.message, data: null };
+    }
+
+    console.log('Test ride created successfully:', data);
+    return { success: true, error: null, data };
+  } catch (error: any) {
+    console.error('Error in createTestRide:', error);
+    return { success: false, error: error.message, data: null };
   }
 }; 
