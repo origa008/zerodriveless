@@ -282,6 +282,100 @@ const SimpleRideCard = ({ ride }: { ride: any }) => {
   );
 };
 
+// Add a direct database test function to bypass RideContext
+const createDirectTestRide = async () => {
+  if (!user?.id) return;
+
+  try {
+    toast({
+      title: 'Creating direct test ride',
+      description: 'Inserting directly into database...'
+    });
+
+    // Generate a unique ID for the test ride
+    const now = new Date();
+    const testId = `test-${now.getTime()}`;
+
+    // Format user-friendly coords for logging
+    const startLat = 33.5678;
+    const startLng = 73.1234;
+    const endLat = 33.6789;
+    const endLng = 73.2345;
+
+    console.log(`Creating direct test ride with ID ${testId}`);
+    console.log(`From [${startLat}, ${startLng}] to [${endLat}, ${endLng}]`);
+
+    // Create a test ride directly in the database
+    const { data, error } = await supabase
+      .from('rides')
+      .insert({
+        id: testId, // Set explicit ID for easier tracking
+        passenger_id: user.id,
+        pickup_location: {
+          name: "Direct Test Pickup",
+          address: "123 Direct Test St",
+          coordinates: [startLng, startLat] // [lng, lat] format
+        },
+        dropoff_location: {
+          name: "Direct Test Dropoff",
+          address: "456 Direct Test Ave",
+          coordinates: [endLng, endLat] // [lng, lat] format
+        },
+        ride_option: {
+          name: "Car",
+          type: "Car",
+          basePrice: 300
+        },
+        bid_amount: 300,
+        price: 300,
+        distance: 7.5,
+        duration: 1200, // 20 minutes in seconds
+        status: "searching",
+        payment_method: "cash",
+        created_at: now.toISOString()
+      })
+      .select();
+
+    if (error) {
+      console.error('Error creating direct test ride:', error);
+      throw error;
+    }
+
+    console.log('Direct test ride created successfully:', data);
+    
+    // Immediately check if the ride appears in our list
+    toast({
+      title: 'Success',
+      description: 'Direct test ride created. Refreshing...'
+    });
+
+    // Wait 1 second then refresh to see if ride appears
+    setTimeout(() => {
+      fetchNearbyRides();
+      
+      // Also verify the ride exists after creation
+      setTimeout(async () => {
+        const { data: verification } = await supabase
+          .from('rides')
+          .select('*')
+          .eq('id', testId);
+          
+        console.log('Verification query results:', verification);
+      }, 2000);
+    }, 1000);
+
+    return data;
+  } catch (error: any) {
+    console.error('Error in direct test:', error);
+    toast({
+      title: 'Error',
+      description: error.message || 'Failed to create direct test ride',
+      variant: 'destructive'
+    });
+    return null;
+  }
+};
+
 const RideRequests: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -804,6 +898,18 @@ const RideRequests: React.FC = () => {
                   >
                     <AlertCircle className="h-4 w-4" />
                     Show Debug Info
+                  </Button>
+                )}
+
+                {/* Add this after the Debug Info button */}
+                {process.env.NODE_ENV === 'development' && (
+                  <Button 
+                    onClick={createDirectTestRide}
+                    variant="destructive" 
+                    className="gap-2"
+                  >
+                    <BugPlay className="h-4 w-4" />
+                    Direct Database Test
                   </Button>
                 )}
               </div>

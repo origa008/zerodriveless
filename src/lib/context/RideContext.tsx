@@ -6,6 +6,7 @@ import { useToast } from '@/hooks/use-toast';
 import { getMockRideOptions } from '../utils/mockData';
 import { getWalletBalance, getTransactionHistory, subscribeToWalletBalance, subscribeToRideUpdates } from '../utils/walletUtils';
 import { calculateDistance } from '../utils/mapsApi';
+import { supabase } from '@/integrations/supabase/client';
 
 type RideContextType = {
   pickup: Location | null;
@@ -230,7 +231,26 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
   
   const confirmRide = async (paymentMethod: PaymentMethod) => {
+    console.log('Confirming ride with params:', {
+      userId: user?.id,
+      pickupLocation,
+      dropoffLocation,
+      selectedRideOption,
+      userBid,
+      estimatedDistance,
+      estimatedDuration
+    });
+
     if (!user?.id || !pickupLocation || !dropoffLocation || !selectedRideOption || !userBid) {
+      const missingParams = {
+        userId: !user?.id,
+        pickupLocation: !pickupLocation,
+        dropoffLocation: !dropoffLocation,
+        selectedRideOption: !selectedRideOption,
+        userBid: !userBid
+      };
+      console.error('Missing required information:', missingParams);
+      
       toast({
         title: "Error",
         description: "Missing required information to create ride request",
@@ -240,6 +260,8 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     if (!estimatedDistance || !estimatedDuration) {
+      console.error('Missing estimations:', { estimatedDistance, estimatedDuration });
+      
       toast({
         title: "Error",
         description: "Please wait for ride estimation to complete",
@@ -248,9 +270,22 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
+    // Start searching state
     setIsSearchingRides(true);
 
     try {
+      console.log('Creating new ride request with:', {
+        passengerId: user.id,
+        pickupLocation,
+        dropoffLocation,
+        bidAmount: userBid,
+        vehicleType: selectedRideOption.name,
+        estimatedDistance,
+        estimatedDuration,
+        paymentMethod
+      });
+
+      // Create the ride request
       const { data: ride, error, unsubscribe } = await createNewRideRequest({
         passengerId: user.id,
         pickupLocation,
@@ -262,62 +297,97 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
         paymentMethod
       });
 
-      if (error) throw new Error(error);
-
-      if (ride) {
-        // Set current ride in waiting state
-        setCurrentRide({
-          id: ride.id,
-          pickup: pickupLocation,
-          dropoff: dropoffLocation,
-          rideOption: selectedRideOption,
-          status: "searching",
-          price: userBid,
-          currency: "RS",
-          distance: estimatedDistance,
-          duration: estimatedDuration,
-          paymentMethod: paymentMethod
-        });
-
-        setWaitingForDriverAcceptance(true);
-        resetDriverAcceptanceTimer();
-
-        // Start a timer to check for ride acceptance
-        const timer = setTimeout(() => {
-          if (currentRide?.status === "searching") {
-            // Cancel the ride if no driver accepts
-            cancelRide(ride.id, "No driver found");
-            setCurrentRide(null);
-            setWaitingForDriverAcceptance(false);
-            toast({
-              title: "No Driver Found",
-              description: "Please try requesting again",
-              duration: 3000
-            });
-          }
-        }, 60000); // 1 minute timeout
-
-        // Subscribe to ride status updates
-        const statusUnsubscribe = subscribeToRideUpdates(ride.id, (updatedRide) => {
-          if (updatedRide.status === "confirmed") {
-            clearTimeout(timer);
-            setWaitingForDriverAcceptance(false);
-            setCurrentRide(updatedRide);
-            toast({
-              title: "Ride Confirmed",
-              description: "A driver has accepted your ride request",
-              duration: 3000
-            });
-          }
-        });
-
-        // Clean up on component unmount
-        return () => {
-          clearTimeout(timer);
-          unsubscribe();
-          if (statusUnsubscribe) statusUnsubscribe();
-        };
+      // Handle error from ride creation
+      if (error) {
+        console.error('Error from createNewRideRequest:', error);
+        throw new Error(error);
       }
+
+      // Check if ride was created properly
+      if (!ride) {
+        console.error('No ride returned from createNewRideRequest');
+        throw new Error('Failed to create ride request');
+      }
+
+      console.log('Successfully created ride:', ride);
+      
+      // Set current ride in waiting state
+      const newRide: Ride = {
+        id: ride.id,
+        pickup: pickupLocation,
+        dropoff: dropoffLocation,
+        rideOption: selectedRideOption,
+        status: "searching",
+        price: userBid,
+        currency: "RS",
+        distance: estimatedDistance,
+        duration: estimatedDuration,
+        paymentMethod: paymentMethod
+      };
+      
+      console.log('Setting current ride to:', newRide);
+      setCurrentRide(newRide);
+
+      // Update UI state for driver acceptance
+      setWaitingForDriverAcceptance(true);
+      resetDriverAcceptanceTimer();
+
+      // Start a timer to check for ride acceptance - store in a ref to access current state
+      const currentRideId = ride.id;
+      console.log(`Starting 60-second timer for ride ${currentRideId}`);
+      
+      const timer = setTimeout(async () => {
+        // Get the latest ride status from the database
+        const { data: currentRideData } = await supabase
+          .from('rides')
+          .select('status')
+          .eq('id', currentRideId)
+          .single();
+        
+        console.log(`Timer expired for ride ${currentRideId}. Current status:`, currentRideData?.status);
+        
+        // Only cancel if status is still "searching"
+        if (currentRideData?.status === 'searching') {
+          console.log(`No driver found after timeout. Cancelling ride ${currentRideId}`);
+          
+          // Cancel the ride if no driver accepts
+          cancelRide(currentRideId, "No driver found");
+          setCurrentRide(null);
+          setWaitingForDriverAcceptance(false);
+          
+          toast({
+            title: "No Driver Found",
+            description: "Please try requesting again",
+            duration: 3000
+          });
+        }
+      }, 60000); // 1 minute timeout
+
+      // Subscribe to ride status updates
+      console.log(`Subscribing to updates for ride ${ride.id}`);
+      const statusUnsubscribe = subscribeToRideUpdates(ride.id, (updatedRide) => {
+        console.log('Received ride update:', updatedRide);
+        
+        if (updatedRide.status === "confirmed") {
+          console.log('Ride confirmed by driver');
+          clearTimeout(timer);
+          setWaitingForDriverAcceptance(false);
+          setCurrentRide({
+            ...newRide,
+            status: 'confirmed',
+            driver: updatedRide.driver
+          });
+          
+          toast({
+            title: "Ride Confirmed",
+            description: "A driver has accepted your ride request",
+            duration: 3000
+          });
+        }
+      });
+
+      // Return the ride ID for the caller
+      return ride.id;
     } catch (error: any) {
       console.error("Error confirming ride:", error);
       toast({
@@ -325,6 +395,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
         description: error.message || "Could not create ride request",
         duration: 3000
       });
+      return null;
     } finally {
       setIsSearchingRides(false);
     }

@@ -304,15 +304,28 @@ const RideProgress: React.FC = () => {
     setIsProcessing(true);
     
     try {
-      // Call the confirmRide function from the RideContext
-      confirmRide(paymentMethod);
+      console.log('Calling confirmRide with paymentMethod:', paymentMethod);
       
-      toast({
-        title: "Ride Confirmed",
-        description: "Waiting for a driver to accept your request",
-        duration: 5000
-      });
+      // Call the confirmRide function from the RideContext
+      const rideId = await confirmRide(paymentMethod);
+      
+      if (rideId) {
+        console.log('Ride created successfully with ID:', rideId);
+        toast({
+          title: "Ride Confirmed",
+          description: "Waiting for a driver to accept your request",
+          duration: 5000
+        });
+      } else {
+        // If no rideId returned, something went wrong
+        toast({
+          title: "Warning",
+          description: "Ride was created but may not appear for drivers immediately",
+          duration: 5000
+        });
+      }
     } catch (error: any) {
+      console.error('Error in handleConfirmRide:', error);
       toast({
         title: "Error",
         description: error.message || "Failed to confirm ride",
