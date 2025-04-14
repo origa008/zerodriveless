@@ -142,6 +142,7 @@ const formatDuration = (seconds: number) => {
 const SimpleRideCard = ({ ride }: { ride: any }) => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { toast } = useToast();
 
   const handleAccept = async () => {
     try {
@@ -169,44 +170,101 @@ const SimpleRideCard = ({ ride }: { ride: any }) => {
     }
   };
 
+  // Format time ago (e.g. "2 min ago")
+  const formatTimeAgo = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.round(diffMs / 60000);
+    
+    if (diffMins < 1) return 'Just now';
+    if (diffMins === 1) return '1 min ago';
+    if (diffMins < 60) return `${diffMins} mins ago`;
+    
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours === 1) return '1 hour ago';
+    if (diffHours < 24) return `${diffHours} hours ago`;
+    
+    return new Date(dateString).toLocaleDateString();
+  };
+
   return (
-    <div className="bg-white p-4 rounded-md shadow-sm mb-4">
-      <h2 className="text-2xl font-bold mb-6">Ride Request</h2>
-      <div className="flex items-start mb-3">
-        <div className="w-8 mr-2 flex-shrink-0">
-          <div className="h-6 w-6 bg-gray-200 rounded-full flex items-center justify-center">
-            <MapPin className="h-4 w-4 text-gray-600" />
+    <div className="bg-white p-5 rounded-xl shadow-md mb-4 border border-gray-100">
+      <div className="flex justify-between items-start mb-6">
+        <h2 className="text-xl font-bold">Ride Request</h2>
+        {ride.created_at && (
+          <span className="text-sm text-gray-500">{formatTimeAgo(ride.created_at)}</span>
+        )}
+      </div>
+      
+      {/* Pickup location with map pin icon */}
+      <div className="flex items-start mb-4">
+        <div className="w-10 mr-2 flex-shrink-0">
+          <div className="h-8 w-8 bg-green-100 rounded-full flex items-center justify-center">
+            <MapPin className="h-4 w-4 text-green-600" />
           </div>
         </div>
         <div className="flex-1">
-          <h3 className="text-lg text-gray-500">{ride.pickup_location?.name || 'Pickup location'}</h3>
-        </div>
-        <div className="text-right">
-          <div className="text-gray-500">Distance</div>
-          <div className="text-xl font-bold">{parseFloat(ride.distance).toFixed(1)} km</div>
+          <p className="text-sm text-gray-500 mb-1">Pickup Location</p>
+          <h3 className="text-lg font-medium">
+            {ride.pickup_location?.name || 'No pickup location specified'}
+          </h3>
+          {ride.pickup_location?.address && (
+            <p className="text-sm text-gray-500">{ride.pickup_location.address}</p>
+          )}
         </div>
       </div>
       
+      {/* Dropoff location with flag icon */}
       <div className="flex items-start mb-6">
-        <div className="w-8 mr-2 flex-shrink-0">
-          <div className="h-6 w-6 bg-gray-800 rounded-full flex items-center justify-center">
-            <Flag className="h-4 w-4 text-white" />
+        <div className="w-10 mr-2 flex-shrink-0">
+          <div className="h-8 w-8 bg-red-100 rounded-full flex items-center justify-center">
+            <Flag className="h-4 w-4 text-red-600" />
           </div>
         </div>
         <div className="flex-1">
-          <h3 className="text-lg font-medium">{ride.dropoff_location?.name || 'Dropoff location'}</h3>
-        </div>
-        <div className="text-right">
-          <div className="text-gray-500">Price</div>
-          <div className="text-xl font-bold">{ride.bid_amount || ride.ride_column || 0} RS</div>
+          <p className="text-sm text-gray-500 mb-1">Dropoff Location</p>
+          <h3 className="text-lg font-medium">
+            {ride.dropoff_location?.name || 'No dropoff location specified'}
+          </h3>
+          {ride.dropoff_location?.address && (
+            <p className="text-sm text-gray-500">{ride.dropoff_location.address}</p>
+          )}
         </div>
       </div>
+      
+      {/* Ride details in a grid */}
+      <div className="bg-gray-50 p-4 rounded-lg grid grid-cols-3 gap-4 mb-6">
+        <div>
+          <p className="text-sm text-gray-500 mb-1">Distance</p>
+          <p className="text-xl font-bold">{parseFloat(ride.distance).toFixed(1)} km</p>
+        </div>
+        <div>
+          <p className="text-sm text-gray-500 mb-1">Duration</p>
+          <p className="text-xl font-bold">{ride.duration ? Math.round(ride.duration / 60) : 0} min</p>
+        </div>
+        <div>
+          <p className="text-sm text-gray-500 mb-1">Price</p>
+          <p className="text-xl font-bold text-green-600">
+            {ride.bid_amount || ride.ride_column || 0} RS
+          </p>
+        </div>
+      </div>
+      
+      {/* Vehicle type if available */}
+      {ride.ride_option?.name && (
+        <div className="mb-6">
+          <span className="px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+            {ride.ride_option.name}
+          </span>
+        </div>
+      )}
       
       <Button 
         onClick={handleAccept}
-        className="w-full bg-black text-white py-6 rounded-xl text-xl"
+        className="w-full bg-black text-white py-6 rounded-xl text-xl font-medium"
       >
-        Accept
+        Accept Ride
       </Button>
     </div>
   );
@@ -329,7 +387,7 @@ const RideRequests: React.FC = () => {
         return;
       }
 
-      console.log('All fetched rides:', data);
+      console.log(`Fetched ${data?.length || 0} available rides`);
       
       // Debug logging - show exactly what's coming from the database
       if (data && data.length > 0) {
@@ -380,56 +438,72 @@ const RideRequests: React.FC = () => {
 
     // Set up real-time subscription for ride requests
     const subscription = supabase
-      .channel('ride_requests')
+      .channel('public:rides')
       .on('postgres_changes', {
-        event: '*',
+        event: 'INSERT',
         schema: 'public',
         table: 'rides',
-        filter: `status=eq.searching`
+        filter: 'status=eq.searching'
       }, (payload) => {
-        console.log('Received real-time update:', payload);
+        console.log('New ride created:', payload);
+        const newRide = payload.new as Ride;
         
-        if (payload.eventType === 'INSERT') {
-          // Add new ride request to the list if within range
-          const newRide = payload.new as Ride;
-          if (userLocation && newRide.pickup_location?.coordinates) {
-            const pickupLng = newRide.pickup_location.coordinates[0];
-            const pickupLat = newRide.pickup_location.coordinates[1];
-            
-            const distance = calculateDistance(
-              userLocation.lat, 
-              userLocation.lng, 
-              pickupLat, 
-              pickupLng
-            );
-            
-            console.log(`New ride ${newRide.id} distance: ${distance.toFixed(1)}km`);
-            
-            if (distance <= 10) { // 10km radius
-              toast({
-                title: 'New Ride Request',
-                description: 'A new ride request is available nearby.',
-                duration: 5000,
-              });
-              setRideRequests(current => [newRide, ...current]);
-            }
-          }
-        } else if (payload.eventType === 'UPDATE') {
-          // Remove rides that are no longer searching or have been accepted
-          const updatedRide = payload.new as Ride;
-          if (updatedRide.status !== 'searching' || updatedRide.driver_id) {
-            setRideRequests(current => current.filter(ride => ride.id !== updatedRide.id));
-          }
-        } else if (payload.eventType === 'DELETE') {
-          // Remove deleted rides
-          const oldRide = payload.old as Ride;
-          setRideRequests(current => current.filter(ride => ride.id !== oldRide.id));
+        // Add to our rides list automatically
+        setRideRequests(prev => [newRide, ...prev]);
+        
+        // Show notification
+        toast({
+          title: 'New Ride Request',
+          description: `From ${newRide.pickup_location?.name || 'pickup'} to ${newRide.dropoff_location?.name || 'destination'}`,
+          duration: 5000,
+        });
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE', 
+        schema: 'public',
+        table: 'rides',
+        filter: 'status=eq.searching'
+      }, (payload) => {
+        console.log('Ride updated:', payload);
+        const updatedRide = payload.new as Ride;
+        
+        // Handle updates to rides (like price changes)
+        if (updatedRide.driver_id) {
+          // Ride was taken by another driver, remove it
+          setRideRequests(prev => prev.filter(ride => ride.id !== updatedRide.id));
+        } else {
+          // Update the ride in our list
+          setRideRequests(prev => prev.map(ride => 
+            ride.id === updatedRide.id ? updatedRide : ride
+          ));
         }
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'rides',
+        filter: 'status=neq.searching'
+      }, (payload) => {
+        // Remove rides that are no longer in searching status
+        const updatedRide = payload.new as Ride;
+        setRideRequests(prev => prev.filter(ride => ride.id !== updatedRide.id));
+      })
+      .on('postgres_changes', {
+        event: 'DELETE',
+        schema: 'public',
+        table: 'rides'
+      }, (payload) => {
+        // Remove deleted rides
+        const oldRide = payload.old as Ride;
+        setRideRequests(prev => prev.filter(ride => ride.id !== oldRide.id));
       })
       .subscribe();
 
+    console.log('Subscribed to ride changes');
+
     // Clean up subscription
     return () => {
+      console.log('Unsubscribing from ride changes');
       subscription.unsubscribe();
     };
   }, [userLocation, isRegistered, registrationStatus, walletBalance]);
