@@ -291,103 +291,6 @@ const createDirectTestRide = async () => {
       title: 'Creating direct test ride',
       description: 'Inserting directly into database...'
     });
-
-    // Generate a unique ID for the test ride
-    const now = new Date();
-    const testId = `test-${now.getTime()}`;
-
-    // Format user-friendly coords for logging
-    const startLat = 33.5678;
-    const startLng = 73.1234;
-    const endLat = 33.6789;
-    const endLng = 73.2345;
-
-    console.log(`Creating direct test ride with ID ${testId}`);
-    console.log(`From [${startLat}, ${startLng}] to [${endLat}, ${endLng}]`);
-
-    // Create a test ride directly in the database
-    const { data, error } = await supabase
-      .from('rides')
-      .insert({
-        id: testId, // Set explicit ID for easier tracking
-        passenger_id: user.id,
-        pickup_location: {
-          name: "Direct Test Pickup",
-          address: "123 Direct Test St",
-          coordinates: [startLng, startLat] // [lng, lat] format
-        },
-        dropoff_location: {
-          name: "Direct Test Dropoff",
-          address: "456 Direct Test Ave",
-          coordinates: [endLng, endLat] // [lng, lat] format
-        },
-        ride_option: {
-          name: "Car",
-          type: "Car",
-          basePrice: 300
-        },
-        bid_amount: 300,
-        price: 300,
-        distance: 7.5,
-        duration: 1200, // 20 minutes in seconds
-        status: "searching",
-        payment_method: "cash",
-        created_at: now.toISOString()
-      })
-      .select();
-
-    if (error) {
-      console.error('Error creating direct test ride:', error);
-      throw error;
-    }
-
-    console.log('Direct test ride created successfully:', data);
-    
-    // Immediately check if the ride appears in our list
-    toast({
-      title: 'Success',
-      description: 'Direct test ride created. Refreshing...'
-    });
-
-    // Wait 1 second then refresh to see if ride appears
-    setTimeout(() => {
-      fetchNearbyRides();
-      
-      // Also verify the ride exists after creation
-      setTimeout(async () => {
-        const { data: verification } = await supabase
-          .from('rides')
-          .select('*')
-          .eq('id', testId);
-          
-        console.log('Verification query results:', verification);
-      }, 2000);
-    }, 1000);
-
-    return data;
-  } catch (error: any) {
-    console.error('Error in direct test:', error);
-    toast({
-      title: 'Error',
-      description: error.message || 'Failed to create direct test ride',
-      variant: 'destructive'
-    });
-    return null;
-  }
-};
-
-const RideRequests: React.FC = () => {
-  const navigate = useNavigate();
-  const { user } = useAuth();
-  const { toast } = useToast();
-  const { isDriverMode, setDriverMode } = useRide();
-  
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [rideRequests, setRideRequests] = useState<Ride[]>([]);
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
-  const [isRegistered, setIsRegistered] = useState<boolean>(false);
-  const [registrationStatus, setRegistrationStatus] = useState<string>('');
   const [walletBalance, setWalletBalance] = useState<number>(0);
 
   // Check driver registration status and wallet balance
@@ -412,96 +315,57 @@ const RideRequests: React.FC = () => {
           setIsRegistered(false);
           setRegistrationStatus('');
         } else {
-          setIsRegistered(true);
-          setRegistrationStatus(driverDetails.status);
+    try {
+      // First check if user has submitted driver registration
+      const { data: driverDetails, error: driverError } = await supabase
+        .from('driver_details')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+
+      if (driverError) {
+        if (driverError.code !== 'PGRST116') { // Not found error
+          console.error("Error fetching driver details:", driverError);
         }
+        setIsRegistered(false);
+        setRegistrationStatus('');
+      } else {
+        setIsRegistered(true);
+        setRegistrationStatus(driverDetails.status);
+      }
 
-        // Get wallet balance
-        const { data: walletData, error: walletError } = await supabase
-          .from('wallets')
-          .select('balance')
-          .eq('user_id', user.id)
-          .single();
+      // Get wallet balance
+      const { data: walletData, error: walletError } = await supabase
+        .from('wallets')
+        .select('balance')
+        .eq('user_id', user.id)
+        .single();
 
-        if (walletError) {
-          if (walletError.code !== 'PGRST116') {
-            console.error("Error fetching wallet:", walletError);
+      if (walletError) {
+        if (walletError.code !== 'PGRST116') {
+          console.error("Error fetching wallet:", walletError);
+        }
+        setWalletBalance(0);
           }
           setWalletBalance(0);
-        } else {
-          setWalletBalance(walletData?.balance || 0);
-        }
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+    checkDriverStatus();
+  }, [user]);
 
-        // Get current location with better error handling
-        if (navigator.geolocation) {
-          navigator.geolocation.getCurrentPosition(
-            async (position) => {
-              setUserLocation({
-                lat: position.coords.latitude,
-                lng: position.coords.longitude,
-              });
-              // Try to fetch nearby rides immediately after getting location
-              await fetchNearbyRides();
-            },
-            (error) => {
-              console.error('Location error:', error);
-              let errorMessage = 'Please enable location services to view nearby rides.';
-              
-        description: 'Please enable location services to view nearby rides.',
-        variant: 'destructive',
-      });
-    try {
-      setLoading(true);
-      
-      // Check if user profile data is available
-      if (!user) {
-        toast({
-          title: 'Error',
-          description: 'You must be logged in to accept rides',
-          variant: 'destructive',
-        });
-        return;
-      }
-      
-      // Call the acceptRideRequest utility function
-      const result = await acceptRideRequest(ride.id, user.id);
-      
-      if (result.success) {
-        toast({
-          title: 'Success',
-          description: 'Ride accepted successfully!',
-        });
-        navigate(`/rides/${ride.id}`);
-      } else {
-        toast({
-          title: 'Error',
-          description: result.error || 'Failed to accept ride',
-          variant: 'destructive',
-        });
-      }
-    } catch (error) {
-      console.error('Error accepting ride:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to accept ride',
-        variant: 'destructive',
+  // ...
       });
     } finally {
       setLoading(false);
     }
   };
+  checkDriverStatus();
+}, [user]);
 
-  // Ensure driver mode is set when this component is loaded
-  useEffect(() => {
-    if (!isDriverMode) {
-      setDriverMode(true);
-      console.log('Setting driver mode to true');
-    }
-  }, [isDriverMode, setDriverMode]);
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-white">
+// ...
         <Loader2 className="h-8 w-8 animate-spin mr-2" />
         <p>Loading...</p>
       </div>
