@@ -282,6 +282,100 @@ const SimpleRideCard = ({ ride }: { ride: any }) => {
   );
 };
 
+// Add a direct database test function to bypass RideContext
+const createDirectTestRide = async () => {
+  if (!user?.id) return;
+
+  try {
+    toast({
+      title: 'Creating direct test ride',
+      description: 'Inserting directly into database...'
+    });
+
+    // Generate a unique ID for the test ride
+    const now = new Date();
+    const testId = `test-${now.getTime()}`;
+
+    // Format user-friendly coords for logging
+    const startLat = 33.5678;
+    const startLng = 73.1234;
+    const endLat = 33.6789;
+    const endLng = 73.2345;
+
+    console.log(`Creating direct test ride with ID ${testId}`);
+    console.log(`From [${startLat}, ${startLng}] to [${endLat}, ${endLng}]`);
+
+    // Create a test ride directly in the database
+    const { data, error } = await supabase
+      .from('rides')
+      .insert({
+        id: testId, // Set explicit ID for easier tracking
+        passenger_id: user.id,
+        pickup_location: {
+          name: "Direct Test Pickup",
+          address: "123 Direct Test St",
+          coordinates: [startLng, startLat] // [lng, lat] format
+        },
+        dropoff_location: {
+          name: "Direct Test Dropoff",
+          address: "456 Direct Test Ave",
+          coordinates: [endLng, endLat] // [lng, lat] format
+        },
+        ride_option: {
+          name: "Car",
+          type: "Car",
+          basePrice: 300
+        },
+        bid_amount: 300,
+        price: 300,
+        distance: 7.5,
+        duration: 1200, // 20 minutes in seconds
+        status: "searching",
+        payment_method: "cash",
+        created_at: now.toISOString()
+      })
+      .select();
+
+    if (error) {
+      console.error('Error creating direct test ride:', error);
+      throw error;
+    }
+
+    console.log('Direct test ride created successfully:', data);
+    
+    // Immediately check if the ride appears in our list
+    toast({
+      title: 'Success',
+      description: 'Direct test ride created. Refreshing...'
+    });
+
+    // Wait 1 second then refresh to see if ride appears
+    setTimeout(() => {
+      fetchNearbyRides();
+      
+      // Also verify the ride exists after creation
+      setTimeout(async () => {
+        const { data: verification } = await supabase
+          .from('rides')
+          .select('*')
+          .eq('id', testId);
+          
+        console.log('Verification query results:', verification);
+      }, 2000);
+    }, 1000);
+
+    return data;
+  } catch (error: any) {
+    console.error('Error in direct test:', error);
+    toast({
+      title: 'Error',
+      description: error.message || 'Failed to create direct test ride',
+      variant: 'destructive'
+    });
+    return null;
+  }
+};
+
 const RideRequests: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -374,10 +468,10 @@ const RideRequests: React.FC = () => {
     };
     
     checkDriverStatus();
-  }, [user, toast]);
+  }, [user?.id, toast]);
 
-  // Function to fetch nearby ride requests - improved with distance filtering
-  const fetchNearbyRides = React.useCallback(async () => {
+  // Function to fetch nearby ride requests - completely rewritten for reliability
+  const fetchNearbyRides = async () => {
     try {
       setRefreshing(true);
       console.log('Fetching nearby rides...');
@@ -385,18 +479,7 @@ const RideRequests: React.FC = () => {
       // Debug: Log user location
       console.log('Current driver location:', userLocation);
       
-      if (!userLocation) {
-        console.error('Cannot fetch rides: User location is missing');
-        toast({
-          title: 'Location Required',
-          description: 'Please enable location services to view nearby rides',
-          variant: 'destructive',
-        });
-        setRefreshing(false);
-        return;
-      }
-      
-      // First query to get all searching rides
+      // Simpler query - just get ALL rides with 'searching' status
       const { data, error } = await supabase
         .from('rides')
         .select('*')
@@ -411,76 +494,44 @@ const RideRequests: React.FC = () => {
           description: 'Failed to fetch ride requests',
           variant: 'destructive',
         });
-        setRefreshing(false);
         return;
       }
 
+      // Debug detailed information about the results
       console.log(`Fetched ${data?.length || 0} available rides`);
+      console.log('SQL query returned rides:', data);
       
-      // Filter rides by distance
-      const nearbyRides = data?.filter(ride => {
-        // Ensure pickup_location has valid coordinates
-        if (!ride.pickup_location?.coordinates || ride.pickup_location.coordinates.length < 2) {
-          console.log('Ride missing valid coordinates:', ride.id);
-          return false;
-        }
-        
-        // Get coordinates from the pickup_location object
-        const pickupLng = ride.pickup_location.coordinates[0];
-        const pickupLat = ride.pickup_location.coordinates[1];
-        
-        if (!userLocation?.lat || !userLocation?.lng) {
-          return true; // Include all if driver location is unknown
-        }
-        
-        // Calculate distance to ride pickup point
-        const distance = calculateDistance(
-          userLocation.lat,
-          userLocation.lng,
-          pickupLat,
-          pickupLng
-        );
-        
-        // Include the distance in the ride object for display
-        ride.distance_to_pickup = Number(distance.toFixed(1));
-        
-        // Filter for rides within reasonable distance (adjust as needed)
-        const MAX_DISTANCE_KM = 20; // Show rides within 20km
-        return distance <= MAX_DISTANCE_KM;
-      });
-      
-      if (nearbyRides && nearbyRides.length > 0) {
-        console.log(`Filtered to ${nearbyRides.length} nearby rides`);
-        
-        // Sort by distance
-        nearbyRides.sort((a, b) => (a.distance_to_pickup || 999) - (b.distance_to_pickup || 999));
-        
-        // Get passenger details for each ride
-        const ridesWithPassengers = await Promise.all(
-          nearbyRides.map(async (ride) => {
-            try {
-              const { data: passenger } = await supabase
-                .from('profiles')
-                .select('name, avatar')
-                .eq('id', ride.passenger_id)
-                .single();
-              
-              return {
-                ...ride,
-                passenger: passenger || { name: 'Passenger', avatar: null }
-              };
-            } catch (err) {
-              console.warn('Could not fetch passenger details for ride:', ride.id);
-              return ride;
-            }
-          })
-        );
-        
-        setRideRequests(ridesWithPassengers);
+      // Debug logging - show exactly what's coming from the database
+      if (data && data.length > 0) {
+        data.forEach((ride, index) => {
+          console.log(`Ride ${index + 1} details:`, {
+            id: ride.id,
+            pickup: ride.pickup_location,
+            dropoff: ride.dropoff_location,
+            status: ride.status,
+            bid: ride.bid_amount,
+            price: ride.price,
+            distance: ride.distance,
+            duration: ride.duration,
+            created_at: ride.created_at
+          });
+        });
       } else {
-        console.log('No nearby rides found');
-        setRideRequests([]);
+        console.log('No rides found with searching status');
+        
+        // Debug: Check if there are any rides at all, regardless of status
+        const { data: allRides, error: allRidesError } = await supabase
+          .from('rides')
+          .select('id, status, driver_id')
+          .limit(10);
+          
+        if (!allRidesError && allRides) {
+          console.log('Most recent rides in database:', allRides);
+        }
       }
+      
+      // Set all rides without filtering for distance yet
+      setRideRequests(data || []);
     } catch (error: any) {
       console.error('Error fetching nearby rides:', error);
       toast({
@@ -491,68 +542,12 @@ const RideRequests: React.FC = () => {
     } finally {
       setRefreshing(false);
     }
-  }, [userLocation, toast]);
+  };
 
   // Handle manual refresh
-  const handleRefresh = React.useCallback(() => {
+  const handleRefresh = () => {
     fetchNearbyRides();
-  }, [fetchNearbyRides]);
-
-  // Function to handle accepting a ride request - improved with proper error handling
-  const handleAcceptRide = React.useCallback(async (ride: Ride) => {
-    try {
-      setLoading(true);
-      
-      // Check if user profile data is available
-      if (!user) {
-        toast({
-          title: 'Error',
-          description: 'You must be logged in to accept rides',
-          variant: 'destructive',
-        });
-        return;
-      }
-      
-      console.log('Accepting ride:', ride.id);
-      
-      // Call the acceptRideRequest utility function
-      const result = await acceptRideRequest(ride.id, user.id);
-      
-      if (result.success) {
-        // Remove this ride from the list immediately to prevent multiple accepts
-        setRideRequests(prev => prev.filter(r => r.id !== ride.id));
-        
-        toast({
-          title: 'Success',
-          description: 'Ride accepted successfully!',
-        });
-        
-        // Navigate to ride details page
-        navigate(`/rides/${ride.id}`);
-      } else {
-        toast({
-          title: 'Error',
-          description: result.error || 'Failed to accept ride',
-          variant: 'destructive',
-        });
-        
-        // Refresh ride list to get updated status
-        fetchNearbyRides();
-      }
-    } catch (error: any) {
-      console.error('Error accepting ride:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to accept ride',
-        variant: 'destructive',
-      });
-      
-      // Refresh ride list to get updated status
-      fetchNearbyRides();
-    } finally {
-      setLoading(false);
-    }
-  }, [user, toast, navigate, fetchNearbyRides]);
+  };
 
   // Subscribe to and fetch nearby ride requests in real-time
   useEffect(() => {
@@ -573,31 +568,26 @@ const RideRequests: React.FC = () => {
 
     // Initial fetch
     fetchNearbyRides();
-    console.log('Setting up real-time subscription for ride requests...');
+    console.log('Setting up real-time subscription for new ride requests...');
 
     // Set up real-time subscription for ride requests
     const subscription = supabase
-      .channel('rides-channel')
+      .channel('rides-channel') // Use a simpler channel name
       .on('postgres_changes', {
-        event: '*', // Listen to all events (INSERT, UPDATE, DELETE)
+        event: 'INSERT',
         schema: 'public',
         table: 'rides',
         filter: 'status=eq.searching'
       }, async (payload) => {
         console.log('Ride change detected:', payload);
         
-        if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-          const rideData = payload.new as Ride;
-          
-          // Only process rides that are in 'searching' status
-          if (rideData.status !== 'searching') {
-            return;
-          }
+        if (payload.eventType === 'INSERT') {
+          const newRide = payload.new as Ride;
           
           // Check if ride is within range
-          if (userLocation && rideData.pickup_location?.coordinates) {
-            const pickupLat = rideData.pickup_location.coordinates[1];
-            const pickupLng = rideData.pickup_location.coordinates[0];
+          if (userLocation) {
+            const pickupLat = newRide.pickup_location?.coordinates[1];
+            const pickupLng = newRide.pickup_location?.coordinates[0];
             const distance = calculateDistance(
               userLocation.lat,
               userLocation.lng,
@@ -610,44 +600,19 @@ const RideRequests: React.FC = () => {
               const { data: passenger } = await supabase
                 .from('profiles')
                 .select('name, avatar')
-                .eq('id', rideData.passenger_id)
+                .eq('id', newRide.passenger_id)
                 .single();
               
               const rideWithDetails = {
-                ...rideData,
+                ...newRide,
                 distance_to_pickup: Number(distance.toFixed(1)),
                 passenger: passenger || { name: 'Passenger', avatar: null }
               };
               
-              // Update the ride requests list
-              setPendingRideRequests(prev => {
-                // Remove any existing entry for this ride
-                const filtered = prev.filter(r => r.id !== rideData.id);
-                // Add the new/updated ride
-                return [...filtered, rideWithDetails];
-              });
-              
-              // Show notification for new rides
-              if (payload.eventType === 'INSERT') {
-                toast({
-                  title: "New Ride Request",
-                  description: `New ride request from ${rideWithDetails.pickup_location.name}`,
-                  duration: 5000
-                });
-              }
-            }
-          }
-        } else if (payload.eventType === 'DELETE' || (payload.eventType === 'UPDATE' && payload.new.status !== 'searching')) {
-          // Remove ride from list if it's deleted or no longer searching
-          const rideId = payload.old.id;
-          setPendingRideRequests(prev => prev.filter(ride => ride.id !== rideId));
-        }
-      })
-      .subscribe();
-
-    return () => {
-      subscription.unsubscribe();
-    };
+              setRideRequests(prev => {
+                const exists = prev.some(ride => ride.id === newRide.id);
+                if (exists) return prev;
+                return [rideWithDetails, ...prev];
               });
               
               // Show notification
@@ -685,7 +650,6 @@ const RideRequests: React.FC = () => {
       }, (payload) => {
         // Remove rides that are no longer in searching status
         const updatedRide = payload.new as Ride;
-        console.log('Ride status changed from searching:', updatedRide);
         setRideRequests(prev => prev.filter(ride => ride.id !== updatedRide.id));
       })
       .on('postgres_changes', {
@@ -695,7 +659,6 @@ const RideRequests: React.FC = () => {
       }, (payload) => {
         // Remove deleted rides
         const oldRide = payload.old as Ride;
-        console.log('Ride deleted:', oldRide);
         setRideRequests(prev => prev.filter(ride => ride.id !== oldRide.id));
       });
     
@@ -725,7 +688,50 @@ const RideRequests: React.FC = () => {
       subscription.unsubscribe();
       clearInterval(intervalId);
     };
-  }, [userLocation, isRegistered, registrationStatus, walletBalance, toast, fetchNearbyRides]);
+  }, [userLocation, isRegistered, registrationStatus, walletBalance]);
+
+  // Function to handle accepting a ride request
+  const handleAcceptRide = async (ride: Ride) => {
+    try {
+      setLoading(true);
+      
+      // Check if user profile data is available
+      if (!user) {
+        toast({
+          title: 'Error',
+          description: 'You must be logged in to accept rides',
+          variant: 'destructive',
+        });
+        return;
+      }
+      
+      // Call the acceptRideRequest utility function
+      const result = await acceptRideRequest(ride.id, user.id);
+      
+      if (result.success) {
+        toast({
+          title: 'Success',
+          description: 'Ride accepted successfully!',
+        });
+        navigate(`/rides/${ride.id}`);
+      } else {
+        toast({
+          title: 'Error',
+          description: result.error || 'Failed to accept ride',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      console.error('Error accepting ride:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to accept ride',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Ensure driver mode is set when this component is loaded
   useEffect(() => {
@@ -734,96 +740,6 @@ const RideRequests: React.FC = () => {
       console.log('Setting driver mode to true');
     }
   }, [isDriverMode, setDriverMode]);
-
-  // Move the createDirectTestRide function inside the component
-  const createDirectTestRide = React.useCallback(async () => {
-    if (!user?.id) return;
-
-    try {
-      toast({
-        title: 'Creating direct test ride',
-        description: 'Inserting directly into database...'
-      });
-
-      // Generate a unique ID for the test ride
-      const now = new Date();
-      const testId = `test-${now.getTime()}`;
-
-      // Format user-friendly coords for logging
-      const startLat = 33.5678;
-      const startLng = 73.1234;
-      const endLat = 33.6789;
-      const endLng = 73.2345;
-
-      console.log(`Creating direct test ride with ID ${testId}`);
-      console.log(`From [${startLat}, ${startLng}] to [${endLat}, ${endLng}]`);
-
-      // Create a test ride directly in the database
-      const { data, error } = await supabase
-        .from('rides')
-        .insert({
-          id: testId, // Set explicit ID for easier tracking
-          passenger_id: user.id,
-          pickup_location: {
-            name: "Direct Test Pickup",
-            address: "123 Direct Test St",
-            coordinates: [startLng, startLat] // [lng, lat] format
-          },
-          dropoff_location: {
-            name: "Direct Test Dropoff",
-            address: "456 Direct Test Ave",
-            coordinates: [endLng, endLat] // [lng, lat] format
-          },
-          ride_option: {
-            name: "Car",
-            type: "Car",
-            basePrice: 300
-          },
-          bid_amount: 300,
-          price: 300,
-          distance: 7.5,
-          duration: 1200, // 20 minutes in seconds
-          status: "searching",
-          payment_method: "cash",
-          created_at: now.toISOString()
-        })
-        .select();
-
-      if (error) {
-        throw error;
-      }
-
-      toast({
-        title: 'Success',
-        description: 'Test ride created successfully'
-      });
-
-      // Wait 1 second then refresh to see if ride appears
-      setTimeout(() => {
-        fetchNearbyRides();
-        
-        // Also verify the ride exists after creation
-        setTimeout(async () => {
-          const { data: verification } = await supabase
-            .from('rides')
-            .select('*')
-            .eq('id', testId);
-            
-          console.log('Verification query results:', verification);
-        }, 2000);
-      }, 1000);
-
-      return data;
-    } catch (error: any) {
-      console.error('Error in direct test:', error);
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to create direct test ride',
-        variant: 'destructive'
-      });
-      return null;
-    }
-  }, [user, toast, fetchNearbyRides]);
 
   if (loading) {
     return (
@@ -1056,7 +972,7 @@ const RideRequests: React.FC = () => {
           </div>
         ) : (
           rideRequests.map((ride) => (
-            <SimpleRideCard key={ride.id} ride={ride} />
+            <RideCard key={ride.id} ride={ride} onAccept={handleAcceptRide} />
           ))
         )}
       </div>
