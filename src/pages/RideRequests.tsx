@@ -586,13 +586,18 @@ const RideRequests: React.FC = () => {
       }, async (payload) => {
         console.log('Ride change detected:', payload);
         
-        if (payload.eventType === 'INSERT') {
-          const newRide = payload.new as Ride;
+        if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+          const rideData = payload.new as Ride;
+          
+          // Only process rides that are in 'searching' status
+          if (rideData.status !== 'searching') {
+            return;
+          }
           
           // Check if ride is within range
-          if (userLocation) {
-            const pickupLat = newRide.pickup_location?.coordinates[1];
-            const pickupLng = newRide.pickup_location?.coordinates[0];
+          if (userLocation && rideData.pickup_location?.coordinates) {
+            const pickupLat = rideData.pickup_location.coordinates[1];
+            const pickupLng = rideData.pickup_location.coordinates[0];
             const distance = calculateDistance(
               userLocation.lat,
               userLocation.lng,
@@ -605,19 +610,44 @@ const RideRequests: React.FC = () => {
               const { data: passenger } = await supabase
                 .from('profiles')
                 .select('name, avatar')
-                .eq('id', newRide.passenger_id)
+                .eq('id', rideData.passenger_id)
                 .single();
               
               const rideWithDetails = {
-                ...newRide,
+                ...rideData,
                 distance_to_pickup: Number(distance.toFixed(1)),
                 passenger: passenger || { name: 'Passenger', avatar: null }
               };
               
-              setRideRequests(prev => {
-                const exists = prev.some(ride => ride.id === newRide.id);
-                if (exists) return prev;
-                return [rideWithDetails, ...prev];
+              // Update the ride requests list
+              setPendingRideRequests(prev => {
+                // Remove any existing entry for this ride
+                const filtered = prev.filter(r => r.id !== rideData.id);
+                // Add the new/updated ride
+                return [...filtered, rideWithDetails];
+              });
+              
+              // Show notification for new rides
+              if (payload.eventType === 'INSERT') {
+                toast({
+                  title: "New Ride Request",
+                  description: `New ride request from ${rideWithDetails.pickup_location.name}`,
+                  duration: 5000
+                });
+              }
+            }
+          }
+        } else if (payload.eventType === 'DELETE' || (payload.eventType === 'UPDATE' && payload.new.status !== 'searching')) {
+          // Remove ride from list if it's deleted or no longer searching
+          const rideId = payload.old.id;
+          setPendingRideRequests(prev => prev.filter(ride => ride.id !== rideId));
+        }
+      })
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
               });
               
               // Show notification
