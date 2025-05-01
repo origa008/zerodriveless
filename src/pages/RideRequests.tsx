@@ -573,31 +573,56 @@ const RideRequests: React.FC = () => {
 
     // Initial fetch
     fetchNearbyRides();
-    console.log('Setting up real-time subscription for new ride requests...');
+    console.log('Setting up real-time subscription for ride requests...');
 
     // Set up real-time subscription for ride requests
     const subscription = supabase
       .channel('rides-channel')
       .on('postgres_changes', {
-        event: 'INSERT',
+        event: '*', // Listen to all events (INSERT, UPDATE, DELETE)
         schema: 'public',
         table: 'rides',
         filter: 'status=eq.searching'
-      }, (payload) => {
-        console.log('New ride created:', payload);
-        const newRide = payload.new as Ride;
+      }, async (payload) => {
+        console.log('Ride change detected:', payload);
         
-        // Add to our rides list automatically
-        setRideRequests(prev => {
-          // Prevent duplicates
-          const exists = prev.some(ride => ride.id === newRide.id);
-          if (exists) return prev;
-          return [newRide, ...prev];
-        });
-        
-        // Show notification
-        toast({
-          title: 'New Ride Request',
+        if (payload.eventType === 'INSERT') {
+          const newRide = payload.new as Ride;
+          
+          // Check if ride is within range
+          if (userLocation) {
+            const pickupLat = newRide.pickup_location?.coordinates[1];
+            const pickupLng = newRide.pickup_location?.coordinates[0];
+            const distance = calculateDistance(
+              userLocation.lat,
+              userLocation.lng,
+              pickupLat,
+              pickupLng
+            );
+            
+            if (distance <= 20) { // 20km radius
+              // Get passenger details
+              const { data: passenger } = await supabase
+                .from('profiles')
+                .select('name, avatar')
+                .eq('id', newRide.passenger_id)
+                .single();
+              
+              const rideWithDetails = {
+                ...newRide,
+                distance_to_pickup: Number(distance.toFixed(1)),
+                passenger: passenger || { name: 'Passenger', avatar: null }
+              };
+              
+              setRideRequests(prev => {
+                const exists = prev.some(ride => ride.id === newRide.id);
+                if (exists) return prev;
+                return [rideWithDetails, ...prev];
+              });
+              
+              // Show notification
+              toast({
+                title: 'New Ride Request',
           description: `From ${newRide.pickup_location?.name || 'pickup'} to ${newRide.dropoff_location?.name || 'destination'}`,
           duration: 5000,
         });
