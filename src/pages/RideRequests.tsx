@@ -435,13 +435,13 @@ const RideRequests: React.FC = () => {
         // Get current location with better error handling
         if (navigator.geolocation) {
           navigator.geolocation.getCurrentPosition(
-            (position) => {
+            async (position) => {
               setUserLocation({
                 lat: position.coords.latitude,
                 lng: position.coords.longitude,
               });
               // Try to fetch nearby rides immediately after getting location
-              fetchNearbyRides();
+              await fetchNearbyRides();
             },
             (error) => {
               console.error('Location error:', error);
@@ -695,63 +695,35 @@ const RideRequests: React.FC = () => {
         schema: 'public',
         table: 'rides',
         filter: 'status=eq.searching'
-      }, (payload) => {
-        console.log('New ride created:', payload);
-        const newRide = payload.new as Ride;
-        
-        // Add to our rides list automatically
-        setRideRequests(prev => [newRide, ...prev]);
-        
-        // Show notification
-        toast({
-          title: 'New Ride Request',
-          description: `From ${newRide.pickup_location?.name || 'pickup'} to ${newRide.dropoff_location?.name || 'destination'}`,
-          duration: 5000,
-        });
-      })
-      .on('postgres_changes', {
-        event: 'UPDATE', 
-        schema: 'public',
-        table: 'rides',
-        filter: 'status=eq.searching'
-      }, (payload) => {
-        console.log('Ride updated:', payload);
-        const updatedRide = payload.new as Ride;
-        
-        // Handle updates to rides (like price changes)
-        if (updatedRide.driver_id) {
-          // Ride was taken by another driver, remove it
-          setRideRequests(prev => prev.filter(ride => ride.id !== updatedRide.id));
-        } else {
-          // Update the ride in our list
-          setRideRequests(prev => prev.map(ride => 
-            ride.id === updatedRide.id ? updatedRide : ride
-          ));
+      }, async (payload, { error }) => {
+        try {
+          if (error) {
+            console.error('Error in subscription payload:', error);
+            return;
+          }
+
+          console.log('New ride created:', payload);
+          const newRide = payload.new as Ride;
+          
+          // Add to our rides list automatically
+          setRideRequests(prev => [newRide, ...prev]);
+          
+          // Show notification
+          toast({
+            title: 'New Ride Request',
+            description: `From ${newRide.pickup_location?.name || 'pickup'} to ${newRide.dropoff_location?.name || 'destination'}`,
+            duration: 5000,
+          });
+        } catch (error) {
+          console.error('Error handling new ride:', error);
+          toast({
+            title: 'Error',
+            description: 'Failed to process new ride request',
+            variant: 'destructive'
+          });
         }
-      })
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'rides',
-        filter: 'status=neq.searching'
-      }, (payload) => {
-        // Remove rides that are no longer in searching status
-        const updatedRide = payload.new as Ride;
-        setRideRequests(prev => prev.filter(ride => ride.id !== updatedRide.id));
-      })
-      .on('postgres_changes', {
-        event: 'DELETE',
-        schema: 'public',
-        table: 'rides'
-      }, (payload) => {
-        // Remove deleted rides
-        const oldRide = payload.old as Ride;
-        setRideRequests(prev => prev.filter(ride => ride.id !== oldRide.id));
       });
-    
-    // Set up subscription with retry mechanism
-    let retryCount = 0;
-    const maxRetries = 3;
+
     const retryDelay = 5000; // 5 seconds
 
     const subscribeWithRetry = async () => {
