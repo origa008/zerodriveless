@@ -479,13 +479,45 @@ const RideRequests: React.FC = () => {
       // Debug: Log user location
       console.log('Current driver location:', userLocation);
       
-      // Simpler query - just get ALL rides with 'searching' status
-      const { data, error } = await supabase
+      // Get all searching rides
+      const { data: allRides, error } = await supabase
         .from('rides')
         .select('*')
         .eq('status', 'searching')
         .is('driver_id', null)
         .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching ride requests:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to fetch ride requests',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Filter rides based on distance if location is available
+      const filteredRides = userLocation ? allRides?.filter(ride => {
+        if (!ride.pickup_location?.coordinates) return false;
+        
+        // Calculate distance from driver to pickup location
+        const distance = calculateDistance(
+          userLocation.lat,
+          userLocation.lng,
+          ride.pickup_location.coordinates[1],
+          ride.pickup_location.coordinates[0]
+        );
+        
+        // Only show rides within 20km
+        return distance <= 20;
+      }) : allRides;
+
+      // Debug detailed information about the results
+      console.log(`Fetched ${allRides?.length || 0} total rides, ${filteredRides?.length || 0} within range`);
+      console.log('Filtered rides:', filteredRides);
+      
+      setRideRequests(filteredRides || []);
       
       if (error) {
         console.error('Error fetching ride requests:', error);
@@ -551,17 +583,39 @@ const RideRequests: React.FC = () => {
 
   // Subscribe to and fetch nearby ride requests in real-time
   useEffect(() => {
-    // Only proceed if:
-    // 1. User location is available
-    // 2. User is registered 
-    // 3. Registration status is approved
-    // 4. User has sufficient deposit
-    if (!userLocation || !isRegistered || registrationStatus !== 'approved' || walletBalance < 3000) {
-      console.log('Not subscribing to ride changes due to:', {
-        hasLocation: !!userLocation,
-        isRegistered,
-        registrationStatus,
-        walletBalance
+    // Check prerequisites for ride requests
+    if (!userLocation) {
+      toast({
+        title: 'Location Required',
+        description: 'Please enable location services to view nearby rides.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!isRegistered) {
+      toast({
+        title: 'Registration Required',
+        description: 'You need to complete driver registration to view ride requests.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (registrationStatus !== 'approved') {
+      toast({
+        title: 'Approval Required',
+        description: 'Your driver registration must be approved to view ride requests.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (walletBalance < 3000) {
+      toast({
+        title: 'Insufficient Balance',
+        description: 'Please add ₹3000 to your wallet to view ride requests.',
+        variant: 'destructive',
       });
       return;
     }
@@ -632,23 +686,64 @@ const RideRequests: React.FC = () => {
         setRideRequests(prev => prev.filter(ride => ride.id !== oldRide.id));
       });
     
-    // Try to subscribe and catch any errors
-    subscription.subscribe((status) => {
-      console.log(`Supabase subscription status: ${status}`);
-      if (status === 'SUBSCRIBED') {
-        console.log('Successfully subscribed to ride changes');
-      } else if (status === 'CLOSED') {
-        console.error('Subscription closed');
-      } else if (status === 'CHANNEL_ERROR') {
-        console.error('Error with subscription channel');
-      }
-    });
+    // Set up subscription with retry mechanism
+    let retryCount = 0;
+    const maxRetries = 3;
+    const retryDelay = 5000; // 5 seconds
 
-    // Manual refresh every 30 seconds as a fallback
+    const subscribeWithRetry = async () => {
+      try {
+        const subscriptionResult = await subscription.subscribe();
+        
+        subscriptionResult.on('SUBSCRIBED', () => {
+          console.log('Successfully subscribed to ride changes');
+          retryCount = 0;
+        });
+
+        subscriptionResult.on('CHANNEL_ERROR', (error) => {
+          console.error('Subscription error:', error);
+          retryCount++;
+          if (retryCount < maxRetries) {
+            setTimeout(subscribeWithRetry, retryDelay);
+          } else {
+            console.error('Max retries reached for subscription');
+            toast({
+              title: 'Error',
+              description: 'Failed to connect to real-time updates. Please refresh the page.',
+              variant: 'destructive',
+            });
+          }
+        });
+
+        subscriptionResult.on('CLOSED', () => {
+          console.error('Subscription closed');
+          if (retryCount < maxRetries) {
+            setTimeout(subscribeWithRetry, retryDelay);
+          }
+        });
+
+      } catch (error) {
+        console.error('Error setting up subscription:', error);
+        retryCount++;
+        if (retryCount < maxRetries) {
+          setTimeout(subscribeWithRetry, retryDelay);
+        } else {
+          toast({
+            title: 'Error',
+            description: 'Failed to connect to real-time updates. Please refresh the page.',
+            variant: 'destructive',
+          });
+        }
+      }
+    };
+
+    subscribeWithRetry();
+
+    // Manual refresh every 10 seconds as a fallback
     const intervalId = setInterval(() => {
       console.log('Performing periodic refresh of ride requests');
       fetchNearbyRides();
-    }, 30000);
+    }, 10000);
 
     console.log('Subscribed to ride changes');
 
