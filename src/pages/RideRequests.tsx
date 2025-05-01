@@ -578,46 +578,16 @@ const RideRequests: React.FC = () => {
         schema: 'public',
         table: 'rides',
         filter: 'status=eq.searching'
-      }, async (payload) => {
-        console.log('Ride change detected:', payload);
+      }, (payload) => {
+        console.log('New ride created:', payload);
+        const newRide = payload.new as Ride;
         
-        if (payload.eventType === 'INSERT') {
-          const newRide = payload.new as Ride;
-          
-          // Check if ride is within range
-          if (userLocation) {
-            const pickupLat = newRide.pickup_location?.coordinates[1];
-            const pickupLng = newRide.pickup_location?.coordinates[0];
-            const distance = calculateDistance(
-              userLocation.lat,
-              userLocation.lng,
-              pickupLat,
-              pickupLng
-            );
-            
-            if (distance <= 20) { // 20km radius
-              // Get passenger details
-              const { data: passenger } = await supabase
-                .from('profiles')
-                .select('name, avatar')
-                .eq('id', newRide.passenger_id)
-                .single();
-              
-              const rideWithDetails = {
-                ...newRide,
-                distance_to_pickup: Number(distance.toFixed(1)),
-                passenger: passenger || { name: 'Passenger', avatar: null }
-              };
-              
-              setRideRequests(prev => {
-                const exists = prev.some(ride => ride.id === newRide.id);
-                if (exists) return prev;
-                return [rideWithDetails, ...prev];
-              });
-              
-              // Show notification
-              toast({
-                title: 'New Ride Request',
+        // Add to our rides list automatically
+        setRideRequests(prev => [newRide, ...prev]);
+        
+        // Show notification
+        toast({
+          title: 'New Ride Request',
           description: `From ${newRide.pickup_location?.name || 'pickup'} to ${newRide.dropoff_location?.name || 'destination'}`,
           duration: 5000,
         });
