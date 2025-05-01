@@ -432,7 +432,7 @@ const RideRequests: React.FC = () => {
           setWalletBalance(walletData?.balance || 0);
         }
 
-        // Get current location
+        // Get current location with better error handling
         if (navigator.geolocation) {
           navigator.geolocation.getCurrentPosition(
             (position) => {
@@ -440,13 +440,37 @@ const RideRequests: React.FC = () => {
                 lat: position.coords.latitude,
                 lng: position.coords.longitude,
               });
+              // Try to fetch nearby rides immediately after getting location
+              fetchNearbyRides();
             },
             (error) => {
+              console.error('Location error:', error);
+              let errorMessage = 'Please enable location services to view nearby rides.';
+              
+              switch (error.code) {
+                case error.PERMISSION_DENIED:
+                  errorMessage = 'Location permission denied. Please enable location access in browser settings.';
+                  break;
+                case error.POSITION_UNAVAILABLE:
+                  errorMessage = 'Location information is unavailable.';
+                  break;
+                case error.TIMEOUT:
+                  errorMessage = 'Location request timed out.';
+                  break;
+                default:
+                  errorMessage = 'Location error occurred.';
+              }
+              
               toast({
                 title: 'Location Error',
-                description: 'Please enable location services to view nearby rides.',
+                description: errorMessage,
                 variant: 'destructive',
               });
+            },
+            {
+              enableHighAccuracy: true,
+              timeout: 10000,
+              maximumAge: 0
             }
           );
         } else {
@@ -479,26 +503,52 @@ const RideRequests: React.FC = () => {
       // Debug: Log user location
       console.log('Current driver location:', userLocation);
       
-      // Get all searching rides
-      const { data: allRides, error } = await supabase
+      // Get all searching rides with proper error handling
+      const { data: allRides, error: fetchError } = await supabase
         .from('rides')
         .select('*')
         .eq('status', 'searching')
         .is('driver_id', null)
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('Error fetching ride requests:', error);
+      if (fetchError) {
+        console.error('Error fetching ride requests:', fetchError);
         toast({
           title: 'Error',
           description: 'Failed to fetch ride requests',
           variant: 'destructive',
         });
+        setRideRequests([]);
         return;
       }
 
+      // If no rides found, check if there are any rides at all
+      if (!allRides || allRides.length === 0) {
+        const { data: allRidesData, error: checkError } = await supabase
+          .from('rides')
+          .select('id, status')
+          .limit(1);
+
+        if (checkError) {
+          console.error('Error checking rides:', checkError);
+          toast({
+            title: 'Error',
+            description: 'Failed to check ride status',
+            variant: 'destructive',
+          });
+          setRideRequests([]);
+          return;
+        }
+
+        if (!allRidesData || allRidesData.length === 0) {
+          console.log('No rides found in the database');
+          setRideRequests([]);
+          return;
+        }
+      }
+
       // Filter rides based on distance if location is available
-      const filteredRides = userLocation ? allRides?.filter(ride => {
+      const filteredRides = userLocation ? allRides.filter(ride => {
         if (!ride.pickup_location?.coordinates) return false;
         
         // Calculate distance from driver to pickup location
@@ -514,10 +564,23 @@ const RideRequests: React.FC = () => {
       }) : allRides;
 
       // Debug detailed information about the results
-      console.log(`Fetched ${allRides?.length || 0} total rides, ${filteredRides?.length || 0} within range`);
+      console.log(`Fetched ${allRides.length} total rides, ${filteredRides.length} within range`);
       console.log('Filtered rides:', filteredRides);
       
-      setRideRequests(filteredRides || []);
+      setRideRequests(filteredRides);
+      
+    } catch (error) {
+      console.error('Unexpected error:', error);
+      toast({
+        title: 'Error',
+        description: 'An unexpected error occurred while fetching rides',
+        variant: 'destructive',
+      });
+      setRideRequests([]);
+    } finally {
+      setRefreshing(false);
+    }
+  };
       
       if (error) {
         console.error('Error fetching ride requests:', error);
