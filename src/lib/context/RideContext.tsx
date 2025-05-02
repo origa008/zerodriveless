@@ -7,6 +7,7 @@ import { getMockRideOptions } from '../utils/mockData';
 import { getWalletBalance, getTransactionHistory, subscribeToWalletBalance, subscribeToRideUpdates } from '../utils/walletUtils';
 import { calculateDistance } from '../utils/mapsApi';
 import { supabase } from '@/integrations/supabase/client';
+import { isEligibleDriver } from '../utils/driverUtils';
 
 type RideContextType = {
   pickup: Location | null;
@@ -123,7 +124,38 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [user?.id]);
   
+  const fetchRideRequests = async () => {
+    if (!user?.id) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('ride_requests')
+        .select('*')
+        .eq('status', 'searching')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setPendingRideRequests(data || []);
+    } catch (error: any) {
+      console.error('Error fetching ride requests:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch ride requests",
+        variant: "destructive"
+      });
+    }
+  };
+
   const findRides = async () => {
+    // Only allow finding rides if not in driver mode
+    if (isDriverMode) {
+      toast({
+        title: "Mode Conflict",
+        description: "Please switch to passenger mode to request a ride",
+        variant: "default"
+      });
+      return;
+    }
     // Only allow finding rides if not in driver mode
     if (isDriverMode) {
       toast({
@@ -249,7 +281,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return Math.round(baseRate * distance);
   };
   
-  const confirmRide = (paymentMethod: PaymentMethod) => {
+  const confirmRide = async (paymentMethod: PaymentMethod) => {
     // Only allow confirming rides if not in driver mode
     if (isDriverMode) {
       toast({
