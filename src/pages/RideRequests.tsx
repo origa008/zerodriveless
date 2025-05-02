@@ -4,8 +4,7 @@ import { useAuth } from '@/lib/context/AuthContext';
 import { useRide } from '@/lib/context/RideContext';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
-import { Loader2, AlertCircle, Clock, ArrowRight, MapPin, Flag, RefreshCw, DollarSign, BugPlay } from 'lucide-react';
-import { User } from 'lucide-react';
+import { Loader2, AlertCircle, Clock, ArrowRight, MapPin, Flag, RefreshCw, DollarSign, BugPlay, User } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { acceptRideRequest } from '@/lib/utils/rideUtils';
 import { createTestRide } from '@/lib/utils/dbFunctions';
@@ -381,50 +380,86 @@ const RideRequests: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
+  const { isDriverMode, setDriverMode } = useRide();
+  
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [rideRequests, setRideRequests] = useState<Ride[]>([]);
-  const [isEligibleDriver, setIsEligibleDriver] = useState(false);
-  const [driverStatus, setDriverStatus] = useState<string>('');
-  const [hasDeposit, setHasDeposit] = useState(false);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [isRegistered, setIsRegistered] = useState<boolean>(false);
+  const [registrationStatus, setRegistrationStatus] = useState<string>('');
+  const [walletBalance, setWalletBalance] = useState<number>(0);
 
-  // Check driver eligibility
+  // Check driver registration status and wallet balance
   useEffect(() => {
-    const checkDriverEligibility = async () => {
+    const checkDriverStatus = async () => {
       if (!user?.id) return;
       
       setLoading(true);
       
       try {
-        // Check driver status
-        const { data: driverData, error: driverError } = await supabase
+        // First check if user has submitted driver registration
+        const { data: driverDetails, error: driverError } = await supabase
           .from('driver_details')
-          .select('status, has_sufficient_deposit')
+          .select('*')
           .eq('user_id', user.id)
           .single();
 
         if (driverError) {
-          if (driverError.code !== 'PGRST116') {
+          if (driverError.code !== 'PGRST116') { // Not found error
             console.error("Error fetching driver details:", driverError);
-            toast({
-              title: 'Error',
-              description: 'Failed to check driver status',
-              variant: 'destructive',
-            });
           }
-          setDriverStatus('');
-          setHasDeposit(false);
-          setIsEligibleDriver(false);
-          return;
+          setIsRegistered(false);
+          setRegistrationStatus('');
+        } else {
+          setIsRegistered(true);
+          setRegistrationStatus(driverDetails.status);
         }
 
-        setDriverStatus(driverData.status);
-        setHasDeposit(driverData.has_sufficient_deposit);
-        setIsEligibleDriver(driverData.status === 'approved' && driverData.has_sufficient_deposit);
+        // Get wallet balance
+        const { data: walletData, error: walletError } = await supabase
+          .from('wallets')
+          .select('balance')
+          .eq('user_id', user.id)
+          .single();
+
+        if (walletError) {
+          if (walletError.code !== 'PGRST116') {
+            console.error("Error fetching wallet:", walletError);
+          }
+          setWalletBalance(0);
+        } else {
+          setWalletBalance(walletData?.balance || 0);
+        }
+
+        // Get current location
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            (position) => {
+              setUserLocation({
+                lat: position.coords.latitude,
+                lng: position.coords.longitude,
+              });
+            },
+            (error) => {
+              toast({
+                title: 'Location Error',
+                description: 'Please enable location services to view nearby rides.',
+                variant: 'destructive',
+              });
+            }
+          );
+        } else {
+          toast({
+            title: 'Location Error',
+            description: 'Geolocation is not supported by your browser.',
+            variant: 'destructive',
+          });
+        }
       } catch (error: any) {
-        console.error('Error checking driver eligibility:', error);
         toast({
           title: 'Error',
-          description: 'Failed to check driver status',
+          description: error.message,
           variant: 'destructive',
         });
       } finally {
@@ -432,7 +467,7 @@ const RideRequests: React.FC = () => {
       }
     };
     
-    checkDriverEligibility();
+    checkDriverStatus();
   }, [user?.id, toast]);
 
   // Function to fetch nearby ride requests - completely rewritten for reliability
@@ -685,22 +720,16 @@ const RideRequests: React.FC = () => {
     );
   }
 
-  // Check driver eligibility
-  if (!isEligibleDriver) {
+  // Not registered, direct to OfficialDriver page
+  if (!isRegistered) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-white p-6">
         <AlertCircle className="h-16 w-16 text-red-500 mb-6" />
         <h1 className="text-2xl font-bold text-center mb-3">Driver Registration Required</h1>
         <p className="text-gray-600 text-center mb-6">
-          {driverStatus === 'pending' 
-            ? 'Your driver registration is being reviewed. This typically takes 1-2 business days.'
-            : 'You need to complete your driver registration before you can access ride requests.'
-          }
+          You need to complete your driver registration before you can access ride requests.
         </p>
-        <Button 
-          onClick={() => navigate('/official-driver')} 
-          className="w-full max-w-xs"
-        >
+        <Button onClick={() => navigate('/official-driver')} className="w-full max-w-xs">
           Register as Driver
           <ArrowRight className="ml-2 h-5 w-5" />
         </Button>
