@@ -8,7 +8,7 @@ import { Loader2, AlertCircle, Clock, ArrowRight, MapPin, Flag, RefreshCw, Dolla
 import { supabase } from '@/integrations/supabase/client';
 import { acceptRideRequest } from '@/lib/utils/rideUtils';
 import { createTestRide } from '@/lib/utils/dbFunctions';
-import DriverModeToggle from '@/components/ride/DriverModeToggle';
+
 
 // Simple distance calculation using Haversine formula
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
@@ -921,11 +921,7 @@ const RideRequests: React.FC = () => {
           )}
         </div>
         
-        <div className="fixed bottom-6 left-0 right-0 flex justify-center">
-          <div className="bg-white shadow-lg rounded-full px-4 py-2 border border-gray-200">
-            <DriverModeToggle />
-          </div>
-        </div>
+
       </div>
     );
   }

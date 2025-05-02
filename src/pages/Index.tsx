@@ -7,7 +7,7 @@ import { fetchUserProfile } from '@/lib/utils/profileUtils';
 import { useRide } from '@/lib/context/RideContext';
 import RideMap from '@/components/map/RideMap';
 import BottomNavigation from '@/components/layout/BottomNavigation';
-import ModeSwitcher from '@/components/shared/ModeSwitcher';
+
 import Sidebar from '@/components/layout/Sidebar';
 import PassengerPanel from '@/components/ride/PassengerPanel';
 import { useToast } from '@/hooks/use-toast';
@@ -18,8 +18,6 @@ const Index: React.FC = () => {
   const { toast } = useToast();
   const { user, isLoading: authLoading, setUser } = useAuth();
   const { isDriverMode, setDriverMode } = useRide();
-  
-  const [isDriverEligible, setIsDriverEligible] = useState(false);
   const [pageLoaded, setPageLoaded] = useState(false);
   const [initComplete, setInitComplete] = useState(false);
 
@@ -43,29 +41,7 @@ const Index: React.FC = () => {
     return () => clearTimeout(timer);
   }, []);
 
-  // Check if user is eligible to be a driver
-  useEffect(() => {
-    const checkDriverEligibility = async () => {
-      if (!user?.id) return;
-      
-      try {
-        const eligible = await isEligibleDriver(user.id);
-        console.log("Driver eligibility check:", eligible);
-        setIsDriverEligible(eligible);
-        
-        // If user is in driver mode, redirect to ride requests
-        if (isDriverMode) {
-          navigate('/ride-requests');
-        }
-      } catch (error) {
-        console.error("Error checking driver eligibility:", error);
-      }
-    };
-    
-    if (user?.id) {
-      checkDriverEligibility();
-    }
-  }, [user?.id, isDriverMode, navigate]);
+
 
   // Wait for auth to initialize and handle authentication flow
   useEffect(() => {
@@ -124,7 +100,6 @@ const Index: React.FC = () => {
   return <div className="min-h-screen bg-white">
       <div className="relative">
         <RideMap />
-        <ModeSwitcher isDriverEligible={isDriverEligible} />
         <Sidebar />
       </div>
       

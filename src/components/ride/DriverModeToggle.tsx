@@ -28,20 +28,20 @@ const DriverModeToggle: React.FC<DriverModeToggleProps> = ({ className }) => {
   };
 
   return (
-    <div className={`flex items-center gap-2 bg-white/80 backdrop-blur-sm p-2 rounded-lg shadow-sm ${className}`}>
-      <User className={`h-4.5 w-4.5 ${!isDriverMode ? 'text-blue-500' : 'text-gray-400'}`} />
+    <div className={`flex items-center gap-2 bg-blue-500 text-white rounded-full px-4 py-2 ${className}`}>
+      <User className={`h-4.5 w-4.5 ${!isDriverMode ? 'text-white' : 'text-gray-300'}`} />
       <div className="flex items-center gap-2">
         <Switch
           checked={isDriverMode}
           onCheckedChange={handleToggle}
           id="driver-mode"
-          className="data-[state=checked]:bg-blue-600 data-[state=unchecked]:bg-gray-300"
+          className="data-[state=checked]:bg-white/50 data-[state=unchecked]:bg-white/20"
         />
         <Label htmlFor="driver-mode" className="text-sm cursor-pointer">
           {isDriverMode ? 'Driver Mode' : 'Passenger Mode'}
         </Label>
       </div>
-      <Car className={`h-4.5 w-4.5 ${isDriverMode ? 'text-blue-500' : 'text-gray-400'}`} />
+      <Car className={`h-4.5 w-4.5 ${isDriverMode ? 'text-white' : 'text-gray-300'}`} />
     </div>
   );
 };
