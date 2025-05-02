@@ -1,380 +1,88 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/context/AuthContext';
-import { useRide } from '@/lib/context/RideContext';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
-import { Loader2, AlertCircle, Clock, ArrowRight, MapPin, Flag, RefreshCw, DollarSign, BugPlay } from 'lucide-react';
-import { User } from 'lucide-react';
+import { Loader2, AlertCircle, Clock, ArrowRight } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { acceptRideRequest } from '@/lib/utils/rideUtils';
-import { createTestRide } from '@/lib/utils/dbFunctions';
-
-
-// Simple distance calculation using Haversine formula
-const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-  const R = 6371; // Radius of the earth in km
-  const dLat = deg2rad(lat2 - lat1);
-  const dLon = deg2rad(lon2 - lon1);
-  const a = 
-    Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * 
-    Math.sin(dLon/2) * Math.sin(dLon/2); 
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
-  return R * c;
-};
-
-const deg2rad = (deg: number): number => {
-  return deg * (Math.PI/180);
-};
+import { User } from '@/types/auth';
 
 interface Ride {
   id: string;
   passenger_id: string;
-  passenger_email?: string;
   driver_id?: string | null;
   pickup_location: {
     name: string;
-    address?: string;
-    coordinates: number[]; // [lng, lat]
+    coordinates: number[];
   };
   dropoff_location: {
     name: string;
-    address?: string;
-    coordinates: number[]; // [lng, lat]
+    coordinates: number[];
   };
   ride_option: {
     name: string;
-    type: string;
     basePrice: number;
   };
   bid_amount?: number;
   price?: number;
   distance: number;
   duration: number;
-  status: string; // 'searching', 'confirmed', 'in_progress', 'completed', 'cancelled'
-  created_at: string;
-  payment_method: string;
-  currency?: string;
-  start_time?: string | null;
-  end_time?: string | null;
-}
-
-interface DriverProfile {
-  id: string;
-  user_id: string;
-  status: string; // 'pending', 'approved', 'rejected'
-  vehicle_type: string;
-  license_plate: string;
+  status: string;
   created_at: string;
 }
 
-// Component to display a single ride request card
 const RideCard = ({ ride, onAccept }: { ride: Ride; onAccept: (ride: Ride) => void }) => {
   return (
-    <div className="bg-white rounded-xl shadow-md overflow-hidden mb-4 border border-gray-200">
-      <div className="p-4">
-        <div className="flex justify-between items-start mb-3">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900">
-              {formatCurrency(ride.bid_amount || ride.price || 0)}
-            </h3>
-            <p className="text-sm text-gray-500">
-              {ride.distance.toFixed(1)}km • {formatDuration(ride.duration)}
-            </p>
-          </div>
-          <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded">
-            {ride.ride_option?.name || 'Vehicle'}
-          </span>
-        </div>
-        
-        <div className="space-y-3 mb-4">
-          <div className="flex items-start">
-            <div className="flex-shrink-0 w-8 flex justify-center">
-              <div className="h-6 w-6 rounded-full bg-green-500 flex items-center justify-center">
-                <MapPin className="text-white text-xs" />
-              </div>
-            </div>
-            <div className="ml-2">
-              <p className="text-sm font-medium text-gray-900">Pickup</p>
-              <p className="text-sm text-gray-600">{ride.pickup_location.name}</p>
-            </div>
-          </div>
-          
-          <div className="flex items-start">
-            <div className="flex-shrink-0 w-8 flex justify-center">
-              <div className="h-6 w-6 rounded-full bg-red-500 flex items-center justify-center">
-                <Flag className="text-white text-xs" />
-              </div>
-            </div>
-            <div className="ml-2">
-              <p className="text-sm font-medium text-gray-900">Dropoff</p>
-              <p className="text-sm text-gray-600">{ride.dropoff_location.name}</p>
-            </div>
-          </div>
-        </div>
-        
-        <div className="border-t pt-3">
-          <button
-            onClick={() => onAccept(ride)}
-            className="w-full bg-black text-white py-2 px-4 rounded-lg font-medium hover:bg-gray-800 transition duration-200"
-          >
-            Accept Ride
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// Helper function to format currency
-const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'NGN',
-    minimumFractionDigits: 0,
-  }).format(amount);
-};
-
-// Helper function to format duration in minutes
-const formatDuration = (seconds: number) => {
-  const minutes = Math.round(seconds / 60);
-  return `${minutes} min`;
-};
-
-// New component for more simplified display matching the image
-const SimpleRideCard = ({ ride }: { ride: any }) => {
-  const navigate = useNavigate();
-  const { user } = useAuth();
-  const { toast } = useToast();
-
-  const handleAccept = async () => {
-    try {
-      // Log the ride being accepted for debugging
-      console.log('Accepting ride:', ride);
-      
-      const result = await acceptRideRequest(ride.id, user.id);
-      if (result.success) {
-        toast({
-          title: 'Success',
-          description: 'Ride accepted successfully!',
-        });
-        navigate(`/rides/${ride.id}`);
-      } else {
-        toast({
-          title: 'Error',
-          description: result.error || 'Failed to accept ride',
-          variant: 'destructive',
-        });
-      }
-    } catch (error) {
-      console.error('Error accepting ride:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to accept ride',
-        variant: 'destructive',
-      });
-    }
-  };
-
-  // Format time ago (e.g. "2 min ago")
-  const formatTimeAgo = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.round(diffMs / 60000);
-    
-    if (diffMins < 1) return 'Just now';
-    if (diffMins === 1) return '1 min ago';
-    if (diffMins < 60) return `${diffMins} mins ago`;
-    
-    const diffHours = Math.floor(diffMins / 60);
-    if (diffHours === 1) return '1 hour ago';
-    if (diffHours < 24) return `${diffHours} hours ago`;
-    
-    return new Date(dateString).toLocaleDateString();
-  };
-
-  // Get the ride price (check both price and bid_amount fields)
-  const getRidePrice = () => {
-    // First try bid_amount, then price, then default to 0
-    return ride.bid_amount || ride.price || 0;
-  };
-
-  return (
-    <div className="bg-white p-5 rounded-xl shadow-md mb-4 border border-gray-100">
-      <div className="flex justify-between items-start mb-6">
-        <h2 className="text-xl font-bold">Ride Request</h2>
-        {ride.created_at && (
-          <span className="text-sm text-gray-500">{formatTimeAgo(ride.created_at)}</span>
-        )}
-      </div>
-      
-      {/* Pickup location with map pin icon */}
-      <div className="flex items-start mb-4">
-        <div className="w-10 mr-2 flex-shrink-0">
-          <div className="h-8 w-8 bg-green-100 rounded-full flex items-center justify-center">
-            <MapPin className="h-4 w-4 text-green-600" />
-          </div>
-        </div>
-        <div className="flex-1">
-          <p className="text-sm text-gray-500 mb-1">Pickup Location</p>
-          <h3 className="text-lg font-medium">
-            {ride.pickup_location?.name || 'No pickup location specified'}
+    <div className="bg-white rounded-lg shadow-sm p-4 mb-4 border">
+      <div className="flex justify-between items-start mb-3">
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900">
+            {formatCurrency(ride.bid_amount || ride.price || 0)}
           </h3>
-          {ride.pickup_location?.address && (
-            <p className="text-sm text-gray-500">{ride.pickup_location.address}</p>
-          )}
-        </div>
-      </div>
-      
-      {/* Dropoff location with flag icon */}
-      <div className="flex items-start mb-6">
-        <div className="w-10 mr-2 flex-shrink-0">
-          <div className="h-8 w-8 bg-red-100 rounded-full flex items-center justify-center">
-            <Flag className="h-4 w-4 text-red-600" />
-          </div>
-        </div>
-        <div className="flex-1">
-          <p className="text-sm text-gray-500 mb-1">Dropoff Location</p>
-          <h3 className="text-lg font-medium">
-            {ride.dropoff_location?.name || 'No dropoff location specified'}
-          </h3>
-          {ride.dropoff_location?.address && (
-            <p className="text-sm text-gray-500">{ride.dropoff_location.address}</p>
-          )}
-        </div>
-      </div>
-      
-      {/* Ride details in a grid */}
-      <div className="bg-gray-50 p-4 rounded-lg grid grid-cols-3 gap-4 mb-6">
-        <div>
-          <p className="text-sm text-gray-500 mb-1">Distance</p>
-          <p className="text-xl font-bold">{parseFloat(ride.distance || '0').toFixed(1)} km</p>
-        </div>
-        <div>
-          <p className="text-sm text-gray-500 mb-1">Duration</p>
-          <p className="text-xl font-bold">{ride.duration ? Math.round(ride.duration / 60) : 0} min</p>
-        </div>
-        <div>
-          <p className="text-sm text-gray-500 mb-1">Price</p>
-          <p className="text-xl font-bold text-green-600">
-            {getRidePrice()} RS
+          <p className="text-sm text-gray-500">
+            {ride.distance.toFixed(1)}km • {formatDuration(ride.duration)}
           </p>
         </div>
+        <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2 py-1 rounded">
+          {ride.ride_option?.name}
+        </span>
       </div>
       
-      {/* Vehicle type if available */}
-      {ride.ride_option?.name && (
-        <div className="mb-6">
-          <span className="px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
-            {ride.ride_option.name}
-          </span>
+      <div className="space-y-3 mb-4">
+        <div className="flex items-start">
+          <div className="flex-shrink-0 w-8 flex justify-center">
+            <div className="h-6 w-6 rounded-full bg-green-500 flex items-center justify-center">
+              <Clock className="text-white text-xs" />
+            </div>
+          </div>
+          <div className="ml-2">
+            <p className="text-sm font-medium text-gray-900">Pickup</p>
+            <p className="text-sm text-gray-600">{ride.pickup_location.name}</p>
+          </div>
         </div>
-      )}
-      
-      <Button 
-        onClick={handleAccept}
-        className="w-full bg-black text-white py-6 rounded-xl text-xl font-medium"
+        <div className="flex items-start">
+          <div className="flex-shrink-0 w-8 flex justify-center">
+            <div className="h-6 w-6 rounded-full bg-red-500 flex items-center justify-center">
+              <Clock className="text-white text-xs" />
+            </div>
+          </div>
+          <div className="ml-2">
+            <p className="text-sm font-medium text-gray-900">Dropoff</p>
+            <p className="text-sm text-gray-600">{ride.dropoff_location.name}</p>
+          </div>
+        </div>
+      </div>
+
+      <Button
+        onClick={() => onAccept(ride)}
+        className="w-full"
       >
         Accept Ride
+        <ArrowRight className="ml-2 h-5 w-5" />
       </Button>
     </div>
   );
-};
-
-// Add a direct database test function to bypass RideContext
-const createDirectTestRide = async () => {
-  if (!user?.id) return;
-
-  try {
-    toast({
-      title: 'Creating direct test ride',
-      description: 'Inserting directly into database...'
-    });
-
-    // Generate a unique ID for the test ride
-    const now = new Date();
-    const testId = `test-${now.getTime()}`;
-
-    // Format user-friendly coords for logging
-    const startLat = 33.5678;
-    const startLng = 73.1234;
-    const endLat = 33.6789;
-    const endLng = 73.2345;
-
-    console.log(`Creating direct test ride with ID ${testId}`);
-    console.log(`From [${startLat}, ${startLng}] to [${endLat}, ${endLng}]`);
-
-    // Create a test ride directly in the database
-    const { data, error } = await supabase
-      .from('rides')
-      .insert({
-        id: testId, // Set explicit ID for easier tracking
-        passenger_id: user.id,
-        pickup_location: {
-          name: "Direct Test Pickup",
-          address: "123 Direct Test St",
-          coordinates: [startLng, startLat] // [lng, lat] format
-        },
-        dropoff_location: {
-          name: "Direct Test Dropoff",
-          address: "456 Direct Test Ave",
-          coordinates: [endLng, endLat] // [lng, lat] format
-        },
-        ride_option: {
-          name: "Car",
-          type: "Car",
-          basePrice: 300
-        },
-        bid_amount: 300,
-        price: 300,
-        distance: 7.5,
-        duration: 1200, // 20 minutes in seconds
-        status: "searching",
-        payment_method: "cash",
-        created_at: now.toISOString()
-      })
-      .select();
-
-    if (error) {
-      console.error('Error creating direct test ride:', error);
-      throw error;
-    }
-
-    console.log('Direct test ride created successfully:', data);
-    
-    // Immediately check if the ride appears in our list
-    toast({
-      title: 'Success',
-      description: 'Direct test ride created. Refreshing...'
-    });
-
-    // Wait 1 second then refresh to see if ride appears
-    setTimeout(() => {
-      fetchNearbyRides();
-      
-      // Also verify the ride exists after creation
-      setTimeout(async () => {
-        const { data: verification } = await supabase
-          .from('rides')
-          .select('*')
-          .eq('id', testId);
-          
-        console.log('Verification query results:', verification);
-      }, 2000);
-    }, 1000);
-
-    return data;
-  } catch (error: any) {
-    console.error('Error in direct test:', error);
-    toast({
-      title: 'Error',
-      description: error.message || 'Failed to create direct test ride',
-      variant: 'destructive'
-    });
-    return null;
-  }
 };
 
 const RideRequests: React.FC = () => {
@@ -385,9 +93,7 @@ const RideRequests: React.FC = () => {
   const [rideRequests, setRideRequests] = useState<Ride[]>([]);
   const [isEligibleDriver, setIsEligibleDriver] = useState(false);
   const [driverStatus, setDriverStatus] = useState<string>('');
-  const [hasDeposit, setHasDeposit] = useState(false);
 
-  // Check driver eligibility
   useEffect(() => {
     const checkDriverEligibility = async () => {
       if (!user?.id) return;
@@ -395,10 +101,9 @@ const RideRequests: React.FC = () => {
       setLoading(true);
       
       try {
-        // Check driver status
         const { data: driverData, error: driverError } = await supabase
           .from('driver_details')
-          .select('status, has_sufficient_deposit')
+          .select('status')
           .eq('user_id', user.id)
           .single();
 
@@ -412,14 +117,12 @@ const RideRequests: React.FC = () => {
             });
           }
           setDriverStatus('');
-          setHasDeposit(false);
           setIsEligibleDriver(false);
           return;
         }
 
         setDriverStatus(driverData.status);
-        setHasDeposit(driverData.has_sufficient_deposit);
-        setIsEligibleDriver(driverData.status === 'approved' && driverData.has_sufficient_deposit);
+        setIsEligibleDriver(driverData.status === 'approved');
       } catch (error: any) {
         console.error('Error checking driver eligibility:', error);
         toast({
@@ -435,22 +138,13 @@ const RideRequests: React.FC = () => {
     checkDriverEligibility();
   }, [user?.id, toast]);
 
-  // Function to fetch nearby ride requests - completely rewritten for reliability
   const fetchNearbyRides = async () => {
     try {
-      setRefreshing(true);
-      console.log('Fetching nearby rides...');
-      
-      // Debug: Log user location
-      console.log('Current driver location:', userLocation);
-      
-      // Simpler query - just get ALL rides with 'searching' status
       const { data, error } = await supabase
         .from('rides')
         .select('*')
         .eq('status', 'searching')
-        .is('driver_id', null)
-        .order('created_at', { ascending: false });
+        .is('driver_id', null);
       
       if (error) {
         console.error('Error fetching ride requests:', error);
@@ -462,40 +156,6 @@ const RideRequests: React.FC = () => {
         return;
       }
 
-      // Debug detailed information about the results
-      console.log(`Fetched ${data?.length || 0} available rides`);
-      console.log('SQL query returned rides:', data);
-      
-      // Debug logging - show exactly what's coming from the database
-      if (data && data.length > 0) {
-        data.forEach((ride, index) => {
-          console.log(`Ride ${index + 1} details:`, {
-            id: ride.id,
-            pickup: ride.pickup_location,
-            dropoff: ride.dropoff_location,
-            status: ride.status,
-            bid: ride.bid_amount,
-            price: ride.price,
-            distance: ride.distance,
-            duration: ride.duration,
-            created_at: ride.created_at
-          });
-        });
-      } else {
-        console.log('No rides found with searching status');
-        
-        // Debug: Check if there are any rides at all, regardless of status
-        const { data: allRides, error: allRidesError } = await supabase
-          .from('rides')
-          .select('id, status, driver_id')
-          .limit(10);
-          
-        if (!allRidesError && allRides) {
-          console.log('Most recent rides in database:', allRides);
-        }
-      }
-      
-      // Set all rides without filtering for distance yet
       setRideRequests(data || []);
     } catch (error: any) {
       console.error('Error fetching nearby rides:', error);
@@ -504,60 +164,27 @@ const RideRequests: React.FC = () => {
         description: error.message || 'Failed to load ride requests',
         variant: 'destructive',
       });
-    } finally {
-      setRefreshing(false);
     }
   };
 
-  // Handle manual refresh
-  const handleRefresh = () => {
-    fetchNearbyRides();
-  };
-
-  // Subscribe to and fetch nearby ride requests in real-time
   useEffect(() => {
-    // Only proceed if:
-    // 1. User location is available
-    // 2. User is registered 
-    // 3. Registration status is approved
-    // 4. User has sufficient deposit
-    if (!userLocation || !isRegistered || registrationStatus !== 'approved' || walletBalance < 3000) {
-      console.log('Not subscribing to ride changes due to:', {
-        hasLocation: !!userLocation,
-        isRegistered,
-        registrationStatus,
-        walletBalance
-      });
-      return;
-    }
+    if (!isEligibleDriver) return;
 
-    // Initial fetch
     fetchNearbyRides();
-    console.log('Setting up real-time subscription for new ride requests...');
 
-    // Set up real-time subscription for ride requests
     const subscription = supabase
-      .channel('rides-channel') // Use a simpler channel name
+      .channel('rides-channel')
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
         table: 'rides',
         filter: 'status=eq.searching'
       }, (payload) => {
-        console.log('New ride created:', payload);
         const newRide = payload.new as Ride;
-        
-        // Add to our rides list automatically
         setRideRequests(prev => [newRide, ...prev]);
-        
-        // Show notification
-        toast({
-          title: 'New Ride Request',
-          description: `From ${newRide.pickup_location?.name || 'pickup'} to ${newRide.dropoff_location?.name || 'destination'}`,
-          duration: 5000,
-        });
       })
       .on('postgres_changes', {
+        event: 'UPDATE',
         event: 'UPDATE', 
         schema: 'public',
         table: 'rides',
