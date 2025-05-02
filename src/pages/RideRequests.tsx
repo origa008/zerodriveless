@@ -4,7 +4,7 @@ import { useAuth } from '@/lib/context/AuthContext';
 import { useRide } from '@/lib/context/RideContext';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
-import { Loader2, AlertCircle, Clock, ArrowRight, MapPin, Flag, RefreshCw, DollarSign, BugPlay } from 'lucide-react';
+import { Loader2, AlertCircle, Clock, ArrowRight, MapPin, Flag, RefreshCw, DollarSign, BugPlay, User } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { acceptRideRequest } from '@/lib/utils/rideUtils';
 import { createTestRide } from '@/lib/utils/dbFunctions';
@@ -928,7 +928,17 @@ const RideRequests: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-white p-4 pb-24">
-      <h1 className="text-3xl font-bold mb-6">Ride Request</h1>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold">Ride Request</h1>
+        <Button 
+          variant="outline" 
+          className="flex items-center gap-2"
+          onClick={() => navigate('/')}
+        >
+          <User className="h-4 w-4" />
+          Switch to Passenger
+        </Button>
+      </div>
       
       <div className="divide-y">
         {rideRequests.length === 0 ? (
