@@ -864,22 +864,6 @@ export const acceptRideRequestSafe = async (
  * Creates a test ride for debugging purposes (only for development)
  * This helps verify if ride requests are showing up correctly
  */
-export const fetchRideRequests = async (driverId: string) => {
-  try {
-    const { data, error } = await supabase
-      .from('ride_requests')
-      .select('*')
-      .eq('status', 'searching')
-      .order('created_at', { ascending: false });
-
-    if (error) throw error;
-    return { data, error: null };
-  } catch (error: any) {
-    console.error('Error fetching ride requests:', error);
-    return { data: null, error: error.message };
-  }
-};
-
 export const createTestRide = async (userId: string) => {
   try {
     const testRide = {
