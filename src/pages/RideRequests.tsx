@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
-import { Loader2, AlertCircle, Clock, ArrowRight } from 'lucide-react';
+import { Loader2, AlertCircle, Clock, ArrowRight, MapPin, Flag, RefreshCw, DollarSign, BugPlay } from 'lucide-react';
+import { User } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { acceptRideRequest } from '@/lib/utils/rideUtils';
 import { User } from '@/types/auth';
@@ -89,26 +90,32 @@ const RideRequests: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
+  const { isDriverMode, setDriverMode } = useRide();
+  
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [rideRequests, setRideRequests] = useState<Ride[]>([]);
   const [isEligibleDriver, setIsEligibleDriver] = useState(false);
   const [driverStatus, setDriverStatus] = useState<string>('');
+  const [hasDeposit, setHasDeposit] = useState(false);
 
+  // Check driver eligibility
   useEffect(() => {
-    const checkDriverEligibility = async () => {
+    const checkDriverStatus = async () => {
       if (!user?.id) return;
       
       setLoading(true);
       
       try {
+        // Check driver status
         const { data: driverData, error: driverError } = await supabase
           .from('driver_details')
-          .select('status')
+          .select('status, has_sufficient_deposit')
           .eq('user_id', user.id)
           .single();
 
         if (driverError) {
-          if (driverError.code !== 'PGRST116') {
+          if (driverError.code !== 'PGRST116') { // Not found error
             console.error("Error fetching driver details:", driverError);
             toast({
               title: 'Error',
@@ -117,17 +124,18 @@ const RideRequests: React.FC = () => {
             });
           }
           setDriverStatus('');
+          setHasDeposit(false);
           setIsEligibleDriver(false);
           return;
         }
 
         setDriverStatus(driverData.status);
-        setIsEligibleDriver(driverData.status === 'approved');
+        setHasDeposit(driverData.has_sufficient_deposit);
+        setIsEligibleDriver(driverData.status === 'approved' && driverData.has_sufficient_deposit);
       } catch (error: any) {
-        console.error('Error checking driver eligibility:', error);
         toast({
           title: 'Error',
-          description: 'Failed to check driver status',
+          description: error.message,
           variant: 'destructive',
         });
       } finally {
@@ -135,7 +143,7 @@ const RideRequests: React.FC = () => {
       }
     };
     
-    checkDriverEligibility();
+    checkDriverStatus();
   }, [user?.id, toast]);
 
   const fetchNearbyRides = async () => {
@@ -312,22 +320,16 @@ const RideRequests: React.FC = () => {
     );
   }
 
-  // Check driver eligibility
-  if (!isEligibleDriver) {
+  // Not registered, direct to OfficialDriver page
+  if (!isRegistered) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-white p-6">
         <AlertCircle className="h-16 w-16 text-red-500 mb-6" />
         <h1 className="text-2xl font-bold text-center mb-3">Driver Registration Required</h1>
         <p className="text-gray-600 text-center mb-6">
-          {driverStatus === 'pending' 
-            ? 'Your driver registration is being reviewed. This typically takes 1-2 business days.'
-            : 'You need to complete your driver registration before you can access ride requests.'
-          }
+          You need to complete your driver registration before you can access ride requests.
         </p>
-        <Button 
-          onClick={() => navigate('/official-driver')} 
-          className="w-full max-w-xs"
-        >
+        <Button onClick={() => navigate('/official-driver')} className="w-full max-w-xs">
           Register as Driver
           <ArrowRight className="ml-2 h-5 w-5" />
         </Button>
