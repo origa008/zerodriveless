@@ -59,11 +59,11 @@ const ModeSwitcher: React.FC<ModeSwitcherProps> = ({ isDriverEligible = false })
 
   return (
     <div className="absolute top-4 right-4 z-20">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 bg-white/80 backdrop-blur-sm p-2 rounded-lg shadow-sm">
         <Switch
           checked={isDriverMode}
           onCheckedChange={handleModeSwitch}
-          className="data-[state=checked]:bg-violet-600"
+          className="data-[state=checked]:bg-violet-600 data-[state=unchecked]:bg-gray-300"
         />
         <span className="text-sm font-medium">
           {isDriverMode ? 'Driver Mode' : 'Passenger Mode'}
