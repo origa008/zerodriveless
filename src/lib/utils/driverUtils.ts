@@ -298,38 +298,37 @@ export const getAvailableDrivers = async (email?: string): Promise<{
  */
 export const isEligibleDriver = async (userId: string): Promise<boolean> => {
   try {
-    // Check driver details status and deposit
-    const { data: driverData } = await supabase
-      .from('driver_details')
-      .select('status, has_sufficient_deposit, deposit_amount_required')
+    // Check if user has a driver profile
+    const { data: driver, error: driverError } = await supabase
+      .from('drivers')
+      .select('*')
       .eq('user_id', userId)
-      .maybeSingle();
-    
-    if (!driverData) return false;
-    
-    // Check if approved
-    if (driverData.status !== 'approved') {
+      .single();
+
+    if (driverError) {
+      console.error("Error checking driver status:", driverError);
       return false;
     }
-    
-    // Check wallet balance against required deposit
+
+    if (!driver) {
+      return false;
+    }
+
+    // Check if driver is approved
+    if (driver.status !== 'approved') {
+      return false;
+    }
+
+    // Check if driver has sufficient deposit
     const { data: walletData } = await supabase
       .from('wallets')
       .select('balance')
       .eq('user_id', userId)
       .single();
-      
-    const requiredDeposit = driverData.deposit_amount_required || 3000;
+
+    const requiredDeposit = driver.deposit_amount_required || 3000;
     const hasEnoughDeposit = walletData?.balance >= requiredDeposit;
-    
-    // Update driver detail if deposit status changed
-    if (hasEnoughDeposit !== driverData.has_sufficient_deposit) {
-      await supabase
-        .from('driver_details')
-        .update({ has_sufficient_deposit: hasEnoughDeposit })
-        .eq('user_id', userId);
-    }
-    
+
     return hasEnoughDeposit;
   } catch (error) {
     console.error("Error checking driver eligibility:", error);
@@ -337,6 +336,7 @@ export const isEligibleDriver = async (userId: string): Promise<boolean> => {
   }
 };
 
+// ... (rest of the code remains the same)
 /**
  * Test driver_details table permissions
  */

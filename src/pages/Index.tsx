@@ -2,6 +2,8 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/context/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
+import { fetchUserProfile } from '@/lib/utils/profileUtils';
 import { useRide } from '@/lib/context/RideContext';
 import RideMap from '@/components/map/RideMap';
 import BottomNavigation from '@/components/layout/BottomNavigation';
@@ -14,7 +16,7 @@ import { isEligibleDriver } from '@/lib/utils/driverUtils';
 const Index: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, isLoading: authLoading, setUser } = useAuth();
   const { isDriverMode, setDriverMode } = useRide();
   
   const [isDriverEligible, setIsDriverEligible] = useState(false);
@@ -65,26 +67,50 @@ const Index: React.FC = () => {
     }
   }, [user?.id, isDriverMode, navigate]);
 
-  // Wait for auth to initialize, then check login status
+  // Wait for auth to initialize and handle authentication flow
   useEffect(() => {
-    if (!authLoading) {
-      if (!user?.isLoggedIn) {
-        console.log("User not authenticated, redirecting to welcome");
-        navigate('/welcome');
-      } else {
-        console.log("Auth initialization complete, user authenticated");
-        setInitComplete(true);
+    const checkAuth = async () => {
+      if (!authLoading) {
+        try {
+          // Check if user is logged in
+          const { data: { session } } = await supabase.auth.getSession();
+          
+          if (session) {
+            // User is logged in, fetch their profile
+            const { profile, error } = await fetchUserProfile(session.user.id);
+            
+            if (profile) {
+              setUser({ ...profile, isLoggedIn: true });
+              console.log("User authenticated and profile loaded");
+              setInitComplete(true);
+            } else if (error) {
+              console.error("Error fetching profile:", error);
+              navigate('/welcome');
+            }
+          } else {
+            // No session, redirect to welcome page
+            console.log("No active session, redirecting to welcome");
+            navigate('/welcome');
+          }
+        } catch (error) {
+          console.error("Error checking authentication:", error);
+          navigate('/welcome');
+        }
       }
-    }
-  }, [user, authLoading, navigate]);
+    };
+
+    checkAuth();
+  }, [authLoading, navigate, setUser]);
 
   // Show loading state during initial auth check and page load
   if (authLoading || !pageLoaded || !initComplete) {
-    return <div className="min-h-screen bg-white flex flex-col items-center justify-center p-4 animate-pulse">
+    return (
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center p-4 animate-pulse">
         <div className="w-16 h-16 border-4 border-gray-200 border-t-violet-600 rounded-full animate-spin mb-4"></div>
         <p className="text-gray-600">Checking your account...</p>
         <p className="text-gray-400 text-sm mt-1">{authLoading ? "Authenticating..." : "Loading app..."}</p>
-      </div>;
+      </div>
+    );
   }
 
   // If we get here but user is not logged in (can happen during state transitions), redirect to welcome

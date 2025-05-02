@@ -18,6 +18,7 @@ import {
 
 type AuthContextType = {
   user: User | null;
+  setUser: (user: User | null) => void;
   login: (email: string, password: string) => Promise<void>;
   signup: (name: string, email: string, password: string, referralCode?: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -293,15 +294,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ 
-      user, 
-      login, 
-      signup, 
-      logout, 
+    <AuthContext.Provider value={{
+      user,
+      setUser,
+      login,
+      signup,
+      logout,
       resetUserPassword,
       updateUserPassword,
       updateUserProfile: updateUserProfileDetails,
-      isLoading 
+      isLoading
     }}>
       {children}
     </AuthContext.Provider>

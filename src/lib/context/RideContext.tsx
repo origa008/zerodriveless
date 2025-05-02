@@ -69,6 +69,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [dropoff, setDropoff] = useState<Location | null>(null);
   const [selectedOption, setSelectedOption] = useState<RideOption | null>(null);
   const [isDriverMode, setDriverMode] = useState<boolean>(false);
+  const [isDriverEligible, setIsDriverEligible] = useState<boolean>(false);
   const [pendingRideRequests, setPendingRideRequests] = useState<any[]>([]);
   
   const [pickupLocation, setPickupLocation] = useState<Location | null>(null);
@@ -91,6 +92,15 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
   
   useEffect(() => {
     if (user?.id) {
+      // Check driver eligibility
+      isEligibleDriver(user.id).then(eligible => {
+        setIsDriverEligible(eligible);
+        // If user is eligible and in driver mode, fetch ride requests
+        if (eligible && isDriverMode) {
+          fetchRideRequests();
+        }
+      });
+
       getWalletBalance(user.id).then(({ balance, error }) => {
         if (!error) {
           setWalletBalance(balance);
@@ -114,6 +124,15 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [user?.id]);
   
   const findRides = async () => {
+    // Only allow finding rides if not in driver mode
+    if (isDriverMode) {
+      toast({
+        title: "Mode Conflict",
+        description: "Please switch to passenger mode to request a ride",
+        variant: "default"
+      });
+      return;
+    }
     if (!pickupLocation?.coordinates || !dropoffLocation?.coordinates) {
       toast({
         title: "Missing Information",
@@ -230,7 +249,16 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return Math.round(baseRate * distance);
   };
   
-  const confirmRide = async (paymentMethod: PaymentMethod) => {
+  const confirmRide = (paymentMethod: PaymentMethod) => {
+    // Only allow confirming rides if not in driver mode
+    if (isDriverMode) {
+      toast({
+        title: "Mode Conflict",
+        description: "Please switch to passenger mode to confirm a ride",
+        variant: "default"
+      });
+      return;
+    }
     console.log('Confirming ride with params:', {
       userId: user?.id,
       pickupLocation,
@@ -419,6 +447,15 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
   
   const acceptRideRequest = (rideId: string) => {
+    // Only allow accepting rides if in driver mode
+    if (!isDriverMode) {
+      toast({
+        title: "Mode Conflict",
+        description: "Please switch to driver mode to accept rides",
+        variant: "default"
+      });
+      return;
+    }
     setPendingRideRequests(prev => prev.filter(request => request.id !== rideId));
   };
   
