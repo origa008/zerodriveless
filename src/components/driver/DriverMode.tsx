@@ -33,13 +33,14 @@ const DriverMode: React.FC = () => {
         // Get driver's current status
         const { data: driverData, error: driverError } = await supabase
           .from('driver_details')
-          .select('current_status, last_status_update')
+          .select('status, approval_date')
           .eq('user_id', user.id)
           .single();
 
         if (driverError) throw driverError;
         
-        const isCurrentlyOnline = driverData?.current_status === 'online';
+        // Check if driver is active/online based on status field
+        const isCurrentlyOnline = driverData?.status === 'active';
         setIsOnline(isCurrentlyOnline);
         
         if (isCurrentlyOnline) {

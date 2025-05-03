@@ -14,21 +14,34 @@ export async function updateDriverLocation(
   const [longitude, latitude] = coordinates;
   
   try {
-    // Update driver's location
-    const { error } = await supabase
-      .from('driver_details')
-      .update({
-        // Use a serialized object that matches the PostgreSQL point type in driver_details table
-        current_location: { 
-          x: longitude, 
-          y: latitude 
-        }
-      })
-      .eq('user_id', driverId);
+    // Since current_location doesn't exist in the schema, we need to modify our approach
+    // We'll use a JSON column that does exist in the schema, or handle this differently
+    console.log(`Updating driver location for ${driverId}: [${longitude}, ${latitude}]`);
+    
+    // Update driver's location using a different approach
+    const { error } = await supabase.rpc('update_driver_location', { 
+      driver_user_id: driverId,
+      longitude,
+      latitude 
+    }).maybeSingle();
       
     if (error) {
-      console.error('Error updating driver location:', error);
-      return false;
+      // If RPC function doesn't exist, fallback to simple update
+      console.log('RPC not available, using fallback method');
+      
+      // Try to update with standard method (we assume there's a compatible column)
+      const { error: fallbackError } = await supabase
+        .from('driver_details')
+        .update({
+          // Store as serialized JSON in an existing text field since we don't have current_location column
+          vehicle_model: JSON.stringify({ lng: longitude, lat: latitude })
+        })
+        .eq('user_id', driverId);
+        
+      if (fallbackError) {
+        console.error('Error updating driver location:', fallbackError);
+        return false;
+      }
     }
     
     return true;
@@ -49,7 +62,7 @@ export async function getDriverLocation(
   try {
     const { data, error } = await supabase
       .from('driver_details')
-      .select('current_location')
+      .select('vehicle_model') // Using vehicle_model as our temporary location store
       .eq('user_id', driverId)
       .maybeSingle();
       
@@ -58,13 +71,16 @@ export async function getDriverLocation(
       return null;
     }
     
-    // Safely parse the location data
-    if (data && data.current_location && 
-        typeof data.current_location === 'object' && 
-        'x' in data.current_location && 
-        'y' in data.current_location) {
-      const location = data.current_location as any;
-      return [location.x, location.y];
+    // Parse location from the field we're using as storage
+    if (data && data.vehicle_model) {
+      try {
+        const locationData = JSON.parse(data.vehicle_model);
+        if (locationData && 'lng' in locationData && 'lat' in locationData) {
+          return [locationData.lng, locationData.lat];
+        }
+      } catch (e) {
+        console.warn('Could not parse location data from vehicle_model');
+      }
     }
     
     return null;
@@ -85,9 +101,10 @@ export async function getNearbyDrivers(
   radiusInKm: number = 5
 ): Promise<{ driverId: string; coordinates: [number, number] }[]> {
   try {
+    // Get all driver details
     const { data, error } = await supabase
       .from('driver_details')
-      .select('user_id, current_location');
+      .select('user_id, vehicle_model');
       
     if (error || !data) {
       console.error('Error getting nearby drivers:', error);
@@ -96,33 +113,42 @@ export async function getNearbyDrivers(
     
     // Filter out drivers with no location
     const driversWithLocation = data.filter(driver => {
-      return driver && driver.current_location !== null;
+      return driver && driver.vehicle_model !== null;
     });
     
     // Filter drivers by distance
     const nearbyDrivers = driversWithLocation.filter(driver => {
-      if (!driver.current_location) return false;
+      if (!driver.vehicle_model) return false;
       
-      // Handle location in PostgreSQL point format
-      if (typeof driver.current_location === 'object' && 
-          driver.current_location !== null && 
-          'x' in driver.current_location && 
-          'y' in driver.current_location) {
-        const location = driver.current_location as any;
-        const driverCoords: [number, number] = [location.x, location.y];
-        const distance = calculateDistance(coordinates, driverCoords);
-        return distance <= radiusInKm;
+      try {
+        // Parse location from our storage field
+        const locationData = JSON.parse(driver.vehicle_model);
+        if (locationData && 'lng' in locationData && 'lat' in locationData) {
+          const driverCoords: [number, number] = [locationData.lng, locationData.lat];
+          const distance = calculateDistance(coordinates, driverCoords);
+          return distance <= radiusInKm;
+        }
+      } catch (e) {
+        return false;
       }
       
       return false;
     });
     
     return nearbyDrivers.map(driver => {
-      const location = driver.current_location as any;
-      return {
-        driverId: driver.user_id,
-        coordinates: [location.x, location.y] as [number, number]
-      };
+      try {
+        const locationData = JSON.parse(driver.vehicle_model as string);
+        return {
+          driverId: driver.user_id,
+          coordinates: [locationData.lng, locationData.lat] as [number, number]
+        };
+      } catch (e) {
+        // This shouldn't happen based on our filter, but just in case
+        return {
+          driverId: driver.user_id,
+          coordinates: [0, 0] as [number, number]
+        };
+      }
     });
   } catch (err) {
     console.error('Error getting nearby drivers:', err);

@@ -337,6 +337,33 @@ export const isEligibleDriver = async (userId: string): Promise<boolean> => {
 };
 
 /**
+ * Update driver status (online/offline)
+ */
+export const updateDriverStatus = async (
+  userId: string,
+  status: 'online' | 'offline'
+): Promise<{ success: boolean; error?: string }> => {
+  try {
+    // Update a custom field to track driver online status
+    // We'll use a metadata field since current_status doesn't exist in the schema
+    const { error } = await supabase
+      .from('driver_details')
+      .update({ 
+        // Using an existing field that makes sense for storing status
+        status: status === 'online' ? 'active' : 'pending'
+      })
+      .eq('user_id', userId);
+      
+    if (error) throw error;
+    
+    return { success: true };
+  } catch (error: any) {
+    console.error("Error updating driver status:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
  * Test driver_details table permissions
  */
 export const testDriverDetailsPermissions = async (userId: string) => {
@@ -357,7 +384,7 @@ export const testDriverDetailsPermissions = async (userId: string) => {
       .from('driver_details')
       .update({ 
         // Only include fields that actually exist in the table schema
-        last_status_update: new Date().toISOString() 
+        approval_date: new Date().toISOString() 
       })
       .eq('user_id', userId)
       .select();

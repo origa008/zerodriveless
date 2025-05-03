@@ -111,7 +111,7 @@ const PassengerPanel: React.FC = () => {
     // Send ride request to drivers
     confirmRide(paymentMethod);
     setWaitingForDriverAcceptance(true);
-    resetDriverAcceptanceTimer();
+    resetDriverAcceptanceTimer(); // Fixed: No arguments here
     toast({
       title: "Looking for drivers",
       description: "Waiting for a driver to accept your bid. This will take about a minute.",

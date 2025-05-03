@@ -34,7 +34,39 @@ export async function createRideRequest(
       return null
     }
 
-    return data as unknown as RideRequest
+    // Convert the response to RideRequest format
+    const ride = data as any;
+    return {
+      id: ride.id,
+      passenger_id: ride.passenger_id,
+      driver_id: ride.driver_id,
+      pickup: {
+        name: typeof ride.pickup_location === 'object' ? ride.pickup_location.name || 'Pickup' : 'Pickup',
+        coordinates: typeof ride.pickup_location === 'object' ? 
+          (Array.isArray(ride.pickup_location.coordinates) ? 
+            ride.pickup_location.coordinates : [0, 0]) : [0, 0]
+      },
+      dropoff: {
+        name: typeof ride.dropoff_location === 'object' ? ride.dropoff_location.name || 'Dropoff' : 'Dropoff',
+        coordinates: typeof ride.dropoff_location === 'object' ? 
+          (Array.isArray(ride.dropoff_location.coordinates) ? 
+            ride.dropoff_location.coordinates : [0, 0]) : [0, 0]
+      },
+      pickup_location: ride.pickup_location,
+      dropoff_location: ride.dropoff_location,
+      ride_option: ride.ride_option,
+      status: ride.status,
+      price: ride.price,
+      currency: ride.currency,
+      distance: ride.distance,
+      duration: ride.duration,
+      start_time: ride.start_time,
+      end_time: ride.end_time,
+      payment_method: ride.payment_method,
+      created_at: ride.created_at,
+      bid_amount: ride.bid_amount,
+      passenger: ride.passenger
+    };
   } catch (error) {
     console.error('Error creating ride request:', error)
     return null
@@ -59,15 +91,42 @@ export async function getNearbyRideRequests(
       return [];
     }
 
-    // Filter by distance (simplified, you may want to use a more accurate method)
-    const nearbyRides = data
-      ? data.filter(ride => {
-          // This is just a placeholder implementation
-          return true; // Return all rides for now
-        })
-      : [];
+    // Convert database response to RideRequest type
+    const rideRequests: RideRequest[] = (data || []).map((ride: any) => {
+      return {
+        id: ride.id,
+        passenger_id: ride.passenger_id,
+        driver_id: ride.driver_id,
+        pickup: {
+          name: typeof ride.pickup_location === 'object' ? ride.pickup_location.name || 'Pickup' : 'Pickup',
+          coordinates: typeof ride.pickup_location === 'object' ? 
+            (Array.isArray(ride.pickup_location.coordinates) ? 
+              ride.pickup_location.coordinates : [0, 0]) : [0, 0]
+        },
+        dropoff: {
+          name: typeof ride.dropoff_location === 'object' ? ride.dropoff_location.name || 'Dropoff' : 'Dropoff',
+          coordinates: typeof ride.dropoff_location === 'object' ? 
+            (Array.isArray(ride.dropoff_location.coordinates) ? 
+              ride.dropoff_location.coordinates : [0, 0]) : [0, 0]
+        },
+        pickup_location: ride.pickup_location,
+        dropoff_location: ride.dropoff_location,
+        ride_option: ride.ride_option,
+        status: ride.status,
+        price: ride.price,
+        currency: ride.currency,
+        distance: ride.distance,
+        duration: ride.duration,
+        start_time: ride.start_time,
+        end_time: ride.end_time,
+        payment_method: ride.payment_method,
+        created_at: ride.created_at,
+        bid_amount: ride.bid_amount,
+        passenger: ride.passenger
+      };
+    });
 
-    return nearbyRides as RideRequest[];
+    return rideRequests;
   } catch (error: any) {
     console.error('Error fetching nearby ride requests:', error);
     return [];

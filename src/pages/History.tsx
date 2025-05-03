@@ -98,6 +98,17 @@ const History: React.FC = () => {
     return format(date, 'dd MMM yyyy, h:mm a');
   };
 
+  const calculateRideDuration = (ride: any) => {
+    if (ride.start_time && ride.end_time) {
+      const start = new Date(ride.start_time);
+      const end = new Date(ride.end_time);
+      const diff = end.getTime() - start.getTime();
+      const minutes = Math.floor(diff / (1000 * 60));
+      return `${minutes} min`;
+    }
+    return 'N/A';
+  };
+
   return (
     <div className="min-h-screen bg-white pb-20">
       <div className="bg-black text-white p-6">
@@ -176,7 +187,7 @@ const History: React.FC = () => {
                     </div>
                     <div className="flex items-center text-sm text-gray-500">
                       <Calendar size={14} className="mr-1" />
-                      {formatDate(item.startTime || item.endTime)}
+                      {formatDate(item.start_time || item.end_time)}
                     </div>
                   </div>
                   

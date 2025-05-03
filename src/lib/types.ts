@@ -28,8 +28,8 @@ export type Ride = {
   id: string;
   pickup: Location;
   dropoff: Location;
-  pickup_location?: Location; // For backward compatibility
-  dropoff_location?: Location; // For backward compatibility
+  pickup_location?: any; // For backward compatibility
+  dropoff_location?: any; // For backward compatibility
   rideOption: RideOption;
   price: number;
   distance: number;
@@ -58,10 +58,6 @@ export type DriverDetails = {
   status: 'pending' | 'approved' | 'rejected';
   has_sufficient_deposit: boolean;
   deposit_amount_required: number;
-  current_location?: {
-    x: number;
-    y: number;
-  };
   created_at: string;
   approval_date?: string;
   current_status?: string;
@@ -164,8 +160,8 @@ export interface RideRequest {
   driver_id?: string | null;
   pickup: Location;
   dropoff: Location;
-  pickup_location?: Location; // For backward compatibility
-  dropoff_location?: Location; // For backward compatibility
+  pickup_location?: any; // For backward compatibility
+  dropoff_location?: any; // For backward compatibility 
   ride_option: RideOption;
   status: 'searching' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
   price: number;
