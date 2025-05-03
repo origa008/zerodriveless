@@ -1,4 +1,6 @@
-import React, { useEffect, useState } from 'react';
+create policy "Drivers can update their own location"
+on driver_details
+for update using (auth.uid() = user_id);import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -115,7 +117,7 @@ const RideCard = ({ ride, onAccept }: { ride: Ride; onAccept: (ride: Ride) => vo
   );
 };
 
-const RideRequests: React.FC = () => {
+export default function RideRequests() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
@@ -361,27 +363,34 @@ const RideRequests: React.FC = () => {
         description: 'Failed to accept ride',
         variant: 'destructive',
       });
-    } finally {
-      setLoading(false);
+  };
+}, [isEligibleDriver]);
+
+const handleAcceptRide = async (ride: Ride) => {
+  try {
+    setLoading(true);
+    
+    const result = await acceptRideRequest(ride.id, user.id);
+    
+    if (result.success) {
+      toast({
+        title: 'Success',
+        description: 'Ride accepted successfully!',
+      });
+      navigate(`/rides/${ride.id}`);
+    } else {
+      toast({
+        title: 'Error',
+        description: result.error || 'Failed to accept ride',
+        variant: 'destructive',
+      });
     }
-  };
-
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    await fetchRideRequests();
-    setRefreshing(false);
-  };
-
-
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-white">
-        <Loader2 className="h-8 w-8 animate-spin mr-2" />
-        <p>Loading...</p>
-      </div>
-    );
-  }
+  } catch (error) {
+    toast({
+      title: 'Error',
+      description: 'Failed to accept ride',
+      variant: 'destructive',
+    });
 
   // Check driver eligibility
   if (!isEligibleDriver) {
@@ -447,5 +456,3 @@ const RideRequests: React.FC = () => {
     </div>
   );
 };
-
-export default RideRequests;
