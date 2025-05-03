@@ -24,6 +24,6 @@ export const rideOptions: RideOption[] = [
     currency: 'Rs',
     duration: 10,
     capacity: 1,
-    eta: 3  // Changed from string to number
+    eta: 3 // Changed from string to number
   }
 ];

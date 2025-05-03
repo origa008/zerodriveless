@@ -28,6 +28,8 @@ export type Ride = {
   id: string;
   pickup: Location;
   dropoff: Location;
+  pickup_location?: Location; // For backward compatibility
+  dropoff_location?: Location; // For backward compatibility
   rideOption: RideOption;
   price: number;
   distance: number;
@@ -38,6 +40,8 @@ export type Ride = {
   driver?: Driver;
   start_time?: string;
   end_time?: string;
+  passenger?: any;
+  payment_method?: PaymentMethod; // For backward compatibility
 };
 
 export type DriverDetails = {
@@ -158,9 +162,11 @@ export interface RideRequest {
   id: string;
   passenger_id: string;
   driver_id?: string | null;
-  pickup_location: any;
-  dropoff_location: any;
-  ride_option: any;
+  pickup: Location;
+  dropoff: Location;
+  pickup_location?: Location; // For backward compatibility
+  dropoff_location?: Location; // For backward compatibility
+  ride_option: RideOption;
   status: 'searching' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
   price: number;
   currency: string;
@@ -172,4 +178,4 @@ export interface RideRequest {
   created_at: string;
   bid_amount?: number;
   passenger?: any;
-}
+};

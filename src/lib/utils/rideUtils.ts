@@ -66,6 +66,26 @@ export const updateRideStatus = async (
   }
 };
 
+// Get a ride by ID
+export const getRideById = async (
+  rideId: string
+): Promise<{ ride: any; error?: string }> => {
+  try {
+    const { data, error } = await supabase
+      .from('rides')
+      .select('*')
+      .eq('id', rideId)
+      .single();
+
+    if (error) throw error;
+
+    return { ride: data };
+  } catch (error: any) {
+    console.error('Error getting ride:', error);
+    return { ride: null, error: error.message };
+  }
+};
+
 // Subscribe to ride status changes
 export const subscribeToRideStatus = (
   rideId: string,
@@ -135,4 +155,12 @@ export const subscribeToNewRideRequests = (
   return () => {
     subscription.unsubscribe();
   };
+};
+
+// Calculate fare based on distance and ride type
+export const calculateFare = (distance: number, rideType: string = 'car'): number => {
+  const baseFare = rideType === 'bike' ? 30 : 50;
+  const perKmRate = rideType === 'bike' ? 12 : 15;
+  
+  return Math.round(baseFare + (distance * perKmRate));
 };

@@ -1,455 +1,288 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
-import { useRide } from '@/lib/context/RideContext';
+
+import React, { useEffect, useState } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/context/AuthContext';
-import { Map, Clock, DollarSign, PhoneCall, MessageSquare, AlertTriangle } from 'lucide-react';
-import { Ride } from '@/lib/types';
+import { useRide } from '@/lib/context/RideContext';
 import { useToast } from '@/hooks/use-toast';
-import { 
-  getAvailableRideRequests, 
-  subscribeToNewRideRequests,
-  acceptRideRequest
-} from '@/lib/utils/rideUtils';
-import { getDriverRegistrationStatus, isEligibleDriver } from '@/lib/utils/driverUtils';
-import { getWalletBalance, subscribeToWalletBalance } from '@/lib/utils/walletUtils';
+import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Bell, User, Clock } from 'lucide-react';
+import { updateDriverStatus } from '@/lib/utils/driverUtils';
+import { useLocationTracking } from '@/hooks/useLocationTracking';
+import { updateDriverLocation } from '@/lib/utils/driverLocation';
 
-interface DriverModeProps {
-  isOnline: boolean;
-  setIsOnline: (isOnline: boolean) => void;
-}
-
-const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
-  const navigate = useNavigate();
+const DriverMode: React.FC = () => {
   const { user } = useAuth();
+  const { setDriverMode, isDriverMode } = useRide();
   const { toast } = useToast();
-  const { 
-    calculateBaseFare, 
-    setCurrentRide,
-    walletBalance, 
-    setWalletBalance,
-    pendingRideRequests, 
-    setPendingRideRequests
-  } = useRide();
-  
-  const [showBidModal, setShowBidModal] = useState(false);
-  const [selectedRide, setSelectedRide] = useState<Ride | null>(null);
-  const [bidAmount, setBidAmount] = useState<number>(0);
-  const [showContactModal, setShowContactModal] = useState(false);
+  const { coordinates, startTracking, stopTracking, isTracking } = useLocationTracking();
+  const [isOnline, setIsOnline] = useState(false);
+  const [pendingRides, setPendingRides] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [driverStatus, setDriverStatus] = useState<string | null>(null);
-  const [hasDeposit, setHasDeposit] = useState(false);
-  const [isEligible, setIsEligible] = useState(false);
+  const [locationUpdateInterval, setLocationUpdateInterval] = useState<NodeJS.Timeout | null>(null);
 
+  // Load initial state and set up listeners
   useEffect(() => {
-    const checkDriverEligibility = async () => {
-      if (!user?.id) return;
-      
+    if (!user || !user.isVerifiedDriver) return;
+
+    const loadInitialState = async () => {
       setIsLoading(true);
       try {
-        const { status, isApproved, details } = await getDriverRegistrationStatus(user.id);
-        setDriverStatus(status);
+        // Get driver's current status
+        const { data: driverData, error: driverError } = await supabase
+          .from('driver_details')
+          .select('current_status, last_status_update')
+          .eq('user_id', user.id)
+          .single();
+
+        if (driverError) throw driverError;
         
-        const hasEnoughDeposit = details?.has_sufficient_deposit || false;
-        setHasDeposit(hasEnoughDeposit);
+        const isCurrentlyOnline = driverData?.current_status === 'online';
+        setIsOnline(isCurrentlyOnline);
         
-        const { balance } = await getWalletBalance(user.id);
-        setWalletBalance(balance);
+        if (isCurrentlyOnline) {
+          startTracking();
+        }
+
+        // Load any pending ride requests
+        await loadPendingRides();
         
-        setIsEligible(await isEligibleDriver(user.id));
       } catch (error) {
-        console.error("Error checking driver eligibility:", error);
+        console.error("Error loading driver mode:", error);
+        toast({
+          title: "Error",
+          description: "Could not load driver status",
+          variant: "destructive",
+        });
       } finally {
         setIsLoading(false);
       }
     };
-    
-    checkDriverEligibility();
-    
-    const unsubscribeWallet = user?.id 
-      ? subscribeToWalletBalance(user.id, (newBalance) => {
-          setWalletBalance(newBalance);
-          checkDriverEligibility();
-        })
-      : undefined;
-      
-    return () => {
-      if (unsubscribeWallet) unsubscribeWallet();
-    };
-  }, [user?.id, setWalletBalance]);
 
-  useEffect(() => {
-    if (isOnline && user?.id && isEligible) {
-      setIsLoading(true);
-      
-      const fetchRideRequests = async () => {
-        const { rides, error } = await getAvailableRideRequests(user.id);
-        
-        if (!error) {
-          const formattedRides = rides.map(ride => ({
-            id: ride.id,
-            pickup: ride.pickup_location,
-            dropoff: ride.dropoff_location,
-            rideOption: ride.ride_option,
-            status: ride.status,
-            price: ride.price,
-            currency: ride.currency,
-            distance: ride.distance,
-            duration: ride.duration,
-            paymentMethod: ride.payment_method
-          }));
+    loadInitialState();
+    
+    // Set up subscription for new ride requests
+    const channel = supabase.channel('public:rides');
+    
+    channel
+      .on('postgres_changes', 
+        { 
+          event: 'INSERT', 
+          schema: 'public', 
+          table: 'rides',
+          filter: 'status=eq.searching'
+        }, 
+        (payload) => {
+          // Add the new ride to the pending rides
+          setPendingRides((prevRides) => {
+            // Check if we already have this ride
+            const exists = prevRides.some(ride => ride.id === payload.new.id);
+            if (!exists) {
+              return [...prevRides, payload.new];
+            }
+            return prevRides;
+          });
           
-          setPendingRideRequests(formattedRides);
+          // Notify the driver
+          if (isOnline) {
+            toast({
+              title: "New Ride Request",
+              description: "A new ride request is available",
+            });
+          }
         }
-        
-        setIsLoading(false);
+      )
+      .subscribe();
+    
+    return () => {
+      if (locationUpdateInterval) clearInterval(locationUpdateInterval);
+      stopTracking();
+      channel.unsubscribe();
+    };
+  }, [user]);
+
+  // Update location when online and coordinates change
+  useEffect(() => {
+    if (isOnline && coordinates && user?.id) {
+      // Update driver location when coordinates change
+      const updateLocation = async () => {
+        try {
+          await updateDriverLocation(user.id, coordinates);
+        } catch (error) {
+          console.error("Error updating location:", error);
+        }
       };
       
-      fetchRideRequests();
+      updateLocation();
       
-      const unsubscribe = subscribeToNewRideRequests((newRide) => {
-        const formattedRide = {
-          id: newRide.id,
-          pickup: newRide.pickup_location,
-          dropoff: newRide.dropoff_location,
-          rideOption: newRide.ride_option,
-          status: newRide.status,
-          price: newRide.price,
-          currency: newRide.currency,
-          distance: newRide.distance,
-          duration: newRide.duration,
-          paymentMethod: newRide.payment_method
-        };
-        
-        setPendingRideRequests((prevRides) => [...prevRides, formattedRide]);
-        
-        toast({
-          title: "New Ride Request",
-          description: "A new ride request is available",
-          duration: 3000
-        });
-      });
-      
-      return () => unsubscribe();
-    }
-  }, [isOnline, user?.id, isEligible, setPendingRideRequests, toast]);
-
-  const handleGoOnline = () => {
-    if (driverStatus !== 'approved') {
-      navigate('/official-driver');
-      return;
-    }
-    
-    if (!hasDeposit) {
-      toast({
-        title: "Deposit required",
-        description: "You need to add Rs. 3,000 to your wallet before going online",
-        duration: 5000
-      });
-      navigate('/wallet');
-      return;
-    }
-    
-    setIsOnline(true);
-    toast({
-      title: "You're online",
-      description: "You'll now receive ride requests",
-      duration: 3000
-    });
-  };
-
-  const handleGoOffline = () => {
-    setIsOnline(false);
-    toast({
-      title: "You're offline",
-      description: "You won't receive any new ride requests",
-      duration: 3000
-    });
-  };
-
-  const handleShowBid = (ride: Ride) => {
-    setSelectedRide(ride);
-    setBidAmount(ride.price);
-    setShowBidModal(true);
-  };
-
-  const handleAcceptRide = async () => {
-    if (!selectedRide || !user?.id) {
-      toast({
-        title: "Error",
-        description: "Failed to accept ride",
-        duration: 3000
-      });
-      return;
-    }
-    
-    try {
-      const { success, error } = await acceptRideRequest(selectedRide.id, user.id);
-      
-      if (!success) {
-        throw new Error(error || "Failed to accept ride");
+      // Clear any existing interval
+      if (locationUpdateInterval) {
+        clearInterval(locationUpdateInterval);
       }
       
-      const updatedRide = {
-        ...selectedRide,
-        price: bidAmount,
+      // Set up interval for periodic updates
+      const interval = setInterval(updateLocation, 30000); // Update every 30 seconds
+      setLocationUpdateInterval(interval);
+      
+      // Clean up on unmount or when offline
+      return () => {
+        clearInterval(interval);
       };
+    } else if (!isOnline && locationUpdateInterval) {
+      clearInterval(locationUpdateInterval);
+      setLocationUpdateInterval(null);
+    }
+  }, [isOnline, coordinates, user?.id]);
+
+  const toggleDriverMode = async () => {
+    if (!user?.id) return;
+    
+    try {
+      const newStatus = !isOnline;
+      setIsLoading(true);
       
-      setCurrentRide(updatedRide);
-      setShowBidModal(false);
+      // Update status in database
+      const { success, error } = await updateDriverStatus(
+        user.id, 
+        newStatus ? 'online' : 'offline'
+      );
       
-      toast({
-        title: "Ride accepted",
-        description: "You have accepted the ride. Navigating to passenger...",
-        duration: 3000
-      });
+      if (!success) {
+        throw new Error(error || "Failed to update status");
+      }
       
-      navigate('/ride-progress');
+      // Update local state
+      setIsOnline(newStatus);
+      setDriverMode(newStatus);
+      
+      // Start or stop location tracking
+      if (newStatus) {
+        startTracking();
+        toast({
+          title: "Driver Mode Activated",
+          description: "You're now visible to passengers",
+        });
+        
+        // Load pending rides
+        loadPendingRides();
+      } else {
+        stopTracking();
+        if (locationUpdateInterval) {
+          clearInterval(locationUpdateInterval);
+          setLocationUpdateInterval(null);
+        }
+        toast({
+          title: "Driver Mode Deactivated",
+          description: "You're now offline",
+        });
+      }
     } catch (error: any) {
-      console.error("Error accepting ride:", error);
+      console.error("Error toggling driver mode:", error);
       toast({
         title: "Error",
-        description: error.message || "Failed to accept ride",
-        duration: 3000
+        description: error.message || "Could not update driver status",
+        variant: "destructive",
       });
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleCall = () => {
-    toast({
-      title: "Calling...",
-      description: "Connecting you to the passenger",
-      duration: 3000
-    });
-    setShowContactModal(false);
-  };
-  
-  const handleMessage = () => {
-    toast({
-      title: "Message sent",
-      description: "Your message has been sent to the passenger",
-      duration: 3000
-    });
-    setShowContactModal(false);
+  const loadPendingRides = async () => {
+    if (!user?.id) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('rides')
+        .select('*')
+        .eq('status', 'searching')
+        .is('driver_id', null)
+        .order('created_at', { ascending: false });
+        
+      if (error) throw error;
+      
+      setPendingRides(data || []);
+    } catch (error) {
+      console.error("Error loading pending rides:", error);
+    }
   };
 
-  const renderDriverStatusMessage = () => {
-    if (!user) return null;
-    
-    if (driverStatus === null || driverStatus === undefined) {
-      return (
-        <div className="flex items-center mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-          <AlertTriangle className="text-amber-600 mr-2" />
-          <span className="text-amber-800 text-sm">Complete driver registration to receive ride requests.</span>
-        </div>
-      );
-    }
-    
-    if (driverStatus === 'pending') {
-      return (
-        <div className="flex items-center mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-          <AlertTriangle className="text-blue-600 mr-2" />
-          <span className="text-blue-800 text-sm">Your driver application is under review.</span>
-        </div>
-      );
-    }
-    
-    if (driverStatus === 'approved' && !hasDeposit) {
-      return (
-        <div className="flex items-center mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-          <AlertTriangle className="text-amber-600 mr-2" />
-          <span className="text-amber-800 text-sm">Add Rs. 3,000 to your wallet to start accepting rides.</span>
-        </div>
-      );
-    }
-    
-    return null;
-  };
+  // Render
+  if (!user || !user.isVerifiedDriver) {
+    return (
+      <Card className="p-4 text-center">
+        <p>You need to be a verified driver to access Driver Mode</p>
+        <Button className="mt-2" onClick={() => window.location.href = '/official-driver'}>
+          Become a Driver
+        </Button>
+      </Card>
+    );
+  }
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-2xl font-medium">Driver Mode</h2>
-        <div className="text-right">
-          <p className="text-sm text-gray-500">Wallet Balance</p>
-          <p className="text-xl font-bold">RS {walletBalance.toFixed(0)}</p>
-        </div>
-      </div>
-      
-      {renderDriverStatusMessage && renderDriverStatusMessage()}
-      
-      {!isOnline ? (
-        <div>
-          <p className="text-gray-600 mb-6">You are currently offline. Go online to receive ride requests.</p>
-          
-          <Button 
-            className="w-full bg-black text-white hover:bg-gray-800 py-6 text-xl rounded-xl"
-            onClick={handleGoOnline}
-            disabled={!isEligible}
-          >
-            {isEligible ? 'Go Online' : 
-             driverStatus === 'approved' ? 'Add Deposit to Start' : 'Complete Driver Registration'}
-          </Button>
-          
-          {!isEligible && (
-            <div className="mt-4 text-center">
-              <p className="text-sm text-gray-600 mb-2">
-                {driverStatus !== 'approved' 
-                  ? 'You need to complete driver registration first.' 
-                  : 'You need to add the required deposit to your wallet.'}
-              </p>
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => driverStatus !== 'approved' 
-                  ? navigate('/official-driver') 
-                  : navigate('/wallet')}
-              >
-                {driverStatus !== 'approved' ? 'Register as Driver' : 'Add Funds'}
-              </Button>
-            </div>
-          )}
-        </div>
-      ) : (
-        <div>
-          <div className="flex justify-between items-center mb-4">
-            <p className="text-green-600 font-medium">You are online</p>
-            <Button 
-              variant="outline" 
-              className="border-gray-300"
-              onClick={handleGoOffline}
-            >
-              Go Offline
-            </Button>
+    <div className="p-4">
+      <Card className="p-4 mb-4">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="font-medium">Driver Mode</h3>
+            <p className="text-sm text-gray-500">
+              {isOnline ? 'You are online and visible to passengers' : 'Go online to receive ride requests'}
+            </p>
           </div>
-          
-          <h3 className="text-xl font-medium mb-3">Nearby Requests</h3>
-          
-          {isLoading ? (
-            <div className="flex justify-center py-8">
-              <p>Loading ride requests...</p>
-            </div>
-          ) : pendingRideRequests.length === 0 ? (
-            <div className="text-center py-8 border border-gray-200 rounded-xl">
-              <p className="text-gray-500">No ride requests available at the moment.</p>
-              <p className="text-sm text-gray-400 mt-2">Wait for passengers to place ride requests.</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {pendingRideRequests.map((request) => (
-                <div 
-                  key={request.id} 
-                  className="border border-gray-200 rounded-xl p-4 hover:border-gray-400 transition-colors"
-                >
-                  <div className="flex justify-between mb-3">
-                    <div className="flex items-center">
-                      <Map className="text-gray-500 mr-2" size={16} />
-                      <p className="font-medium">{request.pickup.name} → {request.dropoff.name}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-gray-500 text-sm">Distance</p>
-                      <p className="font-medium">{request.distance} km</p>
-                    </div>
-                  </div>
-                  
-                  <div className="flex justify-between mb-3">
-                    <div>
-                      <p className="text-gray-500 text-sm">Price</p>
-                      <p className="font-bold text-xl">{request.price} {request.currency}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-gray-500 text-sm">Your Earning</p>
-                      <p className="font-medium text-green-600">~{Math.round(request.price * 0.8)} {request.currency}</p>
-                    </div>
-                  </div>
-                  
-                  <Button 
-                    className="w-full bg-black hover:bg-gray-800 text-white py-2 rounded-full"
-                    onClick={() => handleShowBid(request)}
-                  >
-                    Accept
-                  </Button>
+          <Switch 
+            checked={isOnline} 
+            onCheckedChange={toggleDriverMode}
+            disabled={isLoading}
+          />
+        </div>
+        
+        {isOnline && coordinates && (
+          <div className="text-xs text-gray-500">
+            Location sharing active at [{coordinates[0].toFixed(4)}, {coordinates[1].toFixed(4)}]
+          </div>
+        )}
+      </Card>
+      
+      {isOnline && pendingRides.length > 0 && (
+        <div className="mb-4">
+          <h3 className="text-lg font-medium mb-2">Available Requests ({pendingRides.length})</h3>
+          <div className="space-y-3">
+            {pendingRides.slice(0, 3).map(ride => (
+              <Card key={ride.id} className="p-3">
+                <div className="flex justify-between items-center mb-2">
+                  <Badge className="bg-blue-500">{ride.ride_option?.name || "Ride"}</Badge>
+                  <span className="font-bold">{ride.price} {ride.currency}</span>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {showBidModal && selectedRide && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md">
-            <h3 className="text-xl font-medium mb-4">Ride Details</h3>
+                
+                <div className="text-sm">
+                  <div className="flex items-center text-gray-700 mb-1">
+                    <Clock size={12} className="mr-1" />
+                    <span>{ride.duration} min · {ride.distance} km</span>
+                  </div>
+                  
+                  <div className="line-clamp-1">
+                    <span className="text-xs bg-gray-100 rounded px-1 py-0.5 mr-1">From</span>
+                    {ride.pickup?.name || ride.pickup_location?.name || "Unknown"}
+                  </div>
+                  
+                  <div className="line-clamp-1">
+                    <span className="text-xs bg-gray-100 rounded px-1 py-0.5 mr-1">To</span>
+                    {ride.dropoff?.name || ride.dropoff_location?.name || "Unknown"}
+                  </div>
+                </div>
+              </Card>
+            ))}
             
-            <div className="mb-4">
-              <p className="text-gray-600 mb-2">Route: {selectedRide.pickup.name} → {selectedRide.dropoff.name}</p>
-              <p className="text-gray-600 mb-2">Distance: {selectedRide.distance} km</p>
-              <p className="text-gray-600 mb-2">Vehicle: {selectedRide.rideOption.name}</p>
-              <p className="text-gray-600 mb-2">Passenger Bid: {selectedRide.price} RS</p>
-              <p className="text-gray-600 mb-2">Your Profit: ~{Math.round(selectedRide.price * 0.8)} RS</p>
-              <p className="text-gray-600 mb-2">Payment Method: {selectedRide.paymentMethod === 'wallet' ? 'Wallet (automatic)' : 'Cash'}</p>
-            </div>
+            {pendingRides.length > 3 && (
+              <p className="text-center text-sm text-gray-500">
+                +{pendingRides.length - 3} more requests available
+              </p>
+            )}
             
-            <div className="mb-6">
-              <label className="block text-sm font-medium mb-2">Your Counter Bid (RS)</label>
-              <input
-                type="number"
-                min={Math.round(calculateBaseFare(selectedRide.distance, selectedRide.rideOption.name) * 0.9)}
-                value={bidAmount}
-                onChange={(e) => setBidAmount(Number(e.target.value))}
-                className="w-full border border-gray-300 rounded-lg p-3"
-              />
-              <p className="text-sm text-gray-500 mt-1">You can set your bid lower to be more competitive</p>
-            </div>
-            
-            <div className="flex space-x-3">
-              <Button 
-                variant="outline" 
-                className="flex-1"
-                onClick={() => setShowBidModal(false)}
-              >
-                Cancel
-              </Button>
-              <Button 
-                className="flex-1 bg-black text-white"
-                onClick={handleAcceptRide}
-              >
-                Accept Ride
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-      
-      {showContactModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md">
-            <h3 className="text-xl font-medium mb-4">Contact Passenger</h3>
-            
-            <div className="flex justify-center space-x-6 my-4">
-              <button 
-                onClick={handleCall}
-                className="flex flex-col items-center justify-center p-4 bg-green-50 rounded-full w-24 h-24"
-              >
-                <PhoneCall size={32} className="text-green-500 mb-2" />
-                <span>Call</span>
-              </button>
-              
-              <button
-                onClick={handleMessage}
-                className="flex flex-col items-center justify-center p-4 bg-blue-50 rounded-full w-24 h-24"
-              >
-                <MessageSquare size={32} className="text-blue-500 mb-2" />
-                <span>Message</span>
-              </button>
-            </div>
-            
-            <Button 
-              variant="outline" 
-              className="w-full mt-4"
-              onClick={() => setShowContactModal(false)}
-            >
-              Cancel
+            <Button onClick={() => window.location.href = '/ride-requests'} className="w-full">
+              View All Requests
             </Button>
           </div>
         </div>
