@@ -19,7 +19,7 @@ export type RideOption = {
   currency?: string; // For RideOptionCard
   duration?: number; // For RideOptionCard
   capacity?: number; // For RideOptionCard
-  eta?: number; // Added for mockData.ts
+  eta?: number; // Added for mockData
 };
 
 export type PaymentMethod = 'cash' | 'wallet';
@@ -36,8 +36,8 @@ export type Ride = {
   paymentMethod: PaymentMethod;
   currency: string;
   driver?: Driver;
-  start_time?: string; // Added for historyUtils.ts
-  end_time?: string; // Added for historyUtils.ts
+  start_time?: string;
+  end_time?: string;
 };
 
 export type DriverDetails = {
@@ -60,8 +60,8 @@ export type DriverDetails = {
   };
   created_at: string;
   approval_date?: string;
-  current_status?: string; // For driverUtils.ts
-  last_status_update?: string; // For driverUtils.ts
+  current_status?: string;
+  last_status_update?: string;
 };
 
 // Create hook for location tracking
@@ -118,7 +118,8 @@ export type User = {
   address?: string;
   referralCode?: string;
   isVerifiedDriver?: boolean;
-  driverStatus?: string; // Added for profileUtils.ts
+  driverStatus?: string;
+  hasDriverDeposit?: boolean;
 };
 
 export type Post = {

@@ -1,5 +1,6 @@
 
 import { supabase } from '@/integrations/supabase/client';
+import { RideRequest } from '@/lib/types';
 
 /**
  * Get nearby ride requests for drivers
@@ -44,13 +45,18 @@ export async function getNearbyRideRequests(
               console.error("Error parsing location:", e);
             }
           } else if (typeof ride.pickup_location === 'object') {
-            // Handle if it's already an object
-            if (ride.pickup_location.coordinates) {
-              pickupCoords = ride.pickup_location.coordinates;
-            } else if (ride.pickup_location.longitude !== undefined && ride.pickup_location.latitude !== undefined) {
-              pickupCoords = [ride.pickup_location.longitude, ride.pickup_location.latitude];
-            } else if (ride.pickup_location.x !== undefined && ride.pickup_location.y !== undefined) {
-              pickupCoords = [ride.pickup_location.x, ride.pickup_location.y];
+            const locationObj = ride.pickup_location as any;
+            // Check if coordinates exist directly
+            if (Array.isArray(locationObj.coordinates)) {
+              pickupCoords = locationObj.coordinates;
+            }
+            // Check for x,y format
+            else if (locationObj.x !== undefined && locationObj.y !== undefined) {
+              pickupCoords = [locationObj.x, locationObj.y];
+            } 
+            // Check for longitude,latitude format
+            else if (locationObj.longitude !== undefined && locationObj.latitude !== undefined) {
+              pickupCoords = [locationObj.longitude, locationObj.latitude];
             }
           }
         }
@@ -86,7 +92,7 @@ export async function getNearbyRideRequests(
 /**
  * Calculate distance between two points using Haversine formula
  */
-function calculateDistance(
+export function calculateDistance(
   point1: [number, number], 
   point2: [number, number]
 ): number {
@@ -107,6 +113,3 @@ function calculateDistance(
   
   return distance;
 }
-
-// Export the function for use in other modules
-export { calculateDistance };

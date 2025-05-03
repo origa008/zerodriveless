@@ -121,9 +121,7 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
           paymentMethod: newRide.payment_method
         };
         
-        setPendingRideRequests((prevRides) => {
-          return [...prevRides, formattedRide];
-        });
+        setPendingRideRequests(prevRides => [...prevRides, formattedRide]);
         
         toast({
           title: "New Ride Request",

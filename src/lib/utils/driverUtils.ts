@@ -298,10 +298,10 @@ export const getAvailableDrivers = async (email?: string): Promise<{
  */
 export const isEligibleDriver = async (userId: string): Promise<boolean> => {
   try {
-    // Check if user has a driver profile
+    // Check if user has a driver profile in driver_details table (not drivers)
     const { data: driver, error: driverError } = await supabase
-      .from('drivers')
-      .select('*')
+      .from('driver_details')
+      .select('status, deposit_amount_required')
       .eq('user_id', userId)
       .single();
 
@@ -336,7 +336,6 @@ export const isEligibleDriver = async (userId: string): Promise<boolean> => {
   }
 };
 
-// ... (rest of the code remains the same)
 /**
  * Test driver_details table permissions
  */
@@ -356,7 +355,10 @@ export const testDriverDetailsPermissions = async (userId: string) => {
     // Test UPDATE permission
     const { data: updateData, error: updateError } = await supabase
       .from('driver_details')
-      .update({ last_status_update: new Date().toISOString() })
+      .update({ 
+        // Only include fields that actually exist in the table schema
+        last_status_update: new Date().toISOString() 
+      })
       .eq('user_id', userId)
       .select();
 

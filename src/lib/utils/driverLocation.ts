@@ -1,5 +1,6 @@
 
 import { supabase } from '@/integrations/supabase/client';
+import { calculateDistance } from '@/lib/utils/rideRequests';
 
 /**
  * Updates the driver's location in the database
@@ -14,11 +15,10 @@ export async function updateDriverLocation(
   
   try {
     // Update driver's location using direct column update 
-    // instead of trying to use an RPC function
     const { error } = await supabase
       .from('driver_details')
       .update({
-        // Use an object with x, y properties as in the DriverDetails type
+        // Use a serialized object that matches the PostgreSQL point type
         current_location: { x: longitude, y: latitude }
       })
       .eq('user_id', driverId);
@@ -58,8 +58,8 @@ export async function getDriverLocation(
     const location = data.current_location;
     if (!location) return null;
     
-    // Parse the location data
-    if (typeof location === 'object' && 'x' in location && 'y' in location) {
+    // Parse the location data safely
+    if (typeof location === 'object' && location !== null && 'x' in location && 'y' in location) {
       return [location.x, location.y];
     }
     
@@ -91,14 +91,16 @@ export async function getNearbyDrivers(
     }
     
     // Filter out drivers with no location
-    const driversWithLocation = data.filter(driver => driver.current_location);
+    const driversWithLocation = data.filter(driver => {
+      return driver && driver.current_location !== null;
+    });
     
     // Filter drivers by distance
     const nearbyDrivers = driversWithLocation.filter(driver => {
       if (!driver.current_location) return false;
       
       const location = driver.current_location;
-      if (!location || !('x' in location) || !('y' in location)) return false;
+      if (typeof location !== 'object' || !location || !('x' in location) || !('y' in location)) return false;
       
       const driverCoords: [number, number] = [location.x, location.y];
       const distance = calculateDistance(coordinates, driverCoords);
@@ -109,7 +111,7 @@ export async function getNearbyDrivers(
       const location = driver.current_location as any;
       return {
         driverId: driver.user_id,
-        coordinates: [location.x, location.y]
+        coordinates: [location.x, location.y] as [number, number]
       };
     });
   } catch (err) {
@@ -117,27 +119,3 @@ export async function getNearbyDrivers(
     return [];
   }
 }
-
-/**
- * Calculate distance between two points using Haversine formula
- */
-export function calculateDistance(
-  point1: [number, number], 
-  point2: [number, number]
-): number {
-  const [lon1, lat1] = point1;
-  const [lon2, lat2] = point2;
-  
-  const R = 6371; // Earth's radius in km
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  
-  const a = 
-    Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-    Math.sin(dLon/2) * Math.sin(dLon/2);
-    
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  return R * c;
-}
-
