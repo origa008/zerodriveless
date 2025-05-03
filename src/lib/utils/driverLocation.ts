@@ -17,12 +17,11 @@ export async function updateDriverLocation(
     const point = { x: longitude, y: latitude };
     
     // Update driver's location
-    const { error } = await supabase
-      .from('driver_details')
-      .update({
-        current_location: point
-      })
-      .eq('user_id', driverId);
+    const { error } = await supabase.rpc('update_driver_location', {
+      driver_id: driverId,
+      longitude,
+      latitude
+    });
       
     if (error) {
       console.error('Error updating driver location:', error);
@@ -51,12 +50,15 @@ export async function getDriverLocation(
       .eq('user_id', driverId)
       .single();
       
-    if (error || !data || !data.current_location) {
+    if (error || !data) {
+      console.error('Error getting driver location:', error);
       return null;
     }
     
     // Extract coordinates from point
-    const location = data.current_location;
+    const location = data.current_location as any;
+    if (!location) return null;
+    
     return [location.x, location.y];
   } catch (err) {
     console.error('Error getting driver location:', err);
@@ -77,21 +79,21 @@ export async function getNearbyDrivers(
   try {
     const { data, error } = await supabase
       .from('driver_details')
-      .select('user_id, current_location')
-      .not('current_location', 'is', null);
+      .select('user_id, current_location');
       
     if (error) {
       console.error('Error getting nearby drivers:', error);
       return [];
     }
     
+    // Filter out drivers with no location
+    const driversWithLocation = data.filter(driver => driver.current_location);
+    
     // Filter drivers by distance (simple distance calculation)
-    const nearbyDrivers = data.filter(driver => {
-      if (!driver.current_location) return false;
-      
+    const nearbyDrivers = driversWithLocation.filter(driver => {
       const driverCoords: [number, number] = [
-        driver.current_location.x, 
-        driver.current_location.y
+        (driver.current_location as any).x, 
+        (driver.current_location as any).y
       ];
       
       const distance = calculateDistance(coordinates, driverCoords);
@@ -100,7 +102,7 @@ export async function getNearbyDrivers(
     
     return nearbyDrivers.map(driver => ({
       driverId: driver.user_id,
-      coordinates: [driver.current_location.x, driver.current_location.y]
+      coordinates: [(driver.current_location as any).x, (driver.current_location as any).y]
     }));
   } catch (err) {
     console.error('Error getting nearby drivers:', err);
@@ -109,9 +111,81 @@ export async function getNearbyDrivers(
 }
 
 /**
+ * Find nearby ride requests for drivers
+ * @param coordinates Central point [longitude, latitude]
+ * @param radiusInKm Radius to search within (km)
+ * @returns Array of rides matching criteria
+ */
+export async function findNearbyRideRequests(
+  coordinates: [number, number],
+  radiusInKm: number = 10
+): Promise<any[]> {
+  try {
+    const [longitude, latitude] = coordinates;
+    
+    const { data, error } = await supabase
+      .from('rides')
+      .select('*')
+      .eq('status', 'searching')
+      .is('driver_id', null);
+    
+    if (error) {
+      console.error('Error fetching ride requests:', error);
+      return [];
+    }
+    
+    // Process and filter rides based on distance
+    const nearbyRides = data.map(ride => {
+      let pickupCoords: [number, number];
+      
+      // Handle different formats of location data
+      if (typeof ride.pickup_location === 'string') {
+        try {
+          const parsed = JSON.parse(ride.pickup_location);
+          if (parsed.coordinates) {
+            pickupCoords = parsed.coordinates;
+          } else if (parsed.longitude !== undefined && parsed.latitude !== undefined) {
+            pickupCoords = [parsed.longitude, parsed.latitude];
+          } else {
+            // Default to a placeholder if structure is unknown
+            pickupCoords = [0, 0];
+          }
+        } catch (e) {
+          pickupCoords = [0, 0]; // Default if parsing fails
+        }
+      } else if (ride.pickup_location && typeof ride.pickup_location === 'object') {
+        // Object form
+        if (Array.isArray(ride.pickup_location.coordinates)) {
+          pickupCoords = ride.pickup_location.coordinates;
+        } else if (ride.pickup_location.longitude !== undefined && ride.pickup_location.latitude !== undefined) {
+          pickupCoords = [ride.pickup_location.longitude, ride.pickup_location.latitude];
+        } else {
+          pickupCoords = [0, 0]; // Default if structure is unknown
+        }
+      } else {
+        pickupCoords = [0, 0]; // Default if location is invalid
+      }
+      
+      const distance = calculateDistance([longitude, latitude], pickupCoords);
+      
+      return {
+        ...ride,
+        distance: parseFloat(distance.toFixed(2))
+      };
+    }).filter(ride => ride.distance <= radiusInKm)
+      .sort((a, b) => a.distance - b.distance);
+      
+    return nearbyRides;
+  } catch (error) {
+    console.error('Error finding nearby rides:', error);
+    return [];
+  }
+}
+
+/**
  * Calculate distance between two points using Haversine formula
  */
-function calculateDistance(
+export function calculateDistance(
   point1: [number, number], 
   point2: [number, number]
 ): number {

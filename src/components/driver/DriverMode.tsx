@@ -8,8 +8,7 @@ import { Ride } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { 
   getAvailableRideRequests, 
-  subscribeToNewRideRequests,
-  acceptRideRequest 
+  subscribeToNewRideRequests
 } from '@/lib/utils/rideUtils';
 import { getDriverRegistrationStatus, isEligibleDriver } from '@/lib/utils/driverUtils';
 import { getWalletBalance, subscribeToWalletBalance } from '@/lib/utils/walletUtils';
@@ -122,7 +121,7 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
           paymentMethod: newRide.payment_method
         };
         
-        setPendingRideRequests((prevRides) => [...prevRides, formattedRide]);
+        setPendingRideRequests((prevRides: any[]) => [...prevRides, formattedRide]);
         
         toast({
           title: "New Ride Request",

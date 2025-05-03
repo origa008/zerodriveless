@@ -1,115 +1,12 @@
 
 import { supabase } from '@/integrations/supabase/client';
-import { Ride } from '@/lib/types';
 
-/**
- * Gets available ride requests for a driver
- */
-export async function getAvailableRideRequests(driverId: string) {
-  try {
-    const { data: driverDetails, error: driverError } = await supabase
-      .from('driver_details')
-      .select('current_location')
-      .eq('user_id', driverId)
-      .single();
-
-    if (driverError || !driverDetails?.current_location) {
-      console.error('Error getting driver location:', driverError);
-      return { rides: [], error: 'Could not get driver location' };
-    }
-
-    // Get coordinates from point
-    const lon = driverDetails.current_location.x;
-    const lat = driverDetails.current_location.y;
-
-    // Get rides near the driver's current location
-    const { data, error } = await supabase
-      .from('rides')
-      .select('*')
-      .eq('status', 'searching')
-      .is('driver_id', null);
-
-    if (error) {
-      console.error('Error fetching rides:', error);
-      return { rides: [], error: error.message };
-    }
-
-    // Calculate distance and filter by proximity
-    const nearbyRides = data
-      .map(ride => {
-        const pickupCoords = ride.pickup_location?.coordinates || 
-          [ride.pickup_location?.longitude, ride.pickup_location?.latitude];
-        
-        const distance = calculateDistance(
-          [lon, lat],
-          pickupCoords
-        );
-        
-        return {
-          ...ride,
-          calculatedDistance: distance
-        };
-      })
-      .filter(ride => ride.calculatedDistance <= 10) // Filter rides within 10km
-      .sort((a, b) => a.calculatedDistance - b.calculatedDistance); // Sort by closest first
-
-    return { rides: nearbyRides, error: null };
-  } catch (error: any) {
-    console.error('Error fetching available rides:', error);
-    return { rides: [], error: error.message };
-  }
-}
-
-/**
- * Subscribes to new ride requests
- */
-export function subscribeToNewRideRequests(callback: (ride: any) => void) {
-  const channel = supabase
-    .channel('rides_channel')
-    .on('postgres_changes', 
-      {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'rides',
-        filter: 'status=eq.searching'
-      },
-      payload => {
-        callback(payload.new);
-      }
-    )
-    .subscribe();
-
-  return () => {
-    supabase.removeChannel(channel);
-  };
-}
-
-/**
- * Helper function to calculate distance between two points
- */
-export function calculateDistance(point1: [number, number], point2: [number, number]): number {
-  const [lon1, lat1] = point1;
-  const [lon2, lat2] = point2;
-
-  const R = 6371; // Earth's radius in kilometers
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-
-  const a = 
-    Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-    Math.sin(dLon/2) * Math.sin(dLon/2);
-
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  const distance = R * c;
-
-  return distance;
-}
-
-/**
- * Accept a ride request
- */
-export const acceptRideRequest = async (rideId: string, driverId: string) => {
+// Accept a ride request
+export const acceptRideRequest = async (
+  rideId: string,
+  driverId: string,
+  location?: { latitude: number; longitude: number }
+): Promise<{ success: boolean; error?: string }> => {
   try {
     // Check if ride is still available
     const { data: ride, error: rideError } = await supabase
@@ -125,13 +22,19 @@ export const acceptRideRequest = async (rideId: string, driverId: string) => {
     }
 
     // Update ride with driver info
+    const updateData: any = {
+      driver_id: driverId,
+      status: 'confirmed',
+      start_time: new Date().toISOString()
+    };
+
+    if (location) {
+      updateData.driver_location = location;
+    }
+
     const { error } = await supabase
       .from('rides')
-      .update({
-        driver_id: driverId,
-        status: 'confirmed',
-        start_time: new Date().toISOString()
-      })
+      .update(updateData)
       .eq('id', rideId);
 
     if (error) throw error;
@@ -143,44 +46,93 @@ export const acceptRideRequest = async (rideId: string, driverId: string) => {
   }
 };
 
-/**
- * Subscribe to ride status updates
- */
-export function subscribeToRideStatus(rideId: string, callback: (ride: any) => void) {
-  const channel = supabase
-    .channel(`ride_${rideId}`)
-    .on('postgres_changes', 
-      {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'rides',
-        filter: `id=eq.${rideId}`
-      },
-      payload => {
-        callback(payload.new);
-      }
-    )
-    .subscribe();
-
-  return () => {
-    supabase.removeChannel(channel);
-  };
-}
-
-/**
- * Update ride status
- */
-export const updateRideStatus = async (rideId: string, status: string) => {
+// Update a ride status
+export const updateRideStatus = async (
+  rideId: string,
+  status: 'searching' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled'
+): Promise<{ success: boolean; error?: string }> => {
   try {
     const { error } = await supabase
       .from('rides')
       .update({ status })
       .eq('id', rideId);
-    
+
     if (error) throw error;
+
     return { success: true };
   } catch (error: any) {
     console.error('Error updating ride status:', error);
     return { success: false, error: error.message };
   }
+};
+
+// Subscribe to ride status changes
+export const subscribeToRideStatus = (
+  rideId: string,
+  callback: (updatedRide: any) => void
+): (() => void) => {
+  const subscription = supabase
+    .channel(`ride_status_${rideId}`)
+    .on(
+      'postgres_changes',
+      { 
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'rides',
+        filter: `id=eq.${rideId}`
+      },
+      (payload) => {
+        callback(payload.new);
+      }
+    )
+    .subscribe();
+
+  // Return unsubscribe function
+  return () => {
+    subscription.unsubscribe();
+  };
+};
+
+// Get available ride requests for drivers
+export const getAvailableRideRequests = async (
+  driverId: string
+): Promise<{ rides: any[], error: any }> => {
+  try {
+    const { data, error } = await supabase
+      .from('rides')
+      .select('*')
+      .eq('status', 'searching')
+      .is('driver_id', null);
+      
+    return { rides: data || [], error };
+  } catch (error) {
+    console.error('Error getting ride requests:', error);
+    return { rides: [], error };
+  }
+};
+
+// Subscribe to new ride requests
+export const subscribeToNewRideRequests = (
+  callback: (newRide: any) => void
+): (() => void) => {
+  const subscription = supabase
+    .channel('new_ride_requests')
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'rides',
+        filter: 'status=eq.searching'
+      },
+      (payload) => {
+        callback(payload.new);
+      }
+    )
+    .subscribe();
+
+  // Return unsubscribe function
+  return () => {
+    subscription.unsubscribe();
+  };
 };

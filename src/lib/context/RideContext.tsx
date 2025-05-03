@@ -2,9 +2,9 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './AuthContext';
-import { useToast } from '@/components/ui/use-toast';
+import { useToast } from '@/hooks/use-toast';
 import { RideOption, Location, Ride, PaymentMethod } from '@/lib/types';
-import { subscribeToRideStatus } from '@/lib/utils/rideUtils';
+import { subscribeToRideStatus, acceptRideRequest as acceptRide } from '@/lib/utils/rideUtils';
 
 // Default ride options
 const DEFAULT_RIDE_OPTIONS: RideOption[] = [
@@ -58,6 +58,24 @@ type RideContextType = {
   startRideTimer: () => void;
   stopRideTimer: () => void;
   resetRideTimer: () => void;
+  
+  // Additional properties needed by components
+  setDriverMode: (isDriverMode: boolean) => void;
+  acceptRideRequest: (rideId: string, driverId: string) => Promise<{ success: boolean; error?: string }>;
+  availableRideOptions: RideOption[];
+  findRides: () => void;
+  confirmRide: () => void;
+  isSearchingRides: boolean;
+  estimatedDistance: number;
+  estimatedDuration: number;
+  userBid: number;
+  setUserBid: (bid: number) => void;
+  isWaitingForDriverAcceptance: boolean;
+  setWaitingForDriverAcceptance: (isWaiting: boolean) => void;
+  driverAcceptanceTimer: number;
+  resetDriverAcceptanceTimer: () => void;
+  isPanelOpen: boolean;
+  setPanelOpen: (isOpen: boolean) => void;
 };
 
 // Create context
@@ -77,6 +95,16 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [rideTimer, setRideTimer] = useState(0);
   const [isRideTimerActive, setIsRideTimerActive] = useState(false);
   const [timerInterval, setTimerInterval] = useState<NodeJS.Timeout | null>(null);
+  
+  // Additional states needed by components
+  const [availableRideOptions, setAvailableRideOptions] = useState<RideOption[]>(DEFAULT_RIDE_OPTIONS);
+  const [isSearchingRides, setIsSearchingRides] = useState(false);
+  const [estimatedDistance, setEstimatedDistance] = useState(0);
+  const [estimatedDuration, setEstimatedDuration] = useState(0);
+  const [userBid, setUserBid] = useState(0);
+  const [isWaitingForDriverAcceptance, setWaitingForDriverAcceptance] = useState(false);
+  const [driverAcceptanceTimer, setDriverAcceptanceTimer] = useState(0);
+  const [isPanelOpen, setPanelOpen] = useState(false);
 
   // Monitor current ride status changes
   useEffect(() => {
@@ -171,6 +199,27 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const toggleDriverMode = () => {
     setIsDriverMode(prev => !prev);
   };
+  
+  const setDriverMode = (mode: boolean) => {
+    setIsDriverMode(mode);
+  };
+  
+  // Placeholder functions needed by components
+  const findRides = () => {
+    setIsSearchingRides(true);
+    // Implementation would go here
+    setTimeout(() => {
+      setIsSearchingRides(false);
+    }, 2000);
+  };
+  
+  const confirmRide = () => {
+    // Implementation would go here
+  };
+  
+  const resetDriverAcceptanceTimer = () => {
+    setDriverAcceptanceTimer(0);
+  };
 
   const value = {
     pickupLocation,
@@ -195,6 +244,24 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     startRideTimer,
     stopRideTimer,
     resetRideTimer,
+    
+    // Additional properties needed by components
+    setDriverMode,
+    acceptRideRequest: acceptRide,
+    availableRideOptions,
+    findRides,
+    confirmRide,
+    isSearchingRides,
+    estimatedDistance,
+    estimatedDuration,
+    userBid,
+    setUserBid,
+    isWaitingForDriverAcceptance,
+    setWaitingForDriverAcceptance,
+    driverAcceptanceTimer,
+    resetDriverAcceptanceTimer,
+    isPanelOpen,
+    setPanelOpen,
   };
 
   return <RideContext.Provider value={value}>{children}</RideContext.Provider>;

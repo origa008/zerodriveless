@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/context/AuthContext';
@@ -9,8 +8,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { acceptRideRequest } from '@/lib/utils/rideUtils';
 import { DriverLocation } from '@/components/DriverLocation';
 import { useLocationTracking } from '@/hooks/useLocationTracking';
-import { findNearbyRideRequests, calculateDistance } from '@/lib/utils/driverLocation';
-import { Ride } from '@/types/database';
+import { calculateDistance } from '@/lib/utils/driverLocation';
+import { getNearbyRideRequests } from '@/lib/utils/rideRequests';
+import { Ride } from '@/lib/types';
 
 const formatDuration = (duration: number): string => {
   const minutes = Math.floor(duration);
@@ -141,7 +141,7 @@ export default function RideRequests() {
       try {
         setRefreshing(true);
         // Find nearby rides using driver's current location
-        const nearbyRides = await findNearbyRideRequests(coordinates, 10);
+        const nearbyRides = await getNearbyRideRequests(coordinates[1], coordinates[0], 10);
         setRideRequests(nearbyRides);
       } catch (error: any) {
         console.error('Error fetching ride requests:', error);
@@ -215,7 +215,7 @@ export default function RideRequests() {
     // Manual refresh every 30 seconds as a fallback
     const intervalId = setInterval(() => {
       if (coordinates) {
-        findNearbyRideRequests(coordinates, 10).then(rides => {
+        getNearbyRideRequests(coordinates[1], coordinates[0], 10).then(rides => {
           if (rides.length > 0) {
             setRideRequests(rides);
           }
@@ -240,7 +240,7 @@ export default function RideRequests() {
     }
     
     setRefreshing(true);
-    const nearbyRides = await findNearbyRideRequests(coordinates, 10);
+    const nearbyRides = await getNearbyRideRequests(coordinates[1], coordinates[0], 10);
     setRideRequests(nearbyRides);
     setRefreshing(false);
     

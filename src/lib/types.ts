@@ -34,13 +34,7 @@ export type Ride = {
   status: 'searching' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
   paymentMethod: PaymentMethod;
   currency: string;
-  driver?: {
-    id: string;
-    name: string;
-    avatar?: string;
-    rating?: number;
-    licensePlate?: string;
-  };
+  driver?: Driver;
 };
 
 export type DriverDetails = {
@@ -84,6 +78,28 @@ export type DriverDocument = {
   status: 'pending' | 'uploaded' | 'verified' | 'rejected';
   fileName?: string;
   uploadError?: string;
+  
+  // Fields needed for DriverRegistration
+  fullName: string;
+  phoneNumber: string;
+  cnicNumber: string;
+  vehicleType: string;
+  vehicleRegistrationNumber: string;
+  vehicleModel?: string;
+  vehicleColor?: string;
+  driverLicenseNumber?: string;
+  address?: string;
+  agreedToTerms: boolean;
+  
+  // Document fields
+  cnicFrontPhoto?: File;
+  cnicBackPhoto?: File;
+  driverLicenseFrontPhoto?: File;
+  driverLicenseBackPhoto?: File;
+  vehicleRegistrationPhoto?: File;
+  vehiclePhoto?: File;
+  selfieWithCNIC?: File;
+  selfiePhoto?: File;
 };
 
 export type User = {
@@ -93,6 +109,8 @@ export type User = {
   avatar?: string;
   phone?: string;
   isDriver?: boolean;
+  isLoggedIn?: boolean;
+  address?: string;
 };
 
 export type Post = {
