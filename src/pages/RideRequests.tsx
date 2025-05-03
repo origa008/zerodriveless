@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
-import { Loader2, AlertCircle, Clock, ArrowRight, RefreshCw } from 'lucide-react';
+import { Loader2, AlertCircle, Clock, ArrowRight, RefreshCw, MapPin, DollarSign } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { acceptRideRequest } from '@/lib/utils/rideUtils';
 import { User } from '@/types/auth';
@@ -14,9 +14,11 @@ interface Ride {
   driver_id?: string | null;
   pickup_location: {
     name: string;
+    coordinates: [number, number];
   };
   dropoff_location: {
     name: string;
+    coordinates: [number, number];
   };
   price: number;
   distance: number;
@@ -24,6 +26,12 @@ interface Ride {
   status: string;
   created_at: string;
 }
+
+const formatDuration = (duration: number): string => {
+  const minutes = Math.floor(duration);
+  const seconds = Math.floor((duration % 1) * 60);
+  return `${minutes}m ${seconds}sec`;
+};
 
 const RideCard = ({ ride, onAccept }: { ride: Ride; onAccept: (ride: Ride) => void }) => {
   return (
@@ -43,7 +51,7 @@ const RideCard = ({ ride, onAccept }: { ride: Ride; onAccept: (ride: Ride) => vo
         <div className="flex items-start">
           <div className="flex-shrink-0 w-8 flex justify-center">
             <div className="h-6 w-6 rounded-full bg-green-500 flex items-center justify-center">
-              <Clock className="text-white text-xs" />
+              <MapPin className="text-white text-xs" />
             </div>
           </div>
           <div className="ml-2">
@@ -54,13 +62,24 @@ const RideCard = ({ ride, onAccept }: { ride: Ride; onAccept: (ride: Ride) => vo
         <div className="flex items-start">
           <div className="flex-shrink-0 w-8 flex justify-center">
             <div className="h-6 w-6 rounded-full bg-red-500 flex items-center justify-center">
-              <Clock className="text-white text-xs" />
+              <MapPin className="text-white text-xs" />
             </div>
           </div>
           <div className="ml-2">
             <p className="text-sm font-medium text-gray-900">Dropoff</p>
             <p className="text-sm text-gray-600">{ride.dropoff_location.name}</p>
           </div>
+        </div>
+      </div>
+
+      <div className="flex justify-between items-center text-sm text-gray-500 mb-4">
+        <div className="flex items-center gap-2">
+          <DollarSign className="h-4 w-4" />
+          <span>₹{ride.price}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Clock className="h-4 w-4" />
+          <span>{formatDuration(ride.duration)}</span>
         </div>
       </div>
 
@@ -83,6 +102,7 @@ const RideRequests: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [rideRequests, setRideRequests] = useState<Ride[]>([]);
   const [isEligibleDriver, setIsEligibleDriver] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     const checkDriverStatus = async () => {
@@ -123,6 +143,72 @@ const RideRequests: React.FC = () => {
     
     checkDriverStatus();
   }, [user?.id, toast]);
+
+  const fetchRideRequests = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('rides')
+        .select('*')
+        .eq('status', 'searching')
+        .is('driver_id', null);
+      
+      if (error) {
+        toast({
+          title: 'Error',
+          description: 'Failed to fetch ride requests',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      setRideRequests(data || []);
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to load ride requests',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (!isEligibleDriver) return;
+
+    fetchRideRequests();
+
+    const subscription = supabase
+      .channel('rides-channel')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'rides',
+        filter: 'status=eq.searching'
+      }, (payload) => {
+        const newRide = payload.new as Ride;
+        setRideRequests(prev => [newRide, ...prev]);
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'rides',
+        filter: 'status=neq.searching'
+      }, (payload) => {
+        const updatedRide = payload.new as Ride;
+        setRideRequests(prev => prev.filter(ride => ride.id !== updatedRide.id));
+      });
+    
+    subscription.subscribe();
+
+    // Manual refresh every 30 seconds as a fallback
+    const intervalId = setInterval(() => {
+      fetchRideRequests();
+    }, 30000);
+
+    return () => {
+      subscription.unsubscribe();
+      clearInterval(intervalId);
+    };
+  }, [isEligibleDriver]);
 
   const fetchNearbyRides = async () => {
     try {
@@ -220,6 +306,12 @@ const RideRequests: React.FC = () => {
     }
   };
 
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await fetchRideRequests();
+    setRefreshing(false);
+  };
+
 
 
   if (loading) {
@@ -252,7 +344,7 @@ const RideRequests: React.FC = () => {
   return (
     <div className="min-h-screen bg-white p-4 pb-24">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Ride Requests</h1>
+        <h1 className="text-3xl font-bold">Available Rides</h1>
         <Button 
           variant="outline" 
           size="icon" 
