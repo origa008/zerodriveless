@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/context/AuthContext';
@@ -6,48 +7,10 @@ import { Button } from '@/components/ui/button';
 import { Loader2, AlertCircle, Clock, ArrowRight, RefreshCw, MapPin, DollarSign } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { acceptRideRequest } from '@/lib/utils/rideUtils';
-import { User } from '@/types/auth';
-import { getDriverLocation } from '@/lib/utils/driverLocation';
 import { DriverLocation } from '@/components/DriverLocation';
 import { useLocationTracking } from '@/hooks/useLocationTracking';
-
-interface Ride {
-  id: string;
-  passenger_id: string;
-  driver_id?: string | null;
-  pickup_location: {
-    name: string;
-    coordinates: [number, number];
-  };
-  dropoff_location: {
-    name: string;
-    coordinates: [number, number];
-  };
-  price: number;
-  distance: number;
-  duration: number;
-  status: string;
-  created_at: string;
-}
-
-const calculateDistance = (point1: [number, number], point2: [number, number]): number => {
-  const [lat1, lon1] = point1;
-  const [lat2, lon2] = point2;
-
-  const R = 6371; // Earth's radius in kilometers
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-
-  const a = 
-    Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-    Math.sin(dLon/2) * Math.sin(dLon/2);
-
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  const distance = R * c;
-
-  return distance;
-};
+import { findNearbyRideRequests, calculateDistance } from '@/lib/utils/driverLocation';
+import { Ride } from '@/types/database';
 
 const formatDuration = (duration: number): string => {
   const minutes = Math.floor(duration);
@@ -55,7 +18,7 @@ const formatDuration = (duration: number): string => {
   return `${minutes}m ${seconds}sec`;
 };
 
-const RideCard = ({ ride, onAccept }: { ride: Ride; onAccept: (ride: Ride) => void }) => {
+const RideCard = ({ ride, onAccept }: { ride: any; onAccept: (ride: any) => void }) => {
   return (
     <div className="bg-white rounded-lg shadow-sm p-4 mb-4 border">
       <div className="flex justify-between items-start mb-3">
@@ -120,13 +83,14 @@ export default function RideRequests() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
-  const { isTracking, error: locationError } = useLocationTracking();
+  const { isTracking, coordinates, error: locationError } = useLocationTracking();
   
   const [loading, setLoading] = useState(true);
-  const [rideRequests, setRideRequests] = useState<Ride[]>([]);
+  const [rideRequests, setRideRequests] = useState<any[]>([]);
   const [isEligibleDriver, setIsEligibleDriver] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Check driver eligibility status
   useEffect(() => {
     const checkDriverStatus = async () => {
       if (!user?.id) return;
@@ -167,63 +131,39 @@ export default function RideRequests() {
     checkDriverStatus();
   }, [user?.id, toast]);
 
-  const fetchRideRequests = async () => {
-    try {
-      // Get driver's current location
-      const driverLocation = await getDriverLocation(user.id);
-
-      if (!driverLocation) {
-        toast({
-          title: 'Error',
-          description: 'Please update your location to see nearby rides',
-          variant: 'destructive',
-        });
+  // Fetch ride requests when location updates or manually refreshed
+  useEffect(() => {
+    const fetchRideRequests = async () => {
+      if (!isEligibleDriver || !coordinates || !isTracking) {
         return;
       }
 
-      // Fetch nearby rides with RLS policy
-      const { data: rides, error } = await supabase
-        .from('rides')
-        .select('*')
-        .eq('status', 'searching')
-        .is('driver_id', null)
-        .order('created_at', { ascending: false })
-        .limit(10); // Limit to 10 rides for performance
-      
-      if (error) {
+      try {
+        setRefreshing(true);
+        // Find nearby rides using driver's current location
+        const nearbyRides = await findNearbyRideRequests(coordinates, 10);
+        setRideRequests(nearbyRides);
+      } catch (error: any) {
+        console.error('Error fetching ride requests:', error);
         toast({
           title: 'Error',
           description: 'Failed to fetch ride requests',
           variant: 'destructive',
         });
-        return;
+      } finally {
+        setRefreshing(false);
       }
+    };
 
-      // Calculate distance from driver for each ride
-      const ridesWithDistance = rides.map(ride => {
-        const pickupLocation = ride.pickup_location.coordinates;
-        const distance = calculateDistance(driverLocation, pickupLocation);
-        return {
-          ...ride,
-          distance: distance
-        };
-      });
-
-      setRideRequests(ridesWithDistance);
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to load ride requests',
-        variant: 'destructive',
-      });
+    // Fetch rides initially when coordinates become available
+    if (isEligibleDriver && coordinates && isTracking) {
+      fetchRideRequests();
     }
-  };
+  }, [isEligibleDriver, coordinates, isTracking, toast]);
 
+  // Set up real-time subscription for new ride requests
   useEffect(() => {
-    if (!isEligibleDriver) return;
-
-    // Initialize with first fetch
-    fetchRideRequests();
+    if (!isEligibleDriver || !coordinates) return;
 
     // Set up Supabase subscription for real-time updates
     const subscription = supabase
@@ -234,19 +174,30 @@ export default function RideRequests() {
         table: 'rides',
         filter: 'status=eq.searching'
       }, async (payload) => {
+        // Process new ride request
         const newRide = payload.new as Ride;
         
         // Only add ride if it's not already in the list
         if (!rideRequests.some(ride => ride.id === newRide.id)) {
-          // Calculate distance from driver
-          const driverLocation = await getDriverLocation(user.id);
-          const pickupLocation = newRide.pickup_location.coordinates;
-          const distance = calculateDistance(driverLocation, pickupLocation);
-
-          setRideRequests(prev => [{
-            ...newRide,
-            distance
-          }, ...prev]);
+          // Calculate distance from driver's current location
+          if (coordinates && newRide.pickup_location?.coordinates) {
+            const pickupCoords = newRide.pickup_location.coordinates as [number, number];
+            const distance = calculateDistance(coordinates, pickupCoords);
+            
+            // Only add if within reasonable distance (10km)
+            if (distance <= 10) {
+              setRideRequests(prev => [{
+                ...newRide,
+                distance
+              }, ...prev]);
+              
+              toast({
+                title: 'New Ride Request',
+                description: `New ride request ${distance.toFixed(1)}km away`,
+                duration: 5000,
+              });
+            }
+          }
         }
       })
       .on('postgres_changes', {
@@ -263,82 +214,43 @@ export default function RideRequests() {
 
     // Manual refresh every 30 seconds as a fallback
     const intervalId = setInterval(() => {
-      fetchRideRequests();
+      if (coordinates) {
+        findNearbyRideRequests(coordinates, 10).then(rides => {
+          if (rides.length > 0) {
+            setRideRequests(rides);
+          }
+        });
+      }
     }, 30000);
 
     return () => {
       subscription.unsubscribe();
       clearInterval(intervalId);
     };
-  }, [isEligibleDriver, user.id]);
+  }, [isEligibleDriver, coordinates, toast, rideRequests]);
 
-  const fetchNearbyRides = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('rides')
-        .select('*')
-        .eq('status', 'searching')
-        .is('driver_id', null);
-      
-      if (error) {
-        toast({
-          title: 'Error',
-          description: 'Failed to fetch ride requests',
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      setRideRequests(data || []);
-    } catch (error: any) {
+  const handleRefresh = async () => {
+    if (!coordinates) {
       toast({
-        title: 'Error',
-        description: error.message || 'Failed to load ride requests',
+        title: 'Location Required',
+        description: 'Please enable location tracking to see nearby rides',
         variant: 'destructive',
       });
+      return;
     }
+    
+    setRefreshing(true);
+    const nearbyRides = await findNearbyRideRequests(coordinates, 10);
+    setRideRequests(nearbyRides);
+    setRefreshing(false);
+    
+    toast({
+      title: 'Refreshed',
+      description: `Found ${nearbyRides.length} nearby ride requests`,
+    });
   };
 
-  useEffect(() => {
-    if (!isEligibleDriver) return;
-
-    fetchNearbyRides();
-
-    const subscription = supabase
-      .channel('rides-channel')
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'rides',
-        filter: 'status=eq.searching'
-      }, (payload) => {
-        const newRide = payload.new as Ride;
-        setRideRequests(prev => [newRide, ...prev]);
-      })
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'rides',
-        filter: 'status=neq.searching'
-      }, (payload) => {
-        const updatedRide = payload.new as Ride;
-        setRideRequests(prev => prev.filter(ride => ride.id !== updatedRide.id));
-      });
-    
-    subscription.subscribe();
-
-    // Manual refresh every 30 seconds as a fallback
-    const intervalId = setInterval(() => {
-      fetchNearbyRides();
-    }, 30000);
-
-    return () => {
-      subscription.unsubscribe();
-      clearInterval(intervalId);
-    };
-  }, [isEligibleDriver]);
-
-  const handleAcceptRide = async (ride: Ride) => {
+  const handleAcceptRide = async (ride: any) => {
     try {
       setLoading(true);
       
@@ -366,12 +278,6 @@ export default function RideRequests() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    await fetchRideRequests();
-    setRefreshing(false);
   };
 
   if (loading) {
@@ -409,7 +315,7 @@ export default function RideRequests() {
             variant="outline" 
             size="icon" 
             onClick={handleRefresh}
-            disabled={refreshing}
+            disabled={refreshing || !coordinates}
             className="rounded-full h-10 w-10"
           >
             <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
@@ -426,12 +332,25 @@ export default function RideRequests() {
       
       {locationError && (
         <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md">
-          <p className="text-sm">{locationError}</p>
+          <div className="flex items-center">
+            <AlertCircle className="h-5 w-5 mr-2" />
+            <p className="text-sm">{locationError}</p>
+          </div>
+          <p className="text-xs mt-1">Please enable location services to see nearby rides</p>
         </div>
       )}
       
-      <div className="space-y-4">
-        {rideRequests.length === 0 ? (
+      {!coordinates && !locationError && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-600 px-4 py-3 rounded-md">
+          <div className="flex items-center">
+            <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+            <p className="text-sm">Waiting for your location...</p>
+          </div>
+        </div>
+      )}
+      
+      <div className="space-y-4 mt-4">
+        {coordinates && rideRequests.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 bg-gray-50 rounded-xl border border-gray-200">
             <div className="bg-gray-100 rounded-full p-4 mb-4">
               <Clock className="h-8 w-8 text-gray-400" />

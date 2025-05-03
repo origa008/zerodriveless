@@ -1,106 +1,44 @@
-import React, { useEffect, useState } from 'react';
+
+import React, { useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Loader2, MapPin } from 'lucide-react';
+import { Loader2, MapPin, AlertTriangle } from 'lucide-react';
+import { useLocationTracking } from '@/hooks/useLocationTracking';
 import { useAuth } from '@/lib/context/AuthContext';
-import { useToast } from '@/hooks/use-toast';
-import { updateDriverLocation } from '@/lib/utils/driverLocation';
 
 export function DriverLocation() {
   const { user } = useAuth();
-  const { toast } = useToast();
-  const [isLoading, setIsLoading] = useState(false);
-  const [isTracking, setIsTracking] = useState(false);
-
-  useEffect(() => {
-    let watchId: number | null = null;
-
-    const startTracking = async () => {
-      if (!user?.id) return;
-
-      try {
-        setIsLoading(true);
-        
-        // Request permission for continuous location updates
-        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject);
-        });
-
-        // Start watching position
-        watchId = navigator.geolocation.watchPosition(
-          async (position) => {
-            try {
-              const coordinates = [position.coords.longitude, position.coords.latitude];
-              const success = await updateDriverLocation(user.id, coordinates);
-              
-              if (!success) {
-                toast({
-                  title: 'Error',
-                  description: 'Failed to update location',
-                  variant: 'destructive',
-                });
-              }
-            } catch (error) {
-              console.error('Error updating location:', error);
-            }
-          },
-          (error) => {
-            console.error('Geolocation error:', error);
-            toast({
-              title: 'Error',
-              description: 'Failed to get location',
-              variant: 'destructive',
-            });
-          },
-          {
-            enableHighAccuracy: true,
-            maximumAge: 0,
-            timeout: 10000
-          }
-        );
-
-        setIsTracking(true);
-        setIsLoading(false);
-        toast({
-          title: 'Success',
-          description: 'Location tracking started',
-        });
-      } catch (error) {
-        setIsLoading(false);
-        toast({
-          title: 'Error',
-          description: 'Failed to start location tracking',
-          variant: 'destructive',
-        });
-      }
-    };
-
-    if (!isTracking) {
-      startTracking();
-    }
-
-    return () => {
-      if (watchId) {
-        navigator.geolocation.clearWatch(watchId);
-        setIsTracking(false);
-      }
-    };
-  }, [user?.id]);
+  const { isTracking, error, coordinates, lastUpdated, retryTracking } = useLocationTracking();
 
   return (
     <div className="mb-4">
       <Button
-        className="flex items-center gap-2"
-        disabled={isLoading}
+        className={`flex items-center gap-2 ${error ? 'bg-amber-600 hover:bg-amber-700' : ''}`}
+        onClick={error ? retryTracking : undefined}
+        variant={error ? "destructive" : "default"}
       >
-        {isLoading ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : isTracking ? (
-          <MapPin className="h-4 w-4" />
+        {isTracking ? (
+          <>
+            <MapPin className="h-4 w-4 text-green-300" />
+            Tracking Location
+          </>
+        ) : error ? (
+          <>
+            <AlertTriangle className="h-4 w-4" />
+            {error.includes('permission') ? 'Enable Location' : 'Retry Location'}
+          </>
         ) : (
-          <MapPin className="h-4 w-4 opacity-50" />
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Getting Location...
+          </>
         )}
-        {isTracking ? 'Tracking Location' : 'Start Tracking'}
       </Button>
+      
+      {isTracking && coordinates && (
+        <div className="text-xs text-gray-500 mt-1">
+          Last updated: {lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : 'Unknown'}
+        </div>
+      )}
     </div>
   );
 }
