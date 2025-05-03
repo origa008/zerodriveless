@@ -129,3 +129,5 @@ export function useLocationTracking(
     updateLocation: (coords) => updateLocation(coords)
   };
 }
+
+export default useLocationTracking;

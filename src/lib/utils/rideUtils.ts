@@ -166,3 +166,21 @@ export function subscribeToRideStatus(rideId: string, callback: (ride: any) => v
     supabase.removeChannel(channel);
   };
 }
+
+/**
+ * Update ride status
+ */
+export const updateRideStatus = async (rideId: string, status: string) => {
+  try {
+    const { error } = await supabase
+      .from('rides')
+      .update({ status })
+      .eq('id', rideId);
+    
+    if (error) throw error;
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error updating ride status:', error);
+    return { success: false, error: error.message };
+  }
+};

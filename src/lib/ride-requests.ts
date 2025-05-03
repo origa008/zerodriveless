@@ -1,29 +1,9 @@
 
 import { supabase } from '@/integrations/supabase/client'
-import { Database } from '@/integrations/supabase/types'
+import { RideRequest } from '@/lib/types'
 
-// Types for ride request status and data
+// Types for ride request status
 type RideStatus = 'searching' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled'
-
-export interface RideRequest {
-  id: string
-  passenger_id: string
-  driver_id?: string | null
-  pickup_location: any
-  dropoff_location: any
-  ride_option: any
-  status: 'searching' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled'
-  price: number
-  currency: string
-  distance: number
-  duration: number
-  start_time?: string
-  end_time?: string
-  payment_method: string
-  created_at: string
-  bid_amount?: number
-  passenger?: any
-}
 
 // Create a new ride request
 export async function createRideRequest(
@@ -31,29 +11,34 @@ export async function createRideRequest(
   pickupLocation: { lat: number; lng: number },
   dropoffLocation: { lat: number; lng: number }
 ): Promise<RideRequest | null> {
-  const { data, error } = await supabase
-    .from('rides')
-    .insert({
-      passenger_id: passengerId,
-      pickup_location: pickupLocation,
-      dropoff_location: dropoffLocation,
-      status: 'searching' as RideStatus,
-      price: 0,
-      distance: 0,
-      duration: 0,
-      ride_option: { name: 'Standard' },
-      currency: 'RS',
-      payment_method: 'cash'
-    })
-    .select()
-    .single()
+  try {
+    const { data, error } = await supabase
+      .from('rides')
+      .insert({
+        passenger_id: passengerId,
+        pickup_location: pickupLocation,
+        dropoff_location: dropoffLocation,
+        status: 'searching' as RideStatus,
+        price: 0,
+        distance: 0,
+        duration: 0,
+        ride_option: { name: 'Standard' },
+        currency: 'RS',
+        payment_method: 'cash'
+      })
+      .select()
+      .single()
 
-  if (error) {
+    if (error) {
+      console.error('Error creating ride request:', error)
+      return null
+    }
+
+    return data as unknown as RideRequest
+  } catch (error) {
     console.error('Error creating ride request:', error)
     return null
   }
-
-  return data as unknown as RideRequest
 }
 
 // Get nearby ride requests for drivers
@@ -77,7 +62,6 @@ export async function getNearbyRideRequests(
     // Filter by distance (simplified, you may want to use a more accurate method)
     const nearbyRides = data
       ? data.filter(ride => {
-          // Calculate distance (would need a proper geospatial function) 
           // This is just a placeholder implementation
           return true; // Return all rides for now
         })
@@ -111,14 +95,19 @@ export const acceptRideRequest = async (
     }
 
     // Update ride with driver info
+    const updateData: any = {
+      driver_id: driverId,
+      status: 'confirmed',
+      start_time: new Date().toISOString()
+    };
+
+    if (location) {
+      updateData.driver_location = location;
+    }
+
     const { error } = await supabase
       .from('rides')
-      .update({
-        driver_id: driverId,
-        status: 'confirmed',
-        start_time: new Date().toISOString(),
-        driver_location: location
-      })
+      .update(updateData)
       .eq('id', rideId);
 
     if (error) throw error;

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -58,7 +57,7 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
         const { balance } = await getWalletBalance(user.id);
         setWalletBalance(balance);
         
-        setIsEligible(await isEligibleDriver(user.id, false));
+        setIsEligible(await isEligibleDriver(user.id));
       } catch (error) {
         console.error("Error checking driver eligibility:", error);
       } finally {
@@ -123,7 +122,7 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
           paymentMethod: newRide.payment_method
         };
         
-        setPendingRideRequests((prevRides: any[]) => [...prevRides, formattedRide]);
+        setPendingRideRequests((prevRides) => [...prevRides, formattedRide]);
         
         toast({
           title: "New Ride Request",
@@ -186,7 +185,7 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
     }
     
     try {
-      const { success, error } = await acceptRide(selectedRide.id, user.id);
+      const { success, error } = await acceptRideRequest(selectedRide.id, user.id);
       
       if (!success) {
         throw new Error(error || "Failed to accept ride");
@@ -197,7 +196,6 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
         price: bidAmount,
       };
       
-      acceptRideRequest(selectedRide.id);
       setCurrentRide(updatedRide);
       setShowBidModal(false);
       

@@ -5,6 +5,7 @@ export type Location = {
   name: string;
   address?: string;
   coordinates?: [number, number]; // [longitude, latitude]
+  placeId?: string; // Added for LocationSearch component
 };
 
 export type RideOption = {
@@ -14,6 +15,10 @@ export type RideOption = {
   image?: string;
   description?: string;
   basePrice: number;
+  price?: number; // Added for RideOptionCard
+  currency?: string; // Added for RideOptionCard
+  duration?: number; // Added for RideOptionCard
+  capacity?: number; // Added for RideOptionCard
 };
 
 export type PaymentMethod = 'cash' | 'wallet';
@@ -68,4 +73,76 @@ export interface LocationTrackingResult {
   startTracking: () => void;
   stopTracking: () => void;
   updateLocation: (coords: GeolocationCoordinates) => void;
+}
+
+// Additional types needed
+export type DriverDocument = {
+  id: string;
+  type: string;
+  file: File | null;
+  preview: string | null;
+  status: 'pending' | 'uploaded' | 'verified' | 'rejected';
+  fileName?: string;
+  uploadError?: string;
+};
+
+export type User = {
+  id: string;
+  email: string;
+  name?: string;
+  avatar?: string;
+  phone?: string;
+  isDriver?: boolean;
+};
+
+export type Post = {
+  id: string;
+  content: string;
+  author_id: string;
+  author_email?: string;
+  likes: number;
+  comments: number;
+  created_at: string;
+};
+
+export type DepositRequest = {
+  id: string;
+  user_id: string;
+  amount: number;
+  status: 'pending' | 'approved' | 'rejected';
+  account_title: string;
+  account_number: string;
+  bank_name: string;
+  transaction_reference?: string;
+  receipt_url?: string;
+  created_at: string;
+  processed_at?: string;
+};
+
+export type Driver = {
+  id: string;
+  name: string;
+  avatar?: string;
+  rating?: number;
+  licensePlate?: string;
+};
+
+export interface RideRequest {
+  id: string;
+  passenger_id: string;
+  driver_id?: string | null;
+  pickup_location: any;
+  dropoff_location: any;
+  ride_option: any;
+  status: 'searching' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
+  price: number;
+  currency: string;
+  distance: number;
+  duration: number;
+  start_time?: string;
+  end_time?: string;
+  payment_method: string;
+  created_at: string;
+  bid_amount?: number;
+  passenger?: any;
 }
