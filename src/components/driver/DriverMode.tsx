@@ -57,7 +57,7 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
         const { balance } = await getWalletBalance(user.id);
         setWalletBalance(balance);
         
-        setIsEligible(await isEligibleDriver(user.id));
+        setIsEligible(await isEligibleDriver(user.id, false));
       } catch (error) {
         console.error("Error checking driver eligibility:", error);
       } finally {
@@ -84,7 +84,7 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
       setIsLoading(true);
       
       const fetchRideRequests = async () => {
-        const { rides, error } = await getAvailableRideRequests();
+        const { rides, error } = await getAvailableRideRequests(user.id);
         
         if (!error) {
           const formattedRides = rides.map(ride => ({
@@ -278,7 +278,7 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
         </div>
       </div>
       
-      {renderDriverStatusMessage()}
+      {renderDriverStatusMessage && renderDriverStatusMessage()}
       
       {!isOnline ? (
         <div>

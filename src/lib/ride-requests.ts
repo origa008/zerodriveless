@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client'
 import { Database } from '@/integrations/supabase/types'
 
@@ -12,7 +13,7 @@ export interface RideRequest {
   dropoff_location: any
   ride_option: any
   status: 'searching' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled'
-  ride_column: number
+  price: number
   currency: string
   distance: number
   duration: number
@@ -31,12 +32,18 @@ export async function createRideRequest(
   dropoffLocation: { lat: number; lng: number }
 ): Promise<RideRequest | null> {
   const { data, error } = await supabase
-    .from('ride_requests')
+    .from('rides')
     .insert({
       passenger_id: passengerId,
       pickup_location: pickupLocation,
       dropoff_location: dropoffLocation,
       status: 'searching' as RideStatus,
+      price: 0,
+      distance: 0,
+      duration: 0,
+      ride_option: { name: 'Standard' },
+      currency: 'RS',
+      payment_method: 'cash'
     })
     .select()
     .single()
@@ -46,7 +53,7 @@ export async function createRideRequest(
     return null
   }
 
-  return data
+  return data as unknown as RideRequest
 }
 
 // Get nearby ride requests for drivers
@@ -55,19 +62,27 @@ export async function getNearbyRideRequests(
   driverLng: number,
   radiusInKm: number
 ): Promise<RideRequest[]> {
-  const { data, error } = await supabase
-    .rpc('get_nearby_ride_requests', {
-      driver_lat: driverLat,
-      driver_lng: driverLng,
-      radius_km: radiusInKm,
-    })
+  try {
+    const { data, error } = await supabase
+      .functions
+      .invoke('get_nearby_ride_requests', {
+        body: {
+          driver_lat: driverLat,
+          driver_lng: driverLng,
+          radius_km: radiusInKm,
+        }
+      })
 
-  if (error) {
+    if (error) {
+      console.error('Error fetching nearby ride requests:', error)
+      return []
+    }
+
+    return data || []
+  } catch (error) {
     console.error('Error fetching nearby ride requests:', error)
     return []
   }
-
-  return data || []
 }
 
 // Accept a ride request
@@ -113,7 +128,7 @@ export const acceptRideRequest = async (
 // Start a ride
 export async function startRide(rideRequestId: string): Promise<boolean> {
   const { error } = await supabase
-    .from('ride_requests')
+    .from('rides')
     .update({
       status: 'in_progress' as RideStatus,
       start_time: new Date().toISOString(),
@@ -186,7 +201,7 @@ export function subscribeToRideRequests(
       {
         event: '*',
         schema: 'public',
-        table: 'ride_requests',
+        table: 'rides',
       },
       callback
     )
