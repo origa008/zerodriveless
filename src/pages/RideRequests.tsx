@@ -1,6 +1,4 @@
-create policy "Drivers can update their own location"
-on driver_details
-for update using (auth.uid() = user_id);import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -363,36 +361,26 @@ export default function RideRequests() {
         description: 'Failed to accept ride',
         variant: 'destructive',
       });
-  };
-}, [isEligibleDriver]);
-
-const handleAcceptRide = async (ride: Ride) => {
-  try {
-    setLoading(true);
-    
-    const result = await acceptRideRequest(ride.id, user.id);
-    
-    if (result.success) {
-      toast({
-        title: 'Success',
-        description: 'Ride accepted successfully!',
-      });
-      navigate(`/rides/${ride.id}`);
-    } else {
-      toast({
-        title: 'Error',
-        description: result.error || 'Failed to accept ride',
-        variant: 'destructive',
-      });
+    } finally {
+      setLoading(false);
     }
-  } catch (error) {
-    toast({
-      title: 'Error',
-      description: 'Failed to accept ride',
-      variant: 'destructive',
-    });
+  };
 
-  // Check driver eligibility
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await fetchRideRequests();
+    setRefreshing(false);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-white">
+        <Loader2 className="h-8 w-8 animate-spin mr-2" />
+        <p>Loading...</p>
+      </div>
+    );
+  }
+
   if (!isEligibleDriver) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-white p-6">
@@ -407,8 +395,8 @@ const handleAcceptRide = async (ride: Ride) => {
         </Button>
       </div>
     );
+  }
 
-  // Main ride request list UI for eligible drivers
   return (
     <div className="min-h-screen bg-white p-4 pb-24">
       <div className="flex flex-col gap-4">
@@ -455,4 +443,4 @@ const handleAcceptRide = async (ride: Ride) => {
       </div>
     </div>
   );
-};
+}
