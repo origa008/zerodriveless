@@ -4,7 +4,7 @@
 export type Location = {
   name: string;
   address?: string;
-  coordinates?: [number, number]; // [longitude, latitude]
+  coordinates: [number, number]; // [longitude, latitude]
   placeId?: string; // For LocationSearch component
 };
 

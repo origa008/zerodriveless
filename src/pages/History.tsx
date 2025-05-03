@@ -158,45 +158,49 @@ const History: React.FC = () => {
               <p className="text-sm">Your ride history will appear here</p>
             </div>
           ) : (
-            filteredHistory.map((item) => (
-              <div key={item.id} className="border border-gray-200 rounded-xl p-4">
-                <div className="flex justify-between mb-2">
-                  <div className="flex items-center">
-                    {item.driver?.id === user?.id ? (
-                      <Car size={16} className="mr-2 text-gray-500" />
-                    ) : (
-                      <Bike size={16} className="mr-2 text-gray-500" />
-                    )}
-                    <span className="text-sm text-gray-500 capitalize">
-                      {item.driver?.id === user?.id ? 'Drive' : 'Ride'}
+            filteredHistory.map((item) => {
+              const formattedStartTime = item.start_time ? format(new Date(item.start_time), 'dd MMM, hh:mm a') : 'N/A';
+              const formattedEndTime = item.end_time ? format(new Date(item.end_time), 'dd MMM, hh:mm a') : 'N/A';
+              return (
+                <div key={item.id} className="border border-gray-200 rounded-xl p-4">
+                  <div className="flex justify-between mb-2">
+                    <div className="flex items-center">
+                      {item.driver?.id === user?.id ? (
+                        <Car size={16} className="mr-2 text-gray-500" />
+                      ) : (
+                        <Bike size={16} className="mr-2 text-gray-500" />
+                      )}
+                      <span className="text-sm text-gray-500 capitalize">
+                        {item.driver?.id === user?.id ? 'Drive' : 'Ride'}
+                      </span>
+                    </div>
+                    <div className="flex items-center text-sm text-gray-500">
+                      <Calendar size={14} className="mr-1" />
+                      {formatDate(item.startTime || item.endTime)}
+                    </div>
+                  </div>
+                  
+                  <div className="mb-3">
+                    <p className="font-medium">
+                      {item.pickup.name || 'Unknown'} → {item.dropoff.name || 'Unknown'}
+                    </p>
+                  </div>
+                  
+                  <div className="flex justify-between items-center">
+                    <span className={`text-sm px-2 py-1 rounded ${
+                      item.status === 'completed' ? 'bg-green-100 text-green-800' : 
+                      item.status === 'cancelled' ? 'bg-red-100 text-red-800' : 
+                      'bg-blue-100 text-blue-800'
+                    }`}>
+                      {item.status.replace('_', ' ')}
+                    </span>
+                    <span className="font-bold">
+                      {item.driver?.id === user?.id ? '+' : '-'} {item.currency} {item.price}
                     </span>
                   </div>
-                  <div className="flex items-center text-sm text-gray-500">
-                    <Calendar size={14} className="mr-1" />
-                    {formatDate(item.startTime || item.endTime)}
-                  </div>
                 </div>
-                
-                <div className="mb-3">
-                  <p className="font-medium">
-                    {item.pickup.name || 'Unknown'} → {item.dropoff.name || 'Unknown'}
-                  </p>
-                </div>
-                
-                <div className="flex justify-between items-center">
-                  <span className={`text-sm px-2 py-1 rounded ${
-                    item.status === 'completed' ? 'bg-green-100 text-green-800' : 
-                    item.status === 'cancelled' ? 'bg-red-100 text-red-800' : 
-                    'bg-blue-100 text-blue-800'
-                  }`}>
-                    {item.status.replace('_', ' ')}
-                  </span>
-                  <span className="font-bold">
-                    {item.driver?.id === user?.id ? '+' : '-'} {item.currency} {item.price}
-                  </span>
-                </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>

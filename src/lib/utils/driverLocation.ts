@@ -14,12 +14,15 @@ export async function updateDriverLocation(
   const [longitude, latitude] = coordinates;
   
   try {
-    // Update driver's location using direct column update 
+    // Update driver's location
     const { error } = await supabase
       .from('driver_details')
       .update({
-        // Use a serialized object that matches the PostgreSQL point type
-        current_location: { x: longitude, y: latitude }
+        // Use a serialized object that matches the PostgreSQL point type in driver_details table
+        current_location: { 
+          x: longitude, 
+          y: latitude 
+        }
       })
       .eq('user_id', driverId);
       
@@ -48,18 +51,19 @@ export async function getDriverLocation(
       .from('driver_details')
       .select('current_location')
       .eq('user_id', driverId)
-      .single();
+      .maybeSingle();
       
     if (error || !data) {
       console.error('Error getting driver location:', error);
       return null;
     }
     
-    const location = data.current_location;
-    if (!location) return null;
-    
-    // Parse the location data safely
-    if (typeof location === 'object' && location !== null && 'x' in location && 'y' in location) {
+    // Safely parse the location data
+    if (data && data.current_location && 
+        typeof data.current_location === 'object' && 
+        'x' in data.current_location && 
+        'y' in data.current_location) {
+      const location = data.current_location as any;
       return [location.x, location.y];
     }
     
@@ -99,12 +103,18 @@ export async function getNearbyDrivers(
     const nearbyDrivers = driversWithLocation.filter(driver => {
       if (!driver.current_location) return false;
       
-      const location = driver.current_location;
-      if (typeof location !== 'object' || !location || !('x' in location) || !('y' in location)) return false;
+      // Handle location in PostgreSQL point format
+      if (typeof driver.current_location === 'object' && 
+          driver.current_location !== null && 
+          'x' in driver.current_location && 
+          'y' in driver.current_location) {
+        const location = driver.current_location as any;
+        const driverCoords: [number, number] = [location.x, location.y];
+        const distance = calculateDistance(coordinates, driverCoords);
+        return distance <= radiusInKm;
+      }
       
-      const driverCoords: [number, number] = [location.x, location.y];
-      const distance = calculateDistance(coordinates, driverCoords);
-      return distance <= radiusInKm;
+      return false;
     });
     
     return nearbyDrivers.map(driver => {

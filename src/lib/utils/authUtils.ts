@@ -46,7 +46,7 @@ export const signIn = async (email: string, password: string): Promise<{ user: U
       address: profileData?.address || '',
       referralCode: profileData?.referral_code || '',
       isVerifiedDriver: profileData?.is_verified_driver || false,
-      driverStatus: driverData?.status || null,
+      driverStatus: driverData?.status || undefined,
       hasDriverDeposit: driverData?.has_sufficient_deposit || false,
     };
 
@@ -191,11 +191,61 @@ export const getUserById = async (userId: string): Promise<{ user: User | null; 
       address: profileData?.address || '',
       referralCode: profileData?.referral_code || '',
       isVerifiedDriver: profileData?.is_verified_driver || false,
+      driverStatus: undefined,
+      hasDriverDeposit: false
     };
 
     return { user, error: null };
   } catch (error: any) {
     console.error('Error getting user:', error.message);
     return { user: null, error: error.message };
+  }
+};
+
+/**
+ * Sign up with email
+ */
+export const signUpWithEmail = async (email: string, password: string, userData: { name: string }): Promise<{ user: User | null; error: string | null }> => {
+  try {
+    const { success, error } = await signUp(email, password, userData.name);
+    
+    if (!success || error) {
+      throw new Error(error || 'Signup failed');
+    }
+    
+    // Sign in after signup to get the session
+    const { user, error: signInError } = await signIn(email, password);
+    
+    if (signInError || !user) {
+      throw new Error(signInError || 'Failed to sign in after signup');
+    }
+    
+    return { user, error: null };
+  } catch (error: any) {
+    console.error('Error during signup with email:', error);
+    return { user: null, error: error.message };
+  }
+};
+
+/**
+ * Sign in with email
+ */
+export const signInWithEmail = async (email: string, password: string): Promise<{ user: User | null; error: string | null }> => {
+  return await signIn(email, password);
+};
+
+/**
+ * Gets the current session
+ */
+export const getCurrentSession = async (): Promise<{ session: any | null; error: string | null }> => {
+  try {
+    const { data, error } = await supabase.auth.getSession();
+    
+    if (error) throw error;
+    
+    return { session: data.session, error: null };
+  } catch (error: any) {
+    console.error('Error getting current session:', error.message);
+    return { session: null, error: error.message };
   }
 };
