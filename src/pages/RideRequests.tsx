@@ -7,6 +7,8 @@ import { Loader2, AlertCircle, Clock, ArrowRight, RefreshCw, MapPin, DollarSign 
 import { supabase } from '@/integrations/supabase/client';
 import { acceptRideRequest } from '@/lib/utils/rideUtils';
 import { User } from '@/types/auth';
+import { getDriverLocation } from '@/lib/utils/driverLocation';
+import { DriverLocation } from '@/components/DriverLocation';
 
 interface Ride {
   id: string;
@@ -166,22 +168,16 @@ const RideRequests: React.FC = () => {
   const fetchRideRequests = async () => {
     try {
       // Get driver's current location
-      const { data: driverData, error: driverError } = await supabase
-        .from('driver_details')
-        .select('current_location')
-        .eq('user_id', user.id)
-        .single();
+      const driverLocation = await getDriverLocation(user.id);
 
-      if (driverError) {
+      if (!driverLocation) {
         toast({
           title: 'Error',
-          description: 'Failed to get driver location',
+          description: 'Please update your location to see nearby rides',
           variant: 'destructive',
         });
         return;
       }
-
-      const driverLocation = driverData.current_location;
 
       // Fetch nearby rides with RLS policy
       const { data: rides, error } = await supabase
@@ -241,13 +237,7 @@ const RideRequests: React.FC = () => {
         // Only add ride if it's not already in the list
         if (!rideRequests.some(ride => ride.id === newRide.id)) {
           // Calculate distance from driver
-          const { data: driverData } = await supabase
-            .from('driver_details')
-            .select('current_location')
-            .eq('user_id', user.id)
-            .single();
-
-          const driverLocation = driverData?.current_location;
+          const driverLocation = await getDriverLocation(user.id);
           const pickupLocation = newRide.pickup_location.coordinates;
           const distance = calculateDistance(driverLocation, pickupLocation);
 
@@ -408,22 +398,24 @@ const RideRequests: React.FC = () => {
         </Button>
       </div>
     );
-  }
 
   // Main ride request list UI for eligible drivers
   return (
     <div className="min-h-screen bg-white p-4 pb-24">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Available Rides</h1>
-        <Button 
-          variant="outline" 
-          size="icon" 
-          onClick={handleRefresh}
-          disabled={refreshing}
-          className="rounded-full h-10 w-10"
-        >
-          <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
-        </Button>
+      <div className="flex flex-col gap-4">
+        <h1 className="text-2xl font-bold mb-4">Available Rides</h1>
+        <div className="flex gap-4">
+          <DriverLocation />
+          <Button
+            variant="outline" 
+            size="icon" 
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="rounded-full h-10 w-10"
+          >
+            <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
+          </Button>
+        </div>
       </div>
       
       {refreshing && (
