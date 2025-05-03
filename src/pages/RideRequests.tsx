@@ -9,6 +9,7 @@ import { acceptRideRequest } from '@/lib/utils/rideUtils';
 import { User } from '@/types/auth';
 import { getDriverLocation } from '@/lib/utils/driverLocation';
 import { DriverLocation } from '@/components/DriverLocation';
+import { useLocationTracking } from '@/hooks/useLocationTracking';
 
 interface Ride {
   id: string;
@@ -119,6 +120,7 @@ export default function RideRequests() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
+  const { isTracking, error: locationError } = useLocationTracking();
   
   const [loading, setLoading] = useState(true);
   const [rideRequests, setRideRequests] = useState<Ride[]>([]);
@@ -419,6 +421,12 @@ export default function RideRequests() {
         <div className="flex justify-center items-center py-4">
           <Loader2 className="animate-spin h-6 w-6 mr-2" />
           <p className="text-gray-500">Refreshing rides...</p>
+        </div>
+      )}
+      
+      {locationError && (
+        <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md">
+          <p className="text-sm">{locationError}</p>
         </div>
       )}
       

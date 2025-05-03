@@ -1,15 +1,13 @@
-import React, { useEffect, useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Loader2, MapPin } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { updateDriverLocation } from '@/lib/utils/driverLocation';
 
-export function DriverLocation() {
+export function useLocationTracking() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [isLoading, setIsLoading] = useState(false);
   const [isTracking, setIsTracking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let watchId: number | null = null;
@@ -18,8 +16,6 @@ export function DriverLocation() {
       if (!user?.id) return;
 
       try {
-        setIsLoading(true);
-        
         // Request permission for continuous location updates
         const position = await new Promise<GeolocationPosition>((resolve, reject) => {
           navigator.geolocation.getCurrentPosition(resolve, reject);
@@ -29,10 +25,11 @@ export function DriverLocation() {
         watchId = navigator.geolocation.watchPosition(
           async (position) => {
             try {
-              const coordinates = [position.coords.longitude, position.coords.latitude];
+              const coordinates = [position.coords.longitude, position.coords.latitude] as [number, number];
               const success = await updateDriverLocation(user.id, coordinates);
               
               if (!success) {
+                setError('Failed to update location');
                 toast({
                   title: 'Error',
                   description: 'Failed to update location',
@@ -41,10 +38,12 @@ export function DriverLocation() {
               }
             } catch (error) {
               console.error('Error updating location:', error);
+              setError('Failed to update location');
             }
           },
           (error) => {
             console.error('Geolocation error:', error);
+            setError('Failed to get location');
             toast({
               title: 'Error',
               description: 'Failed to get location',
@@ -59,13 +58,9 @@ export function DriverLocation() {
         );
 
         setIsTracking(true);
-        setIsLoading(false);
-        toast({
-          title: 'Success',
-          description: 'Location tracking started',
-        });
+        setError(null);
       } catch (error) {
-        setIsLoading(false);
+        setError('Failed to start location tracking');
         toast({
           title: 'Error',
           description: 'Failed to start location tracking',
@@ -74,7 +69,7 @@ export function DriverLocation() {
       }
     };
 
-    if (!isTracking) {
+    if (!isTracking && !error) {
       startTracking();
     }
 
@@ -84,23 +79,7 @@ export function DriverLocation() {
         setIsTracking(false);
       }
     };
-  }, [user?.id]);
+  }, [user?.id, error]);
 
-  return (
-    <div className="mb-4">
-      <Button
-        className="flex items-center gap-2"
-        disabled={isLoading}
-      >
-        {isLoading ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : isTracking ? (
-          <MapPin className="h-4 w-4" />
-        ) : (
-          <MapPin className="h-4 w-4 opacity-50" />
-        )}
-        {isTracking ? 'Tracking Location' : 'Start Tracking'}
-      </Button>
-    </div>
-  );
+  return { isTracking, error };
 }
