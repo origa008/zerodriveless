@@ -5,7 +5,7 @@ export type Location = {
   name: string;
   address?: string;
   coordinates?: [number, number]; // [longitude, latitude]
-  placeId?: string; // Added for LocationSearch component
+  placeId?: string; // For LocationSearch component
 };
 
 export type RideOption = {
@@ -15,10 +15,11 @@ export type RideOption = {
   image?: string;
   description?: string;
   basePrice: number;
-  price?: number; // Added for RideOptionCard
-  currency?: string; // Added for RideOptionCard
-  duration?: number; // Added for RideOptionCard
-  capacity?: number; // Added for RideOptionCard
+  price?: number; // For RideOptionCard
+  currency?: string; // For RideOptionCard
+  duration?: number; // For RideOptionCard
+  capacity?: number; // For RideOptionCard
+  eta?: number; // Added for mockData.ts
 };
 
 export type PaymentMethod = 'cash' | 'wallet';
@@ -35,6 +36,8 @@ export type Ride = {
   paymentMethod: PaymentMethod;
   currency: string;
   driver?: Driver;
+  start_time?: string; // Added for historyUtils.ts
+  end_time?: string; // Added for historyUtils.ts
 };
 
 export type DriverDetails = {
@@ -57,6 +60,8 @@ export type DriverDetails = {
   };
   created_at: string;
   approval_date?: string;
+  current_status?: string; // For driverUtils.ts
+  last_status_update?: string; // For driverUtils.ts
 };
 
 // Create hook for location tracking
@@ -113,6 +118,7 @@ export type User = {
   address?: string;
   referralCode?: string;
   isVerifiedDriver?: boolean;
+  driverStatus?: string; // Added for profileUtils.ts
 };
 
 export type Post = {

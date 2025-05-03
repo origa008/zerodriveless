@@ -49,6 +49,8 @@ export async function getNearbyRideRequests(
               pickupCoords = ride.pickup_location.coordinates;
             } else if (ride.pickup_location.longitude !== undefined && ride.pickup_location.latitude !== undefined) {
               pickupCoords = [ride.pickup_location.longitude, ride.pickup_location.latitude];
+            } else if (ride.pickup_location.x !== undefined && ride.pickup_location.y !== undefined) {
+              pickupCoords = [ride.pickup_location.x, ride.pickup_location.y];
             }
           }
         }

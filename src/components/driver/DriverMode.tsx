@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -122,10 +121,8 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
           paymentMethod: newRide.payment_method
         };
         
-        setPendingRideRequests(prev => {
-          const newRides = [...prev];
-          newRides.push(formattedRide);
-          return newRides;
+        setPendingRideRequests((prevRides) => {
+          return [...prevRides, formattedRide];
         });
         
         toast({

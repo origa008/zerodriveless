@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 
 /**
@@ -12,10 +13,12 @@ export async function updateDriverLocation(
   const [longitude, latitude] = coordinates;
   
   try {
-    // Update driver's location directly in the driver_details table
+    // Update driver's location using direct column update 
+    // instead of trying to use an RPC function
     const { error } = await supabase
       .from('driver_details')
       .update({
+        // Use an object with x, y properties as in the DriverDetails type
         current_location: { x: longitude, y: latitude }
       })
       .eq('user_id', driverId);
@@ -52,10 +55,10 @@ export async function getDriverLocation(
       return null;
     }
     
-    if (!data.current_location) return null;
+    const location = data.current_location;
+    if (!location) return null;
     
     // Parse the location data
-    const location = data.current_location as any;
     if (typeof location === 'object' && 'x' in location && 'y' in location) {
       return [location.x, location.y];
     }
@@ -94,10 +97,10 @@ export async function getNearbyDrivers(
     const nearbyDrivers = driversWithLocation.filter(driver => {
       if (!driver.current_location) return false;
       
-      const driverLocation = driver.current_location as any;
-      if (!driverLocation || !('x' in driverLocation) || !('y' in driverLocation)) return false;
+      const location = driver.current_location;
+      if (!location || !('x' in location) || !('y' in location)) return false;
       
-      const driverCoords: [number, number] = [driverLocation.x, driverLocation.y];
+      const driverCoords: [number, number] = [location.x, location.y];
       const distance = calculateDistance(coordinates, driverCoords);
       return distance <= radiusInKm;
     });
@@ -137,3 +140,4 @@ export function calculateDistance(
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   return R * c;
 }
+

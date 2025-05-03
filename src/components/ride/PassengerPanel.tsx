@@ -8,9 +8,8 @@ import RideOptionCard from '@/components/ride/RideOptionCard';
 import { Loader2, Clock, Wallet } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
-import { Location, PaymentMethod } from '@/lib/types';
-
-type PaymentMethod = 'cash' | 'wallet';
+import { Location } from '@/lib/types';
+import { PaymentMethod } from '@/lib/types';
 
 const PassengerPanel: React.FC = () => {
   const navigate = useNavigate();
