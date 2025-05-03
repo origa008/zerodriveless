@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { Location, RideOption } from '../types';
 
@@ -25,15 +26,15 @@ export const createRideRequest = async ({
 }) => {
   try {
     const { data, error } = await supabase
-      .from('ride_requests')
+      .from('rides')
       .insert({
         passenger_id: passengerId,
         pickup_location: { name: pickupLocation.name, coordinates: [pickupLocation.lng, pickupLocation.lat] },
         dropoff_location: { name: dropoffLocation.name, coordinates: [dropoffLocation.lng, dropoffLocation.lat] },
-        vehicle_type: vehicleType,
-        estimated_price: estimatedPrice,
-        estimated_distance: estimatedDistance,
-        estimated_duration: estimatedDuration,
+        ride_option: { name: vehicleType, type: vehicleType },
+        price: estimatedPrice,
+        distance: estimatedDistance,
+        duration: estimatedDuration,
         payment_method: paymentMethod,
         status: 'searching'
       })
@@ -72,14 +73,19 @@ export const getNearbyRideRequests = async (
 
     // Filter rides by distance
     const nearbyRides = rides.filter(ride => {
-      // Ensure pickup_location has valid coordinates
-      if (!ride.pickup_location?.coordinates || ride.pickup_location.coordinates.length < 2) {
+      // Type guard to ensure pickup_location is a valid object
+      if (!ride.pickup_location || typeof ride.pickup_location !== 'object') {
         return false;
       }
       
-      // Get coordinates from the pickup_location object
-      const pickupLng = ride.pickup_location.coordinates[0];
-      const pickupLat = ride.pickup_location.coordinates[1];
+      // Access coordinates safely with optional chaining
+      const coordinates = ride.pickup_location?.coordinates;
+      if (!coordinates || !Array.isArray(coordinates) || coordinates.length < 2) {
+        return false;
+      }
+      
+      const pickupLng = coordinates[0];
+      const pickupLat = coordinates[1];
       
       const distance = getDistanceFromLatLonInKm(
         driverLat,
@@ -99,9 +105,10 @@ export const getNearbyRideRequests = async (
           .eq('id', ride.passenger_id)
           .single();
 
-        // Get coordinates from the pickup_location object
-        const pickupLng = ride.pickup_location.coordinates[0];
-        const pickupLat = ride.pickup_location.coordinates[1];
+        // Safely access coordinates with optional chaining and defaults
+        const coordinates = ride.pickup_location?.coordinates;
+        const pickupLng = coordinates && Array.isArray(coordinates) ? coordinates[0] : 0;
+        const pickupLat = coordinates && Array.isArray(coordinates) ? coordinates[1] : 0;
         
         const distance = getDistanceFromLatLonInKm(
           driverLat,
@@ -131,19 +138,19 @@ export const getNearbyRideRequests = async (
 export const acceptRideRequest = async (rideId: string, driverId: string) => {
   try {
     // First check if ride is still available
-    const { data: ride } = await supabase
-      .from('ride_requests')
+    const { data: ride, error: checkError } = await supabase
+      .from('rides')
       .select('status')
       .eq('id', rideId)
       .single();
 
-    if (!ride || ride.status !== 'searching') {
+    if (checkError || !ride || ride.status !== 'searching') {
       return { success: false, error: 'This ride is no longer available' };
     }
 
     // Update ride status and assign driver
     const { error } = await supabase
-      .from('ride_requests')
+      .from('rides')
       .update({
         driver_id: driverId,
         status: 'confirmed',
@@ -217,14 +224,19 @@ export const subscribeToNearbyRides = (
 
           const newRide = payload.new;
           
-          // Ensure pickup_location has valid coordinates
-          if (!newRide.pickup_location?.coordinates || newRide.pickup_location.coordinates.length < 2) {
+          // Type guard to ensure pickup_location is a valid object
+          if (!newRide.pickup_location || typeof newRide.pickup_location !== 'object') {
             return;
           }
           
-          // Get coordinates from the pickup_location object
-          const pickupLng = newRide.pickup_location.coordinates[0];
-          const pickupLat = newRide.pickup_location.coordinates[1];
+          // Access coordinates safely with optional chaining
+          const coordinates = newRide.pickup_location?.coordinates;
+          if (!coordinates || !Array.isArray(coordinates) || coordinates.length < 2) {
+            return;
+          }
+          
+          const pickupLng = coordinates[0];
+          const pickupLat = coordinates[1];
           
           // Calculate distance to new ride
           const distance = getDistanceFromLatLonInKm(
@@ -417,8 +429,7 @@ export const updateDriverStatus = async (
         status,
         has_sufficient_deposit,
         vehicle_type,
-        deposit_amount_required,
-        current_status
+        deposit_amount_required
       `)
       .eq('user_id', driverId)
       .single();
@@ -532,6 +543,7 @@ export const updateDriverStatus = async (
     const { error: detailsUpdateError } = await supabase
       .from('driver_details')
       .update({
+        // We'll assume current_status exists or is already added in the SQL
         current_status: isOnline ? 'available' : 'offline',
         last_status_update: new Date().toISOString()
       })
@@ -601,14 +613,14 @@ export const getNearbyPendingRides = async (
         return false;
       }
 
-      // Ensure pickup_location has valid coordinates
-      if (!ride.pickup_location?.coordinates || ride.pickup_location.coordinates.length < 2) {
+      // Safely access coordinates with optional chaining
+      const coordinates = ride.pickup_location?.coordinates;
+      if (!coordinates || !Array.isArray(coordinates) || coordinates.length < 2) {
         return false;
       }
       
-      // Extract coordinates from the pickup_location object
-      const pickupLng = ride.pickup_location.coordinates[0];
-      const pickupLat = ride.pickup_location.coordinates[1];
+      const pickupLng = coordinates[0];
+      const pickupLat = coordinates[1];
 
       // Calculate distance using the Haversine formula
       const distance = getDistanceFromLatLonInKm(
@@ -620,14 +632,14 @@ export const getNearbyPendingRides = async (
 
       return distance <= radiusKm;
     }).map(ride => {
-      // Ensure pickup_location has valid coordinates
-      if (!ride.pickup_location?.coordinates || ride.pickup_location.coordinates.length < 2) {
+      // Safely access coordinates
+      const coordinates = ride.pickup_location?.coordinates;
+      if (!coordinates || !Array.isArray(coordinates) || coordinates.length < 2) {
         return { ...ride, distance_to_pickup: 999 }; // Return a large distance if coordinates missing
       }
       
-      // Extract coordinates from the pickup_location object
-      const pickupLng = ride.pickup_location.coordinates[0];
-      const pickupLat = ride.pickup_location.coordinates[1];
+      const pickupLng = coordinates[0];
+      const pickupLat = coordinates[1];
       
       return {
         ...ride,
@@ -690,12 +702,15 @@ export const subscribeToNearbyPendingRides = (
       {
         event: 'UPDATE',
         schema: 'public',
-        table: 'drivers',
-        filter: `id=eq.${driverId}`
+        table: 'driver_details',
+        filter: `user_id=eq.${driverId}`
       },
       async (payload) => {
         const driver = payload.new;
-        if (!driver.is_online) {
+        // Not referencing unknown 'is_online' property anymore
+        // Instead using current_status which should exist after the SQL migration
+        const isOffline = driver.current_status === 'offline';
+        if (isOffline) {
           callback([]); // Clear rides list when driver goes offline
         } else {
           // Refresh rides list when driver comes online
@@ -861,13 +876,12 @@ export const acceptRideRequestSafe = async (
 };
 
 /**
- * Creates a test ride for debugging purposes (only for development)
- * This helps verify if ride requests are showing up correctly
+ * Fetches active ride requests
  */
 export const fetchRideRequests = async (driverId: string) => {
   try {
     const { data, error } = await supabase
-      .from('ride_requests')
+      .from('rides')
       .select('*')
       .eq('status', 'searching')
       .order('created_at', { ascending: false });
@@ -880,6 +894,9 @@ export const fetchRideRequests = async (driverId: string) => {
   }
 };
 
+/**
+ * Creates a test ride for debugging purposes (only for development)
+ */
 export const createTestRide = async (userId: string) => {
   try {
     const testRide = {
@@ -928,4 +945,4 @@ export const createTestRide = async (userId: string) => {
     console.error('Error in createTestRide:', error);
     return { success: false, error: error.message, data: null };
   }
-}; 
+};

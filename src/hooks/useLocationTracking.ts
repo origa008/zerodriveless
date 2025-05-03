@@ -1,188 +1,131 @@
 
-import { useEffect, useState } from 'react';
-import { useAuth } from '@/lib/context/AuthContext';
-import { useToast } from '@/hooks/use-toast';
+import { useState, useEffect } from 'react';
+import { LocationTrackingResult } from '@/lib/types';
 import { updateDriverLocation } from '@/lib/utils/driverLocation';
+import { useAuth } from '@/lib/context/AuthContext';
 
-export interface LocationState {
-  isTracking: boolean;
-  coordinates: [number, number] | null;
-  error: string | null;
-  lastUpdated: Date | null;
-}
-
-export function useLocationTracking() {
+export function useLocationTracking(
+  autoStart: boolean = true, 
+  updateInterval: number = 10000
+): LocationTrackingResult {
   const { user } = useAuth();
-  const { toast } = useToast();
-  const [locationState, setLocationState] = useState<LocationState>({
-    isTracking: false,
-    coordinates: null,
-    error: null,
-    lastUpdated: null
-  });
+  const [isTracking, setIsTracking] = useState(false);
+  const [coordinates, setCoordinates] = useState<[number, number] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [watchId, setWatchId] = useState<number | null>(null);
+  
+  // Function to update location in state
+  const updateLocation = (position: GeolocationCoordinates) => {
+    const { longitude, latitude } = position;
+    setCoordinates([longitude, latitude]);
+    setError(null);
+    
+    // Update driver location in the database if user is logged in
+    if (user?.id) {
+      updateDriverLocation(user.id, [longitude, latitude])
+        .catch(err => console.error('Error updating driver location:', err));
+    }
+  };
+  
+  // Function to handle location errors
+  const handleLocationError = (err: GeolocationPositionError) => {
+    let message = 'Unknown location error';
+    
+    switch (err.code) {
+      case 1:
+        message = 'Location access denied. Please enable location services in your browser settings.';
+        break;
+      case 2:
+        message = 'Location unavailable. Please try again later.';
+        break;
+      case 3:
+        message = 'Location request timed out. Please check your connection.';
+        break;
+    }
+    
+    console.error('Location error:', message);
+    setError(message);
+  };
 
-  useEffect(() => {
-    let watchId: number | null = null;
-
-    const startTracking = async () => {
-      if (!user?.id) return;
-
-      try {
-        // Request permission for continuous location updates
-        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 0
-          });
-        });
-
-        // Update state with initial position
-        const initialCoords: [number, number] = [position.coords.longitude, position.coords.latitude];
-        setLocationState(prev => ({
-          ...prev,
-          coordinates: initialCoords,
-          lastUpdated: new Date(),
-          error: null
-        }));
-
-        // Update location in database
-        await updateDriverLocation(user.id, initialCoords);
-
-        // Start watching position
-        watchId = navigator.geolocation.watchPosition(
-          async (position) => {
-            try {
-              const coordinates: [number, number] = [position.coords.longitude, position.coords.latitude];
-              
-              // Only update if position has changed significantly (more than 10 meters)
-              const hasChangedSignificantly = !locationState.coordinates || 
-                calculateDistance(locationState.coordinates, coordinates) > 0.01;
-              
-              if (hasChangedSignificantly) {
-                const success = await updateDriverLocation(user.id, coordinates);
-                
-                if (success) {
-                  setLocationState(prev => ({
-                    ...prev,
-                    coordinates,
-                    lastUpdated: new Date(),
-                    error: null,
-                    isTracking: true
-                  }));
-                } else {
-                  console.error('Failed to update location in database');
-                }
-              }
-            } catch (error) {
-              console.error('Error in location tracking:', error);
-              setLocationState(prev => ({
-                ...prev,
-                error: 'Failed to update location'
-              }));
-            }
-          },
-          (error) => {
-            console.error('Geolocation error:', error);
-            let errorMessage: string;
-            
-            switch (error.code) {
-              case error.PERMISSION_DENIED:
-                errorMessage = 'Location permission denied';
-                break;
-              case error.POSITION_UNAVAILABLE:
-                errorMessage = 'Location information unavailable';
-                break;
-              case error.TIMEOUT:
-                errorMessage = 'Location request timed out';
-                break;
-              default:
-                errorMessage = 'Unknown location error';
-            }
-            
-            setLocationState(prev => ({
-              ...prev,
-              error: errorMessage,
-              isTracking: false
-            }));
-            
-            toast({
-              title: 'Location Error',
-              description: errorMessage,
-              variant: 'destructive',
-            });
-          },
-          {
-            enableHighAccuracy: true,
-            maximumAge: 0,
-            timeout: 10000
-          }
-        );
-
-        setLocationState(prev => ({
-          ...prev,
-          isTracking: true
-        }));
-      } catch (error: any) {
-        console.error('Failed to start location tracking:', error);
-        const errorMessage = error.message || 'Failed to start location tracking';
-        
-        setLocationState(prev => ({
-          ...prev,
-          error: errorMessage,
-          isTracking: false
-        }));
-        
-        toast({
-          title: 'Location Error',
-          description: errorMessage,
-          variant: 'destructive',
-        });
+  // Function to start tracking location
+  const startTracking = () => {
+    if (!navigator.geolocation) {
+      setError('Geolocation is not supported by your browser');
+      return;
+    }
+    
+    if (watchId !== null) {
+      stopTracking(); // Clear any existing watchers
+    }
+    
+    // Get initial position
+    navigator.geolocation.getCurrentPosition(
+      (position) => updateLocation(position.coords),
+      handleLocationError,
+      { enableHighAccuracy: true }
+    );
+    
+    // Watch position regularly
+    const id = navigator.geolocation.watchPosition(
+      (position) => updateLocation(position.coords),
+      handleLocationError,
+      { 
+        enableHighAccuracy: true, 
+        timeout: 10000,
+        maximumAge: 5000
       }
-    };
-
-    if (user?.id && !locationState.isTracking && !locationState.error) {
+    );
+    
+    setWatchId(id);
+    setIsTracking(true);
+    
+    // Also set up an interval to force regular updates
+    const intervalId = setInterval(() => {
+      navigator.geolocation.getCurrentPosition(
+        (position) => updateLocation(position.coords),
+        () => {}, // Silent error handling for interval updates
+        { enableHighAccuracy: true }
+      );
+    }, updateInterval);
+    
+    // Save the interval ID for cleanup
+    (window as any).locationUpdateInterval = intervalId;
+  };
+  
+  // Function to stop tracking location
+  const stopTracking = () => {
+    if (watchId !== null) {
+      navigator.geolocation.clearWatch(watchId);
+      setWatchId(null);
+    }
+    
+    // Clear the update interval
+    if ((window as any).locationUpdateInterval) {
+      clearInterval((window as any).locationUpdateInterval);
+      (window as any).locationUpdateInterval = null;
+    }
+    
+    setIsTracking(false);
+  };
+  
+  // Auto-start tracking if requested
+  useEffect(() => {
+    if (autoStart) {
       startTracking();
     }
-
+    
+    // Cleanup on unmount
     return () => {
-      if (watchId !== null) {
-        navigator.geolocation.clearWatch(watchId);
-      }
+      stopTracking();
     };
-  }, [user?.id, locationState.isTracking, locationState.error, toast]);
-
-  // Helper function to retry location tracking after an error
-  const retryTracking = () => {
-    setLocationState(prev => ({
-      ...prev,
-      error: null,
-      isTracking: false
-    }));
-  };
-
+  }, [autoStart, user?.id]);
+  
   return { 
-    ...locationState,
-    retryTracking
+    isTracking,
+    coordinates,
+    error,
+    startTracking,
+    stopTracking,
+    updateLocation: (coords) => updateLocation(coords)
   };
-}
-
-// Helper functions
-function calculateDistance(point1: [number, number], point2: [number, number]): number {
-  const [lon1, lat1] = point1;
-  const [lon2, lat2] = point2;
-
-  const R = 6371; // Earth's radius in kilometers
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-
-  const a = 
-    Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-    Math.sin(dLon/2) * Math.sin(dLon/2);
-
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  const distance = R * c;
-
-  return distance;
 }

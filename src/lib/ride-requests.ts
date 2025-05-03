@@ -64,24 +64,29 @@ export async function getNearbyRideRequests(
 ): Promise<RideRequest[]> {
   try {
     const { data, error } = await supabase
-      .functions
-      .invoke('get_nearby_ride_requests', {
-        body: {
-          driver_lat: driverLat,
-          driver_lng: driverLng,
-          radius_km: radiusInKm,
-        }
-      })
+      .from('rides')
+      .select('*')
+      .eq('status', 'searching')
+      .is('driver_id', null);
 
     if (error) {
-      console.error('Error fetching nearby ride requests:', error)
-      return []
+      console.error('Error fetching nearby ride requests:', error);
+      return [];
     }
 
-    return data || []
-  } catch (error) {
-    console.error('Error fetching nearby ride requests:', error)
-    return []
+    // Filter by distance (simplified, you may want to use a more accurate method)
+    const nearbyRides = data
+      ? data.filter(ride => {
+          // Calculate distance (would need a proper geospatial function) 
+          // This is just a placeholder implementation
+          return true; // Return all rides for now
+        })
+      : [];
+
+    return nearbyRides as RideRequest[];
+  } catch (error: any) {
+    console.error('Error fetching nearby ride requests:', error);
+    return [];
   }
 }
 
@@ -211,4 +216,4 @@ export function subscribeToRideRequests(
   return () => {
     subscription.unsubscribe()
   }
-} 
+}

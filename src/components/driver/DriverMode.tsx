@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -9,7 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { 
   getAvailableRideRequests, 
   subscribeToNewRideRequests,
-  acceptRideRequest as acceptRide
+  acceptRideRequest 
 } from '@/lib/utils/rideUtils';
 import { getDriverRegistrationStatus, isEligibleDriver } from '@/lib/utils/driverUtils';
 import { getWalletBalance, subscribeToWalletBalance } from '@/lib/utils/walletUtils';

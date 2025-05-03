@@ -37,8 +37,8 @@ export async function getAvailableRideRequests(driverId: string) {
     // Calculate distance and filter by proximity
     const nearbyRides = data
       .map(ride => {
-        const pickupCoords = ride.pickup_location.coordinates || 
-          [ride.pickup_location.longitude, ride.pickup_location.latitude];
+        const pickupCoords = ride.pickup_location?.coordinates || 
+          [ride.pickup_location?.longitude, ride.pickup_location?.latitude];
         
         const distance = calculateDistance(
           [lon, lat],
@@ -87,7 +87,7 @@ export function subscribeToNewRideRequests(callback: (ride: any) => void) {
 /**
  * Helper function to calculate distance between two points
  */
-function calculateDistance(point1: [number, number], point2: [number, number]): number {
+export function calculateDistance(point1: [number, number], point2: [number, number]): number {
   const [lon1, lat1] = point1;
   const [lon2, lat2] = point2;
 
@@ -104,4 +104,65 @@ function calculateDistance(point1: [number, number], point2: [number, number]): 
   const distance = R * c;
 
   return distance;
+}
+
+/**
+ * Accept a ride request
+ */
+export const acceptRideRequest = async (rideId: string, driverId: string) => {
+  try {
+    // Check if ride is still available
+    const { data: ride, error: rideError } = await supabase
+      .from('rides')
+      .select('*')
+      .eq('id', rideId)
+      .eq('status', 'searching')
+      .is('driver_id', null)
+      .single();
+
+    if (rideError || !ride) {
+      return { success: false, error: 'This ride is no longer available' };
+    }
+
+    // Update ride with driver info
+    const { error } = await supabase
+      .from('rides')
+      .update({
+        driver_id: driverId,
+        status: 'confirmed',
+        start_time: new Date().toISOString()
+      })
+      .eq('id', rideId);
+
+    if (error) throw error;
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error accepting ride:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Subscribe to ride status updates
+ */
+export function subscribeToRideStatus(rideId: string, callback: (ride: any) => void) {
+  const channel = supabase
+    .channel(`ride_${rideId}`)
+    .on('postgres_changes', 
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'rides',
+        filter: `id=eq.${rideId}`
+      },
+      payload => {
+        callback(payload.new);
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
 }
