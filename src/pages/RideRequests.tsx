@@ -27,6 +27,25 @@ interface Ride {
   created_at: string;
 }
 
+const calculateDistance = (point1: [number, number], point2: [number, number]): number => {
+  const [lat1, lon1] = point1;
+  const [lat2, lon2] = point2;
+
+  const R = 6371; // Earth's radius in kilometers
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+    Math.sin(dLon/2) * Math.sin(dLon/2);
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  const distance = R * c;
+
+  return distance;
+};
+
 const formatDuration = (duration: number): string => {
   const minutes = Math.floor(duration);
   const seconds = Math.floor((duration % 1) * 60);
@@ -146,11 +165,32 @@ const RideRequests: React.FC = () => {
 
   const fetchRideRequests = async () => {
     try {
-      const { data, error } = await supabase
+      // Get driver's current location
+      const { data: driverData, error: driverError } = await supabase
+        .from('driver_details')
+        .select('current_location')
+        .eq('user_id', user.id)
+        .single();
+
+      if (driverError) {
+        toast({
+          title: 'Error',
+          description: 'Failed to get driver location',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const driverLocation = driverData.current_location;
+
+      // Fetch nearby rides with RLS policy
+      const { data: rides, error } = await supabase
         .from('rides')
         .select('*')
         .eq('status', 'searching')
-        .is('driver_id', null);
+        .is('driver_id', null)
+        .order('created_at', { ascending: false })
+        .limit(10); // Limit to 10 rides for performance
       
       if (error) {
         toast({
@@ -161,7 +201,17 @@ const RideRequests: React.FC = () => {
         return;
       }
 
-      setRideRequests(data || []);
+      // Calculate distance from driver for each ride
+      const ridesWithDistance = rides.map(ride => {
+        const pickupLocation = ride.pickup_location.coordinates;
+        const distance = calculateDistance(driverLocation, pickupLocation);
+        return {
+          ...ride,
+          distance: distance
+        };
+      });
+
+      setRideRequests(ridesWithDistance);
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -174,8 +224,10 @@ const RideRequests: React.FC = () => {
   useEffect(() => {
     if (!isEligibleDriver) return;
 
+    // Initialize with first fetch
     fetchRideRequests();
 
+    // Set up Supabase subscription for real-time updates
     const subscription = supabase
       .channel('rides-channel')
       .on('postgres_changes', {
@@ -183,9 +235,27 @@ const RideRequests: React.FC = () => {
         schema: 'public',
         table: 'rides',
         filter: 'status=eq.searching'
-      }, (payload) => {
+      }, async (payload) => {
         const newRide = payload.new as Ride;
-        setRideRequests(prev => [newRide, ...prev]);
+        
+        // Only add ride if it's not already in the list
+        if (!rideRequests.some(ride => ride.id === newRide.id)) {
+          // Calculate distance from driver
+          const { data: driverData } = await supabase
+            .from('driver_details')
+            .select('current_location')
+            .eq('user_id', user.id)
+            .single();
+
+          const driverLocation = driverData?.current_location;
+          const pickupLocation = newRide.pickup_location.coordinates;
+          const distance = calculateDistance(driverLocation, pickupLocation);
+
+          setRideRequests(prev => [{
+            ...newRide,
+            distance
+          }, ...prev]);
+        }
       })
       .on('postgres_changes', {
         event: 'UPDATE',
@@ -208,7 +278,7 @@ const RideRequests: React.FC = () => {
       subscription.unsubscribe();
       clearInterval(intervalId);
     };
-  }, [isEligibleDriver]);
+  }, [isEligibleDriver, user.id]);
 
   const fetchNearbyRides = async () => {
     try {
