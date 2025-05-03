@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { RideOption, Location, Ride, PaymentMethod } from '@/lib/types';
-import { subscribeToRideStatus, acceptRideRequest as acceptRide } from '@/lib/utils/rideUtils';
+import { subscribeToRideStatus, acceptRideRequest } from '@/lib/utils/rideUtils';
 
 // Default ride options
 const DEFAULT_RIDE_OPTIONS: RideOption[] = [
@@ -35,7 +35,7 @@ const DEFAULT_RIDE_OPTIONS: RideOption[] = [
 ];
 
 // Context type definition
-type RideContextType = {
+export type RideContextType = {
   pickupLocation: Location | null;
   dropoffLocation: Location | null;
   selectedRideOption: RideOption | null;
@@ -64,7 +64,7 @@ type RideContextType = {
   acceptRideRequest: (rideId: string, driverId: string) => Promise<{ success: boolean; error?: string }>;
   availableRideOptions: RideOption[];
   findRides: () => void;
-  confirmRide: () => void;
+  confirmRide: (paymentMethod?: PaymentMethod) => void;
   isSearchingRides: boolean;
   estimatedDistance: number;
   estimatedDuration: number;
@@ -79,7 +79,7 @@ type RideContextType = {
 };
 
 // Create context
-const RideContext = createContext<RideContextType | undefined>(undefined);
+export const RideContext = createContext<RideContextType | undefined>(undefined);
 
 // Provider component
 export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -210,18 +210,20 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Implementation would go here
     setTimeout(() => {
       setIsSearchingRides(false);
+      setPanelOpen(true);
     }, 2000);
   };
   
-  const confirmRide = () => {
+  const confirmRide = (paymentMethod: PaymentMethod = 'cash') => {
     // Implementation would go here
+    console.log('Confirming ride with payment method:', paymentMethod);
   };
   
   const resetDriverAcceptanceTimer = () => {
     setDriverAcceptanceTimer(0);
   };
 
-  const value = {
+  const value: RideContextType = {
     pickupLocation,
     dropoffLocation,
     selectedRideOption,
@@ -247,7 +249,7 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     // Additional properties needed by components
     setDriverMode,
-    acceptRideRequest: acceptRide,
+    acceptRideRequest,
     availableRideOptions,
     findRides,
     confirmRide,

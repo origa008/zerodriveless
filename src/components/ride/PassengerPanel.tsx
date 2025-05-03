@@ -8,7 +8,7 @@ import RideOptionCard from '@/components/ride/RideOptionCard';
 import { Loader2, Clock, Wallet } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
-import { Location } from '@/lib/types';
+import { Location, PaymentMethod } from '@/lib/types';
 
 type PaymentMethod = 'cash' | 'wallet';
 
@@ -71,7 +71,7 @@ const PassengerPanel: React.FC = () => {
         duration: 5000
       });
     }
-  }, [isWaitingForDriverAcceptance, driverAcceptanceTimer]);
+  }, [isWaitingForDriverAcceptance, driverAcceptanceTimer, setWaitingForDriverAcceptance, toast]);
 
   const handleFindRides = () => {
     // Check if user has completed their profile

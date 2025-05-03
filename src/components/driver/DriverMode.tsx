@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -8,7 +9,8 @@ import { Ride } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { 
   getAvailableRideRequests, 
-  subscribeToNewRideRequests
+  subscribeToNewRideRequests,
+  acceptRideRequest
 } from '@/lib/utils/rideUtils';
 import { getDriverRegistrationStatus, isEligibleDriver } from '@/lib/utils/driverUtils';
 import { getWalletBalance, subscribeToWalletBalance } from '@/lib/utils/walletUtils';
@@ -24,7 +26,6 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
   const { toast } = useToast();
   const { 
     calculateBaseFare, 
-    acceptRideRequest,
     setCurrentRide,
     walletBalance, 
     setWalletBalance,
@@ -121,7 +122,11 @@ const DriverMode: React.FC<DriverModeProps> = ({ isOnline, setIsOnline }) => {
           paymentMethod: newRide.payment_method
         };
         
-        setPendingRideRequests((prevRides: any[]) => [...prevRides, formattedRide]);
+        setPendingRideRequests(prev => {
+          const newRides = [...prev];
+          newRides.push(formattedRide);
+          return newRides;
+        });
         
         toast({
           title: "New Ride Request",

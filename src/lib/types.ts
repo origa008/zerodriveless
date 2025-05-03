@@ -69,7 +69,7 @@ export interface LocationTrackingResult {
   updateLocation: (coords: GeolocationCoordinates) => void;
 }
 
-// Additional types needed
+// DriverDocument type with all required properties
 export type DriverDocument = {
   id: string;
   type: string;
@@ -111,6 +111,8 @@ export type User = {
   isDriver?: boolean;
   isLoggedIn?: boolean;
   address?: string;
+  referralCode?: string;
+  isVerifiedDriver?: boolean;
 };
 
 export type Post = {

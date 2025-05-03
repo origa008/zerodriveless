@@ -30,22 +30,27 @@ export async function getNearbyRideRequests(
     // Process and calculate distances
     const ridesWithDistance = data.map(ride => {
       try {
-        let pickupCoords: [number, number];
+        let pickupCoords: [number, number] = [0, 0];
         
         // Extract coordinates from pickup_location
-        if (typeof ride.pickup_location === 'string') {
-          try {
-            const parsed = JSON.parse(ride.pickup_location);
-            pickupCoords = parsed.coordinates || [0, 0];
-          } catch (e) {
-            pickupCoords = [0, 0];
+        if (ride.pickup_location) {
+          if (typeof ride.pickup_location === 'string') {
+            try {
+              const parsed = JSON.parse(ride.pickup_location);
+              if (parsed && parsed.coordinates) {
+                pickupCoords = parsed.coordinates;
+              }
+            } catch (e) {
+              console.error("Error parsing location:", e);
+            }
+          } else if (typeof ride.pickup_location === 'object') {
+            // Handle if it's already an object
+            if (ride.pickup_location.coordinates) {
+              pickupCoords = ride.pickup_location.coordinates;
+            } else if (ride.pickup_location.longitude !== undefined && ride.pickup_location.latitude !== undefined) {
+              pickupCoords = [ride.pickup_location.longitude, ride.pickup_location.latitude];
+            }
           }
-        } else if (ride.pickup_location && typeof ride.pickup_location === 'object') {
-          pickupCoords = Array.isArray(ride.pickup_location.coordinates) 
-            ? ride.pickup_location.coordinates 
-            : [ride.pickup_location.longitude || 0, ride.pickup_location.latitude || 0];
-        } else {
-          pickupCoords = [0, 0];
         }
         
         // Calculate distance from driver to pickup
@@ -66,7 +71,7 @@ export async function getNearbyRideRequests(
     
     // Filter by distance and sort by nearest
     const nearbyRides = ridesWithDistance
-      .filter(ride => ride.distance <= radiusInKm)
+      .filter(ride => ride && ride.distance <= radiusInKm)
       .sort((a, b) => a.distance - b.distance);
     
     return nearbyRides;
@@ -100,3 +105,6 @@ function calculateDistance(
   
   return distance;
 }
+
+// Export the function for use in other modules
+export { calculateDistance };

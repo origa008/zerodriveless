@@ -11,17 +11,22 @@ interface DriverRegistrationProps {
 
 const DriverRegistration: React.FC<DriverRegistrationProps> = ({ onClose, onSubmit }) => {
   const [isLoading, setIsLoading] = useState(false);
-  const [formData, setFormData] = useState<DriverDocument>({
+  const [formData, setFormData] = useState<Partial<DriverDocument>>({
     fullName: '',
     phoneNumber: '',
     cnicNumber: '',
     vehicleType: 'Bike',
     vehicleRegistrationNumber: '',
-    vehicleModel: '',  // Add this field
-    vehicleColor: '',  // Add this field
-    driverLicenseNumber: '',  // Add this field
-    address: '',       // Add this field
-    agreedToTerms: false // Add this field
+    vehicleModel: '',
+    vehicleColor: '',
+    driverLicenseNumber: '',
+    address: '',
+    agreedToTerms: false,
+    id: '',
+    type: 'driver_application',
+    file: null,
+    preview: null,
+    status: 'pending'
   });
   
   const [documents, setDocuments] = useState<{
@@ -73,7 +78,7 @@ const DriverRegistration: React.FC<DriverRegistrationProps> = ({ onClose, onSubm
     setIsLoading(true);
     
     try {
-      const completeFormData: DriverDocument = {
+      const completeFormData = {
         ...formData,
         cnicFrontPhoto: documents.cnicFront,
         cnicBackPhoto: documents.cnicBack,
@@ -83,7 +88,7 @@ const DriverRegistration: React.FC<DriverRegistrationProps> = ({ onClose, onSubm
         vehiclePhoto: documents.vehiclePhoto,
         selfieWithCNIC: documents.selfieWithCNIC,
         selfiePhoto: documents.selfiePhoto
-      };
+      } as DriverDocument;
       
       await onSubmit(completeFormData);
     } catch (error) {

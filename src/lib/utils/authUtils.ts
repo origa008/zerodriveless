@@ -1,10 +1,78 @@
+import { supabase } from '@/integrations/supabase/client';
+import { useNavigate } from 'react-router-dom';
+import { User } from '@/lib/types';
 
-import { supabase } from "@/integrations/supabase/client";
-import { User } from "@/lib/types";
-import { toast } from "@/hooks/use-toast";
-import { Database } from "@/integrations/supabase/types";
+/**
+ * Signs up a user with email and password
+ * @param email User's email
+ * @param password User's password
+ * @returns The newly created user or error
+ */
+export async function signUp(email: string, password: string, name?: string): Promise<{ user: User | null; error: string | null }> {
+  try {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          name,
+        },
+      },
+    });
 
-type ProfileRow = Database['public']['Tables']['profiles']['Row'];
+    if (error) {
+      throw error;
+    }
+
+    // Return simplified user object
+    return {
+      user: {
+        id: data.user?.id || '',
+        email: data.user?.email || '',
+        name: name || data.user?.user_metadata?.name,
+        isLoggedIn: true,
+        referralCode: ''
+      },
+      error: null,
+    };
+  } catch (error: any) {
+    console.error('Error signing up:', error.message);
+    return {
+      user: null,
+      error: error.message,
+    };
+  }
+}
+
+/**
+ * Updates a user's profile
+ * @param userId User's ID
+ * @param profileData Profile data to update
+ * @returns Success or error message
+ */
+export async function updateUserProfile(
+  userId: string,
+  profileData: { name?: string; phone?: string; avatar?: string; address?: string }
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        name: profileData.name,
+        phone: profileData.phone,
+        avatar: profileData.avatar,
+        address: profileData.address
+      })
+      .eq('id', userId);
+
+    if (error) throw error;
+
+    return { success: true, error: null };
+  } catch (error: any) {
+    console.error('Error updating profile:', error.message);
+    return { success: false, error: error.message };
+  }
+}
 
 /**
  * Signs up a new user with email and password
