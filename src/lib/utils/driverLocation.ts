@@ -1,21 +1,22 @@
 import { supabase } from '@/integrations/supabase/client';
+import { DriverDetails } from '@/types/database';
 
-export const updateDriverLocation = async (userId: string, location: [number, number]) => {
+export async function updateDriverLocation(userId: string, coordinates: [number, number]): Promise<boolean> {
   try {
     const { error } = await supabase
       .from('driver_details')
-      .update({ current_location: { coordinates: location } })
+      .update({ current_location: `ST_SetSRID(ST_MakePoint(${coordinates[0]}, ${coordinates[1]}), 4326)` })
       .eq('user_id', userId);
 
     if (error) throw error;
     return true;
   } catch (error) {
     console.error('Error updating driver location:', error);
-    throw error;
+    return false;
   }
 };
 
-export const getDriverLocation = async (userId: string) => {
+export async function getDriverLocation(userId: string): Promise<[number, number] | null> {
   try {
     const { data, error } = await supabase
       .from('driver_details')
@@ -24,9 +25,15 @@ export const getDriverLocation = async (userId: string) => {
       .single();
 
     if (error) throw error;
-    return data.current_location?.coordinates || null;
+
+    if (!data?.current_location) return null;
+
+    // Convert geometry point to coordinates
+    const point = data.current_location as DriverDetails['current_location'];
+    const coordinates = [point.x, point.y] as [number, number];
+    return coordinates;
   } catch (error) {
     console.error('Error getting driver location:', error);
-    throw error;
+    return null;
   }
 };
