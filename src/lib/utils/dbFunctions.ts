@@ -665,7 +665,13 @@ export const acceptRideRequestSafe = async (
         rideVehicleName = undefined;
       }
     } else if (rideOption && typeof rideOption === 'object') {
-      rideVehicleName = rideOption?.name?.toLowerCase();
+      // Fix for error at line 668: Check if it's an array first
+      if (Array.isArray(rideOption)) {
+        rideVehicleName = undefined;
+      } else {
+        // Now TypeScript knows this is an object, not an array
+        rideVehicleName = (rideOption as {name?: string})?.name?.toLowerCase();
+      }
     }
 
     if (driverDetails.vehicle_type.toLowerCase() !== (rideVehicleName || '')) {
