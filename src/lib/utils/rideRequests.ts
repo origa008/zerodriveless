@@ -1,6 +1,6 @@
 
 import { supabase } from '@/integrations/supabase/client';
-import { RideRequest } from '@/lib/types';
+import { RideRequest, RideOption, Location } from '@/lib/types';
 
 /**
  * Get nearby ride requests for drivers
@@ -67,9 +67,114 @@ export async function getNearbyRideRequests(
           pickupCoords
         );
         
+        // Create proper RideOption object
+        let rideOptionData: RideOption = {
+          id: '1',
+          name: 'Standard',
+          type: 'car',
+          basePrice: ride.price || 0
+        };
+        
+        // Try to parse ride_option if it exists
+        if (ride.ride_option) {
+          if (typeof ride.ride_option === 'string') {
+            try {
+              const parsed = JSON.parse(ride.ride_option);
+              if (parsed) {
+                rideOptionData = {
+                  id: parsed.id || '1',
+                  name: parsed.name || 'Standard',
+                  type: parsed.type || 'car',
+                  basePrice: parsed.basePrice || ride.price || 0,
+                  price: parsed.price,
+                  currency: parsed.currency,
+                  description: parsed.description,
+                  capacity: parsed.capacity,
+                  duration: parsed.duration,
+                  eta: parsed.eta,
+                  image: parsed.image
+                };
+              }
+            } catch (e) {
+              console.error("Error parsing ride_option:", e);
+            }
+          } else if (typeof ride.ride_option === 'object' && ride.ride_option !== null) {
+            const opt = ride.ride_option as any;
+            rideOptionData = {
+              id: opt.id || '1',
+              name: opt.name || 'Standard',
+              type: opt.type || 'car',
+              basePrice: opt.basePrice || ride.price || 0,
+              price: opt.price,
+              currency: opt.currency,
+              description: opt.description,
+              capacity: opt.capacity,
+              duration: opt.duration,
+              eta: opt.eta,
+              image: opt.image
+            };
+          }
+        }
+
+        // Extract location name
+        let pickupName = "Unknown";
+        if (ride.pickup_location) {
+          if (typeof ride.pickup_location === 'string') {
+            try {
+              const parsed = JSON.parse(ride.pickup_location);
+              pickupName = parsed?.name || "Unknown";
+            } catch (e) {
+              console.error("Error parsing location:", e);
+            }
+          } else if (typeof ride.pickup_location === 'object' && ride.pickup_location !== null) {
+            pickupName = ride.pickup_location.name || "Unknown";
+          }
+        }
+        
+        // Create pickup location
+        const pickup: Location = {
+          name: pickupName,
+          coordinates: pickupCoords as [number, number]
+        };
+        
+        // Extract dropoff coordinates
+        let dropoffCoords: [number, number] = [0, 0];
+        let dropoffName = "Unknown";
+        
+        if (ride.dropoff_location) {
+          if (typeof ride.dropoff_location === 'string') {
+            try {
+              const parsed = JSON.parse(ride.dropoff_location);
+              if (parsed && parsed.coordinates) {
+                dropoffCoords = parsed.coordinates;
+              }
+              dropoffName = parsed?.name || "Unknown";
+            } catch (e) {
+              console.error("Error parsing location:", e);
+            }
+          } else if (typeof ride.dropoff_location === 'object' && ride.dropoff_location !== null) {
+            const locationObj = ride.dropoff_location as any;
+            if (Array.isArray(locationObj.coordinates)) {
+              dropoffCoords = locationObj.coordinates;
+            } else if (locationObj.longitude !== undefined && locationObj.latitude !== undefined) {
+              dropoffCoords = [locationObj.longitude, locationObj.latitude];
+            }
+            dropoffName = locationObj.name || "Unknown";
+          }
+        }
+        
+        // Create dropoff location
+        const dropoff: Location = {
+          name: dropoffName,
+          coordinates: dropoffCoords as [number, number]
+        };
+        
         return {
           ...ride,
-          distance: parseFloat(distance.toFixed(2))
+          pickup,
+          dropoff,
+          ride_option: rideOptionData,
+          distance_to_pickup: parseFloat(distance.toFixed(2))
         };
       } catch (err) {
         console.error("Error processing ride:", err);
@@ -79,8 +184,8 @@ export async function getNearbyRideRequests(
     
     // Filter by distance and sort by nearest
     const nearbyRides = ridesWithDistance
-      .filter(ride => ride && ride.distance <= radiusInKm)
-      .sort((a, b) => a.distance - b.distance);
+      .filter(ride => ride && ride.distance_to_pickup <= radiusInKm)
+      .sort((a, b) => a.distance_to_pickup - b.distance_to_pickup);
     
     return nearbyRides;
   } catch (error) {

@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Clock, MapPin, User, ArrowLeft, AlertTriangle, CheckCircle, Loader } from 'lucide-react';
-import { RideRequest } from '@/lib/types';
+import { RideRequest, RideOption, Location } from '@/lib/types';
 import { supabase } from '@/integrations/supabase/client';
 import { useLocationTracking } from '@/hooks/useLocationTracking';
 
@@ -270,8 +270,59 @@ const RideRequests: React.FC = () => {
           [pickupLng, pickupLat]
         );
         
+        // Create a properly typed RideOption
+        let rideOptionData: RideOption = {
+          id: '1',
+          name: 'Standard',
+          type: 'car',
+          basePrice: ride.price || 0
+        };
+        
+        // Try to parse ride_option if it exists
+        if (ride.ride_option) {
+          if (typeof ride.ride_option === 'string') {
+            try {
+              const parsed = JSON.parse(ride.ride_option);
+              if (parsed) {
+                rideOptionData = {
+                  id: parsed.id || '1',
+                  name: parsed.name || 'Standard',
+                  type: parsed.type || 'car',
+                  basePrice: parsed.basePrice || ride.price || 0,
+                  // Add optional fields if they exist
+                  price: parsed.price,
+                  currency: parsed.currency,
+                  description: parsed.description,
+                  capacity: parsed.capacity,
+                  duration: parsed.duration,
+                  eta: parsed.eta,
+                  image: parsed.image
+                };
+              }
+            } catch (e) {
+              console.error("Error parsing ride_option:", e);
+            }
+          } else if (typeof ride.ride_option === 'object' && ride.ride_option !== null) {
+            const opt = ride.ride_option as any;
+            rideOptionData = {
+              id: opt.id || '1',
+              name: opt.name || 'Standard',
+              type: opt.type || 'car',
+              basePrice: opt.basePrice || ride.price || 0,
+              // Add optional fields if they exist
+              price: opt.price,
+              currency: opt.currency,
+              description: opt.description,
+              capacity: opt.capacity,
+              duration: opt.duration,
+              eta: opt.eta,
+              image: opt.image
+            };
+          }
+        }
+        
         // Convert to RideRequest type
-        return {
+        const rideRequest: RideRequest = {
           id: ride.id,
           passenger_id: ride.passenger_id,
           driver_id: ride.driver_id,
@@ -285,12 +336,7 @@ const RideRequests: React.FC = () => {
           },
           pickup_location: ride.pickup_location,
           dropoff_location: ride.dropoff_location,
-          ride_option: typeof ride.ride_option === 'object' ? ride.ride_option : { 
-            id: '1', 
-            name: 'Standard',
-            type: 'car',
-            basePrice: ride.price || 0
-          },
+          ride_option: rideOptionData,
           status: ride.status,
           price: ride.price,
           currency: ride.currency,
@@ -303,6 +349,8 @@ const RideRequests: React.FC = () => {
           passenger: ride.passenger,
           distance_to_pickup: Number(distanceToPickup.toFixed(1))
         };
+        
+        return rideRequest;
       });
       
       // Sort by distance to pickup
@@ -310,9 +358,8 @@ const RideRequests: React.FC = () => {
         (a.distance_to_pickup || 0) - (b.distance_to_pickup || 0)
       );
       
-      // Make sure all rides have proper Location objects
-      const typeSafeRides: RideRequest[] = nearbyRides;
-      setRideRequests(typeSafeRides);
+      // Set ride requests
+      setRideRequests(nearbyRides);
     } catch (err) {
       console.error("Error fetching ride requests:", err);
       toast({
@@ -388,6 +435,57 @@ const RideRequests: React.FC = () => {
       const pickupCoords = extractCoordinates(acceptedRide.pickup_location);
       const dropoffCoords = extractCoordinates(acceptedRide.dropoff_location);
       
+      // Create a properly typed RideOption
+      let rideOptionData: RideOption = {
+        id: '1',
+        name: 'Standard',
+        type: 'car',
+        basePrice: acceptedRide.price || 0
+      };
+      
+      // Try to parse ride_option if it exists
+      if (acceptedRide.ride_option) {
+        if (typeof acceptedRide.ride_option === 'string') {
+          try {
+            const parsed = JSON.parse(acceptedRide.ride_option);
+            if (parsed) {
+              rideOptionData = {
+                id: parsed.id || '1',
+                name: parsed.name || 'Standard',
+                type: parsed.type || 'car',
+                basePrice: parsed.basePrice || acceptedRide.price || 0,
+                // Add optional fields if they exist
+                price: parsed.price,
+                currency: parsed.currency,
+                description: parsed.description,
+                capacity: parsed.capacity,
+                duration: parsed.duration,
+                eta: parsed.eta,
+                image: parsed.image
+              };
+            }
+          } catch (e) {
+            console.error("Error parsing ride_option:", e);
+          }
+        } else if (typeof acceptedRide.ride_option === 'object' && acceptedRide.ride_option !== null) {
+          const opt = acceptedRide.ride_option as any;
+          rideOptionData = {
+            id: opt.id || '1',
+            name: opt.name || 'Standard',
+            type: opt.type || 'car', 
+            basePrice: opt.basePrice || acceptedRide.price || 0,
+            // Add optional fields if they exist
+            price: opt.price,
+            currency: opt.currency,
+            description: opt.description,
+            capacity: opt.capacity,
+            duration: opt.duration,
+            eta: opt.eta,
+            image: opt.image
+          };
+        }
+      }
+      
       // Set as current ride in context
       const currentRide = {
         id: acceptedRide.id,
@@ -399,12 +497,7 @@ const RideRequests: React.FC = () => {
           name: extractLocationName(acceptedRide.dropoff_location),
           coordinates: dropoffCoords ? dropoffCoords as [number, number] : [0, 0] as [number, number]
         },
-        rideOption: typeof acceptedRide.ride_option === 'object' ? acceptedRide.ride_option : { 
-          id: '1', 
-          name: 'Standard',
-          type: 'car',
-          basePrice: acceptedRide.price || 0
-        },
+        rideOption: rideOptionData,
         price: acceptedRide.price,
         distance: acceptedRide.distance,
         duration: acceptedRide.duration,
@@ -616,9 +709,7 @@ const RideRequests: React.FC = () => {
               <div className="p-4">
                 <div className="flex justify-between items-start mb-4">
                   <Badge className="bg-blue-500">
-                    {typeof ride.ride_option === 'object' && ride.ride_option !== null && !Array.isArray(ride.ride_option) && 'name' in ride.ride_option
-                      ? ride.ride_option.name
-                      : 'Standard'}
+                    {ride.ride_option.name || 'Standard'}
                   </Badge>
                   <div className="text-right">
                     <p className="font-bold text-lg">{ride.price} {ride.currency || 'RS'}</p>

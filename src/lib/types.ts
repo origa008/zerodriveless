@@ -1,3 +1,4 @@
+
 // Basic types for the ride application
 
 export type Location = {
@@ -165,7 +166,7 @@ export interface RideRequest {
   dropoff: Location;
   pickup_location?: any; // For backward compatibility
   dropoff_location?: any; // For backward compatibility 
-  ride_option: RideOption;
+  ride_option: RideOption; // Change this from any to RideOption
   status: 'searching' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
   price: number;
   currency: string;
