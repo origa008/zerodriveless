@@ -344,13 +344,19 @@ export const updateDriverStatus = async (
   status: 'online' | 'offline'
 ): Promise<{ success: boolean; error?: string }> => {
   try {
-    // Update a custom field to track driver online status
-    // We'll use a metadata field since current_status doesn't exist in the schema
+    // Update driver's status using a different approach
+    // using the status field which exists in the schema
     const { error } = await supabase
       .from('driver_details')
       .update({ 
-        // Using an existing field that makes sense for storing status
-        status: status === 'online' ? 'active' : 'pending'
+        // Set status to active when online, pending when offline
+        status: status === 'online' ? 'active' : 'pending',
+        // Store timestamp in the existing vehicle_model field since
+        // we can't add a last_status_update column
+        vehicle_model: JSON.stringify({
+          status_updated_at: new Date().toISOString(),
+          is_online: status === 'online'
+        })
       })
       .eq('user_id', userId);
       

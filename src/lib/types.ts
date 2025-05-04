@@ -1,4 +1,3 @@
-
 // Basic types for the ride application
 
 export type Location = {
@@ -55,13 +54,15 @@ export type DriverDetails = {
   vehicle_color?: string;
   vehicle_registration_number: string;
   driver_license_number?: string;
-  status: 'pending' | 'approved' | 'rejected';
+  status: 'pending' | 'approved' | 'rejected' | 'active' | 'offline';
   has_sufficient_deposit: boolean;
   deposit_amount_required: number;
   created_at: string;
   approval_date?: string;
   current_status?: string;
   last_status_update?: string;
+  // Add this to help TypeScript understand the structure we're using
+  vehicle_model_json?: string; // Used to store location as JSON
 };
 
 // Create hook for location tracking
@@ -120,6 +121,8 @@ export type User = {
   isVerifiedDriver?: boolean;
   driverStatus?: string;
   hasDriverDeposit?: boolean;
+  is_online?: boolean; // Adding to fix type errors
+  is_verified_driver?: boolean; // Adding to fix type errors
 };
 
 export type Post = {
@@ -175,3 +178,20 @@ export interface RideRequest {
   bid_amount?: number;
   passenger?: any;
 };
+
+// Type for Json handling in supabase
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
+
+// Adding a helper type for location JSON parsing
+export type JsonLocation = {
+  name?: string;
+  coordinates?: [number, number];
+  address?: string;
+};
+
+// RideContextType with updateWalletBalance
+export interface RideContextType {
+  // ... existing properties
+  updateWalletBalance?: (amount: number) => Promise<boolean>;
+  // other missing properties can be added here
+}

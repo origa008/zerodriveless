@@ -1,138 +1,78 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { useToast } from '@/hooks/use-toast';
+import { useEffect, useState } from 'react';
+import { useAuth } from '@/lib/context/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from '@/hooks/use-toast';
+import { useNavigate } from 'react-router-dom';
 
-const RegisterDriver: React.FC = () => {
+const RegisterDriver = () => {
+  const { user } = useAuth();
+  const [driverDetails, setDriverDetails] = useState(null);
   const navigate = useNavigate();
-  const { toast } = useToast();
-  const [formData, setFormData] = useState({
-    vehicleType: '',
-    licensePlate: '',
-    drivingLicense: '',
-    securityDeposit: 0,
-  });
-  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
-        throw new Error('User not authenticated');
-      }
-
-      // Create driver profile
-      const { error: driverError } = await supabase
-        .from('drivers')
-        .insert([
-          {
-            user_id: user.id,
-            vehicle_type: formData.vehicleType,
-            license_plate: formData.licensePlate,
-            driving_license: formData.drivingLicense,
-            security_deposit: formData.securityDeposit,
-            status: 'pending',
-          }
-        ]);
-
-      if (driverError) {
-        throw driverError;
-      }
-
-      toast({
-        title: 'Registration submitted',
-        description: 'Your driver registration has been submitted for review. You will be notified once approved.',
-      });
-
-      // Redirect to ride requests
-      navigate('/ride-requests');
-    } catch (error: any) {
-      console.error('Driver registration error:', error);
-      toast({
-        title: 'Registration failed',
-        description: error.message || 'Failed to register as driver',
-        variant: 'destructive'
-      });
-    } finally {
-      setIsLoading(false);
+  useEffect(() => {
+    if (!user) {
+      navigate('/login');
+      return;
     }
-  };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-  };
+    const fetchDriverDetails = async () => {
+      const { data: driverDetails, error } = await supabase
+        .from('driver_details')  // Changed from 'drivers' to 'driver_details'
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+
+      if (error) {
+        console.error('Error fetching driver details:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to fetch driver details.',
+          variant: 'destructive',
+        });
+      } else {
+        setDriverDetails(driverDetails);
+      }
+    };
+
+    fetchDriverDetails();
+  }, [user, navigate]);
+
+  if (!user) {
+    return null;
+  }
 
   return (
-    <div className="min-h-screen bg-white p-4">
-      <Card className="max-w-md mx-auto">
+    <div className="container mx-auto mt-10">
+      <Card className="w-full max-w-md mx-auto">
         <CardHeader>
-          <CardTitle>Register as Driver</CardTitle>
+          <CardTitle>Driver Registration Status</CardTitle>
+          <CardDescription>
+            View your driver registration status and complete the process.
+          </CardDescription>
         </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <Label>Vehicle Type</Label>
-              <Input
-                name="vehicleType"
-                value={formData.vehicleType}
-                onChange={handleChange}
-                placeholder="e.g., Sedan, SUV, etc."
-                required
-              />
-            </div>
-            
-            <div>
-              <Label>License Plate</Label>
-              <Input
-                name="licensePlate"
-                value={formData.licensePlate}
-                onChange={handleChange}
-                placeholder="e.g., ABC-1234"
-                required
-              />
-            </div>
-            
-            <div>
-              <Label>Driving License Number</Label>
-              <Input
-                name="drivingLicense"
-                value={formData.drivingLicense}
-                onChange={handleChange}
-                placeholder="Enter your driving license number"
-                required
-              />
-            </div>
-            
-            <div>
-              <Label>Security Deposit (₹)</Label>
-              <Input
-                name="securityDeposit"
-                type="number"
-                value={formData.securityDeposit}
-                onChange={handleChange}
-                placeholder="Enter security deposit amount"
-                required
-                min="1000"
-              />
-            </div>
-            
-            <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? 'Submitting...' : 'Submit Registration'}
-            </Button>
-          </form>
+        <CardContent className="grid gap-4">
+          {driverDetails ? (
+            <>
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Status:</p>
+                <p className="text-gray-600">{driverDetails.status}</p>
+              </div>
+              <Button onClick={() => navigate('/official-driver')}>
+                View Application
+              </Button>
+            </>
+          ) : (
+            <>
+              <p className="text-gray-600">
+                You have not yet started the driver registration process.
+              </p>
+              <Button onClick={() => navigate('/official-driver')}>
+                Start Application
+              </Button>
+            </>
+          )}
         </CardContent>
       </Card>
     </div>

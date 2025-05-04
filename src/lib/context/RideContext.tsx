@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { rideOptions as defaultRideOptions } from '../utils/mockData'; 
 import { useAuth } from './AuthContext';
@@ -42,6 +41,7 @@ interface RideContextType {
   cancelRide: (rideId: string, reason?: string) => Promise<boolean>;
   rideTimer: number;
   isRideTimerActive: boolean;
+  updateWalletBalance: (amount: number) => Promise<boolean>;
 }
 
 // Create context with default values
@@ -77,7 +77,8 @@ const RideContext = createContext<RideContextType>({
   completeRide: async () => false,
   cancelRide: async () => false,
   rideTimer: 0,
-  isRideTimerActive: false
+  isRideTimerActive: false,
+  updateWalletBalance: async () => false,
 });
 
 // Provider component
@@ -406,8 +407,8 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [rideTimerId]);
 
-  // Context value
-  const contextValue = {
+  // Add the updateWalletBalance implementation to the provider value
+  const value = {
     isDriverMode,
     setDriverMode: setIsDriverMode,
     currentRide,
@@ -439,10 +440,26 @@ export const RideProvider: React.FC<{ children: React.ReactNode }> = ({ children
     completeRide,
     cancelRide,
     rideTimer,
-    isRideTimerActive
+    isRideTimerActive,
+    updateWalletBalance: async (amount: number) => {
+      try {
+        if (!user?.id) return false;
+        
+        const { error } = await supabase.rpc(
+          'add_to_wallet',
+          { user_id: user.id, amount }
+        );
+        
+        if (error) throw error;
+        return true;
+      } catch (error) {
+        console.error('Error updating wallet balance:', error);
+        return false;
+      }
+    },
   };
 
-  return <RideContext.Provider value={contextValue}>{children}</RideContext.Provider>;
+  return <RideContext.Provider value={value}>{children}</RideContext.Provider>;
 };
 
 // Custom hook

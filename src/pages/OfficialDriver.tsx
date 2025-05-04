@@ -53,6 +53,24 @@ const OfficialDriver: React.FC = () => {
     selfieWithCNIC?: string;
     selfiePhoto?: string;
   }>({});
+  const initialDocumentState: DriverDocument = {
+    id: '',
+    type: 'driver_application',
+    file: null,
+    preview: null,
+    status: 'pending',
+    fullName: '',
+    phoneNumber: '',
+    cnicNumber: '',
+    vehicleType: '',
+    vehicleRegistrationNumber: '',
+    vehicleModel: '',
+    vehicleColor: '',
+    driverLicenseNumber: '',
+    address: '',
+    agreedToTerms: false
+  };
+
   const checkRegistrationStatus = useCallback(async () => {
     if (!user?.id) return;
     console.log("Checking driver registration status for user:", user.id);

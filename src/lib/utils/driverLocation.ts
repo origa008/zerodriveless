@@ -14,34 +14,23 @@ export async function updateDriverLocation(
   const [longitude, latitude] = coordinates;
   
   try {
-    // Since current_location doesn't exist in the schema, we need to modify our approach
-    // We'll use a JSON column that does exist in the schema, or handle this differently
     console.log(`Updating driver location for ${driverId}: [${longitude}, ${latitude}]`);
     
-    // Update driver's location using a different approach
-    const { error } = await supabase.rpc('update_driver_location', { 
-      driver_user_id: driverId,
-      longitude,
-      latitude 
-    }).maybeSingle();
+    // Since the RPC function doesn't exist and current_location isn't in the schema,
+    // We'll store the location in the vehicle_model field as a JSON string
+    const locationData = JSON.stringify({ lng: longitude, lat: latitude });
+    
+    const { error } = await supabase
+      .from('driver_details')
+      .update({
+        // Store as serialized JSON in the vehicle_model field
+        vehicle_model: locationData
+      })
+      .eq('user_id', driverId);
       
     if (error) {
-      // If RPC function doesn't exist, fallback to simple update
-      console.log('RPC not available, using fallback method');
-      
-      // Try to update with standard method (we assume there's a compatible column)
-      const { error: fallbackError } = await supabase
-        .from('driver_details')
-        .update({
-          // Store as serialized JSON in an existing text field since we don't have current_location column
-          vehicle_model: JSON.stringify({ lng: longitude, lat: latitude })
-        })
-        .eq('user_id', driverId);
-        
-      if (fallbackError) {
-        console.error('Error updating driver location:', fallbackError);
-        return false;
-      }
+      console.error('Error updating driver location:', error);
+      return false;
     }
     
     return true;
