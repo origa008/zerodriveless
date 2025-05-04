@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { Location, RideOption, JsonLocation, Json } from '../types';
 
@@ -446,14 +445,19 @@ export const getNearbyPendingRides = async (
       if (typeof rideOption === 'string') {
         try {
           const parsed = JSON.parse(rideOption);
-          rideVehicleType = parsed && parsed.name ? parsed.name.toLowerCase() : undefined;
+          rideVehicleType = parsed && typeof parsed === 'object' && 'name' in parsed ? 
+            parsed.name?.toLowerCase() : undefined;
         } catch (e) {
           rideVehicleType = undefined;
         }
       } else if (rideOption && typeof rideOption === 'object') {
-        if ('name' in rideOption) {
-          // Handle as object with name property
-          rideVehicleType = (rideOption as any).name?.toLowerCase();
+        // Handle as object - safely check if it's an array or object with name property
+        if (Array.isArray(rideOption)) {
+          // If it's an array, we can't directly access .name
+          rideVehicleType = undefined;
+        } else if ('name' in rideOption) {
+          // Now TypeScript knows this is an object with a name property
+          rideVehicleType = (rideOption as {name?: string}).name?.toLowerCase();
         }
       }
       
