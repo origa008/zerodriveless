@@ -1,4 +1,3 @@
-
 // Basic types for the ride application
 
 export type Location = {

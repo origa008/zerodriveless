@@ -231,7 +231,8 @@ const RideRequests: React.FC = () => {
           } else if (ride.ride_option && typeof ride.ride_option === 'object') {
             // Handle as object with proper type check 
             if (!Array.isArray(ride.ride_option) && ride.ride_option.type) {
-              rideVehicleType = ride.ride_option.type.toLowerCase();
+              const typeValue = ride.ride_option.type;
+              rideVehicleType = typeof typeValue === 'string' ? typeValue.toLowerCase() : "";
             }
           }
         }
@@ -261,6 +262,8 @@ const RideRequests: React.FC = () => {
         const pickupCoords = extractCoordinates(ride.pickup_location);
         const [pickupLng, pickupLat] = pickupCoords || [0, 0];
         
+        const dropoffCoords = extractCoordinates(ride.dropoff_location);
+        
         // Calculate distance to pickup
         const distanceToPickup = calculateDistance(
           [coordinates[0], coordinates[1]], // [longitude, latitude] 
@@ -274,15 +277,20 @@ const RideRequests: React.FC = () => {
           driver_id: ride.driver_id,
           pickup: {
             name: extractLocationName(ride.pickup_location),
-            coordinates: [pickupLng, pickupLat]
+            coordinates: [pickupLng, pickupLat] as [number, number]
           },
           dropoff: {
             name: extractLocationName(ride.dropoff_location),
-            coordinates: extractCoordinates(ride.dropoff_location) || [0, 0]
+            coordinates: dropoffCoords ? dropoffCoords as [number, number] : [0, 0] as [number, number]
           },
           pickup_location: ride.pickup_location,
           dropoff_location: ride.dropoff_location,
-          ride_option: ride.ride_option,
+          ride_option: typeof ride.ride_option === 'object' ? ride.ride_option : { 
+            id: '1', 
+            name: 'Standard',
+            type: 'car',
+            basePrice: ride.price || 0
+          },
           status: ride.status,
           price: ride.price,
           currency: ride.currency,
@@ -302,7 +310,9 @@ const RideRequests: React.FC = () => {
         (a.distance_to_pickup || 0) - (b.distance_to_pickup || 0)
       );
       
-      setRideRequests(nearbyRides);
+      // Make sure all rides have proper Location objects
+      const typeSafeRides: RideRequest[] = nearbyRides;
+      setRideRequests(typeSafeRides);
     } catch (err) {
       console.error("Error fetching ride requests:", err);
       toast({
@@ -374,12 +384,27 @@ const RideRequests: React.FC = () => {
         throw new Error("Could not retrieve updated ride information");
       }
       
+      // Extract location details
+      const pickupCoords = extractCoordinates(acceptedRide.pickup_location);
+      const dropoffCoords = extractCoordinates(acceptedRide.dropoff_location);
+      
       // Set as current ride in context
       const currentRide = {
         id: acceptedRide.id,
-        pickup: acceptedRide.pickup_location,
-        dropoff: acceptedRide.dropoff_location,
-        rideOption: acceptedRide.ride_option,
+        pickup: {
+          name: extractLocationName(acceptedRide.pickup_location),
+          coordinates: pickupCoords ? pickupCoords as [number, number] : [0, 0] as [number, number]
+        },
+        dropoff: {
+          name: extractLocationName(acceptedRide.dropoff_location),
+          coordinates: dropoffCoords ? dropoffCoords as [number, number] : [0, 0] as [number, number]
+        },
+        rideOption: typeof acceptedRide.ride_option === 'object' ? acceptedRide.ride_option : { 
+          id: '1', 
+          name: 'Standard',
+          type: 'car',
+          basePrice: acceptedRide.price || 0
+        },
         price: acceptedRide.price,
         distance: acceptedRide.distance,
         duration: acceptedRide.duration,
