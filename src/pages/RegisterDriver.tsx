@@ -20,7 +20,7 @@ const RegisterDriver = () => {
 
     const fetchDriverDetails = async () => {
       const { data: driverDetails, error } = await supabase
-        .from('driver_details')  // Changed from 'drivers' to 'driver_details'
+        .from('driver_details')
         .select('*')
         .eq('user_id', user.id)
         .single();

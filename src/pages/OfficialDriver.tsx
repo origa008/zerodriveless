@@ -6,6 +6,26 @@ import { useToast } from '@/hooks/use-toast';
 import { submitDriverRegistration, uploadDriverDocument, getDriverRegistrationStatus, subscribeToDriverRegistration } from '@/lib/utils/driverUtils';
 import { DriverDocument } from '@/lib/types';
 import { UserRound, ArrowLeft, Check, AlertTriangle, CheckCircle, Car, Bike, FileText, Upload, Loader2, X, ArrowRight, Clock, ShieldAlert, ShieldCheck } from 'lucide-react';
+
+// Define initialDocumentState first before using it
+const initialDocumentState: DriverDocument = {
+  id: '',
+  type: 'driver_application',
+  file: null,
+  preview: null,
+  status: 'pending',
+  fullName: '',
+  phoneNumber: '',
+  cnicNumber: '',
+  vehicleType: '',
+  vehicleRegistrationNumber: '',
+  vehicleModel: '',
+  vehicleColor: '',
+  driverLicenseNumber: '',
+  address: '',
+  agreedToTerms: false
+};
+
 const OfficialDriver: React.FC = () => {
   const navigate = useNavigate();
   const {
@@ -42,23 +62,6 @@ const OfficialDriver: React.FC = () => {
     selfieWithCNIC?: string;
     selfiePhoto?: string;
   }>({});
-  const initialDocumentState: DriverDocument = {
-    id: '',
-    type: 'driver_application',
-    file: null,
-    preview: null,
-    status: 'pending',
-    fullName: '',
-    phoneNumber: '',
-    cnicNumber: '',
-    vehicleType: '',
-    vehicleRegistrationNumber: '',
-    vehicleModel: '',
-    vehicleColor: '',
-    driverLicenseNumber: '',
-    address: '',
-    agreedToTerms: false
-  };
 
   const checkRegistrationStatus = useCallback(async () => {
     if (!user?.id) return;

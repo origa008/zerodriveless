@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { Location, RideOption, JsonLocation, Json } from '../types';
 
@@ -445,12 +446,15 @@ export const getNearbyPendingRides = async (
       if (typeof rideOption === 'string') {
         try {
           const parsed = JSON.parse(rideOption);
-          rideVehicleType = parsed?.name?.toLowerCase();
+          rideVehicleType = parsed && parsed.name ? parsed.name.toLowerCase() : undefined;
         } catch (e) {
           rideVehicleType = undefined;
         }
       } else if (rideOption && typeof rideOption === 'object') {
-        rideVehicleType = rideOption?.name?.toLowerCase();
+        if ('name' in rideOption) {
+          // Handle as object with name property
+          rideVehicleType = (rideOption as any).name?.toLowerCase();
+        }
       }
       
       if (!rideVehicleType || rideVehicleType !== driverDetails.vehicle_type.toLowerCase()) {
@@ -583,22 +587,21 @@ export const acceptRideRequestSafe = async (
 
     if (profileError) throw profileError;
 
-    // Check if driver is online and verified
-    // Since is_online and is_verified_driver might not exist in profiles table
-    const isOnline = profile?.is_online === true;
+    // Check if driver is verified, we can't use is_online since it doesn't exist
+    // Use is_verified_driver which should exist in profiles table
     const isVerifiedDriver = profile?.is_verified_driver === true;
 
-    if (!isOnline || !isVerifiedDriver) {
+    if (!isVerifiedDriver) {
       return { 
         success: false, 
-        error: 'Driver must be online and verified to accept rides' 
+        error: 'Driver must be verified to accept rides' 
       };
     }
 
     // Get driver details
     const { data: driverDetails, error: detailsError } = await supabase
       .from('driver_details')
-      .select('vehicle_type, status, has_sufficient_deposit')
+      .select('vehicle_type, status, vehicle_model')
       .eq('user_id', driverId)
       .single();
 
@@ -611,8 +614,20 @@ export const acceptRideRequestSafe = async (
       };
     }
 
-    // Check for has_sufficient_deposit property, handle if it doesn't exist
-    const hasSufficientDeposit = driverDetails.has_sufficient_deposit === true;
+    // Check for has_sufficient_deposit property from vehicle_model field
+    let hasSufficientDeposit = false;
+    try {
+      if (driverDetails.vehicle_model) {
+        if (typeof driverDetails.vehicle_model === 'string') {
+          const vehicleModel = JSON.parse(driverDetails.vehicle_model);
+          hasSufficientDeposit = vehicleModel?.has_sufficient_deposit === true;
+        } else if (typeof driverDetails.vehicle_model === 'object') {
+          hasSufficientDeposit = (driverDetails.vehicle_model as any)?.has_sufficient_deposit === true;
+        }
+      }
+    } catch (e) {
+      console.error('Error parsing vehicle_model:', e);
+    }
 
     if (!hasSufficientDeposit) {
       return { 
@@ -868,7 +883,12 @@ function extractLocationName(locationData: any): string {
       }
     }
     
-    return locationData.name || "Unknown";
+    // Check if name exists directly on the object
+    if (typeof locationData === 'object' && locationData !== null && 'name' in locationData) {
+      return locationData.name || "Unknown";
+    }
+    
+    return "Unknown";
   } catch (e) {
     return "Unknown";
   }
@@ -919,7 +939,9 @@ export const isEligibleDriver = async (userId: string): Promise<boolean | { succ
       // Update driver_details to reflect deposit status
       await supabase
         .from('driver_details')
-        .update({ vehicle_model: JSON.stringify({ has_sufficient_deposit: false }) })
+        .update({ 
+          vehicle_model: JSON.stringify({ has_sufficient_deposit: false })
+        })
         .eq('user_id', userId);
 
       return { 
@@ -929,15 +951,13 @@ export const isEligibleDriver = async (userId: string): Promise<boolean | { succ
     }
 
     // Update deposit status if it was previously insufficient
-    const driverJson = driver?.has_sufficient_deposit === false ? 
-      { has_sufficient_deposit: true } : undefined;
-      
-    if (driverJson) {
-      await supabase
-        .from('driver_details')
-        .update({ vehicle_model: JSON.stringify(driverJson) })
-        .eq('user_id', userId);
-    }
+    // Store this in the vehicle_model JSON
+    await supabase
+      .from('driver_details')
+      .update({ 
+        vehicle_model: JSON.stringify({ has_sufficient_deposit: true })
+      })
+      .eq('user_id', userId);
 
     return hasEnoughDeposit;
   } catch (error) {
