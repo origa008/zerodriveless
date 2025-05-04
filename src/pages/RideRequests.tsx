@@ -7,10 +7,14 @@ import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Clock, MapPin, User, Phone, Star, ArrowLeft } from 'lucide-react';
-import { calculateDistance } from '@/lib/utils/rideRequests';
+import { Clock, MapPin, User, ArrowLeft } from 'lucide-react';
 import { RideRequest } from '@/lib/types';
-import { getAvailableRideRequests, acceptRideRequest } from '@/lib/utils/rideUtils';
+import { 
+  getNearbyRideRequests, 
+  acceptRideRequestSafe, 
+  isEligibleDriver, 
+  subscribeToNewRidesInArea 
+} from '@/lib/utils/dbFunctions';
 import { useLocationTracking } from '@/hooks/useLocationTracking';
 
 const RideRequests: React.FC = () => {
@@ -24,36 +28,110 @@ const RideRequests: React.FC = () => {
   const { coordinates } = useLocationTracking();
 
   useEffect(() => {
-    // Redirect if not in driver mode
-    if (!isDriverMode) {
-      navigate('/');
-    }
+    // Start location tracking
+    const locationWatchId = navigator.geolocation.watchPosition(
+      position => {
+        console.log("Location update:", position.coords);
+      },
+      error => {
+        console.error("Location error:", error);
+        toast({
+          title: "Location Error",
+          description: "Please enable location services to use driver mode",
+          variant: "destructive"
+        });
+      },
+      { enableHighAccuracy: true }
+    );
 
-    // Check if user is eligible to be a driver
-    if (!user?.isVerifiedDriver) {
+    // Cleanup
+    return () => {
+      navigator.geolocation.clearWatch(locationWatchId);
+    };
+  }, []);
+
+  useEffect(() => {
+    // Check driver eligibility on component mount
+    const checkDriverEligibility = async () => {
+      if (!user?.id) {
+        navigate('/login');
+        return;
+      }
+
+      setLoading(true);
+      
+      try {
+        const result = await isEligibleDriver(user.id);
+        
+        if (!result.eligible) {
+          // Driver is not eligible
+          toast({
+            title: "Not Authorized",
+            description: result.reason || "You need to complete the driver registration process",
+            variant: "destructive"
+          });
+          
+          // Navigate to the appropriate page
+          navigate(result.redirectTo || '/register-driver');
+          return;
+        }
+        
+        // Driver is eligible, make sure mode is set correctly
+        setDriverMode(true);
+        
+        // Load ride requests if coordinates are available
+        if (coordinates) {
+          loadRideRequests();
+          
+          // Set up subscription for real-time updates
+          const unsubscribe = subscribeToNewRidesInArea(
+            { latitude: coordinates[1], longitude: coordinates[0] },
+            10, // 10km radius
+            (updatedRides) => {
+              console.log("Received updated rides:", updatedRides);
+              setRideRequests(updatedRides);
+            }
+          );
+          
+          // Cleanup subscription on unmount
+          return () => {
+            unsubscribe();
+          };
+        }
+      } catch (error) {
+        console.error("Error checking driver eligibility:", error);
+        toast({
+          title: "Error",
+          description: "Could not verify driver status",
+          variant: "destructive"
+        });
+        navigate('/');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    checkDriverEligibility();
+  }, [user, coordinates, navigate, setDriverMode]);
+
+  const loadRideRequests = async () => {
+    if (!coordinates) {
       toast({
-        title: "Not Authorized",
-        description: "You need to be a verified driver to access this page",
-        variant: "destructive"
+        title: "Location Required",
+        description: "Please enable location services to see ride requests",
+        variant: "default"
       });
-      navigate('/');
       return;
     }
 
-    // Load ride requests
-    loadRideRequests();
-
-    // Set up polling for new ride requests
-    const interval = setInterval(loadRideRequests, 15000);
-    return () => clearInterval(interval);
-  }, [isDriverMode, user, navigate]);
-
-  const loadRideRequests = async () => {
     setLoading(true);
+    
     try {
-      if (!user?.id) return;
-      
-      const { rides, error } = await getAvailableRideRequests(user.id);
+      const { data: rides, error } = await getNearbyRideRequests(
+        coordinates[1], // latitude
+        coordinates[0], // longitude
+        10 // 10km radius
+      );
       
       if (error) {
         console.error("Error loading ride requests:", error);
@@ -65,55 +143,70 @@ const RideRequests: React.FC = () => {
         return;
       }
       
+      console.log("Loaded rides:", rides);
       setRideRequests(rides || []);
     } catch (err) {
       console.error("Error fetching ride requests:", err);
+      toast({
+        title: "Error",
+        description: "Could not load ride requests",
+        variant: "destructive"
+      });
     } finally {
       setLoading(false);
     }
   };
 
   const handleAcceptRide = async (ride: RideRequest) => {
-    if (!user?.id || !coordinates) return;
+    if (!user?.id || !coordinates) {
+      toast({
+        title: "Error",
+        description: "Location or user information missing",
+        variant: "destructive"
+      });
+      return;
+    }
     
     setAcceptingRide(ride.id);
     
     try {
-      const { success, error } = await acceptRideRequest(ride.id, user.id, {
-        latitude: coordinates[1],
-        longitude: coordinates[0]
-      });
+      const { success, error, ride: acceptedRide } = await acceptRideRequestSafe(
+        ride.id, 
+        user.id,
+        {
+          latitude: coordinates[1],
+          longitude: coordinates[0]
+        }
+      );
       
-      if (success) {
+      if (success && acceptedRide) {
         toast({
           title: "Ride Accepted",
           description: "You have successfully accepted this ride"
         });
         
-        // Set as current ride and navigate
+        // Set as current ride
         setCurrentRide({
-          id: ride.id,
-          pickup: ride.pickup_location,
-          dropoff: ride.dropoff_location,
-          rideOption: ride.ride_option,
-          price: ride.price,
-          distance: ride.distance,
-          duration: ride.duration,
+          id: acceptedRide.id,
+          pickup: acceptedRide.pickup_location,
+          dropoff: acceptedRide.dropoff_location,
+          ride_option: acceptedRide.ride_option,
+          price: acceptedRide.price,
+          distance: acceptedRide.distance,
+          duration: acceptedRide.duration,
           status: 'confirmed',
-          paymentMethod: ride.payment_method as any,
-          currency: ride.currency,
-          // Add driver details for completeness
-          driver: {
-            id: user.id,
-            name: user.name || ""
-          }
+          paymentMethod: acceptedRide.payment_method,
+          currency: acceptedRide.currency,
+          passenger: acceptedRide.passenger,
+          // Add other details as needed
         });
         
+        // Navigate to the ride progress page
         navigate('/ride-progress');
       } else {
         toast({
           title: "Error",
-          description: error || "Failed to accept ride",
+          description: error || "Failed to accept ride. Please try again.",
           variant: "destructive"
         });
       }
@@ -162,22 +255,19 @@ const RideRequests: React.FC = () => {
           <div className="grid gap-4">
             {rideRequests.map(ride => {
               // Calculate distance between pickup and current location if available
-              let distanceToPickup = null;
-              if (coordinates && ride.pickup) {
-                const pickupLocation = ride.pickup;
-                distanceToPickup = calculateDistance(
-                  coordinates,
-                  [pickupLocation.coordinates[0], pickupLocation.coordinates[1]]
-                );
-              }
+              let distanceToPickup = ride.distance_to_pickup || null;
               
               return (
                 <Card key={ride.id} className="overflow-hidden">
                   <div className="p-4">
                     <div className="flex justify-between items-start mb-4">
-                      <Badge className="bg-blue-500">{ride.ride_option.name}</Badge>
+                      <Badge className="bg-blue-500">
+                        {typeof ride.ride_option === 'object' && ride.ride_option !== null && 'name' in ride.ride_option
+                          ? ride.ride_option.name
+                          : 'Standard'}
+                      </Badge>
                       <div className="text-right">
-                        <p className="font-bold text-lg">{ride.price} {ride.currency}</p>
+                        <p className="font-bold text-lg">{ride.price} {ride.currency || 'RS'}</p>
                         <p className="text-gray-500 text-sm">{ride.distance} km</p>
                       </div>
                     </div>
@@ -189,7 +279,11 @@ const RideRequests: React.FC = () => {
                         </div>
                         <div>
                           <p className="text-sm text-gray-500">Pickup</p>
-                          <p className="font-medium">{ride.pickup?.name}</p>
+                          <p className="font-medium">
+                            {typeof ride.pickup_location === 'object' && ride.pickup_location !== null && 'name' in ride.pickup_location
+                              ? ride.pickup_location.name
+                              : 'Pickup Location'}
+                          </p>
                         </div>
                       </div>
                       
@@ -199,7 +293,11 @@ const RideRequests: React.FC = () => {
                         </div>
                         <div>
                           <p className="text-sm text-gray-500">Dropoff</p>
-                          <p className="font-medium">{ride.dropoff?.name}</p>
+                          <p className="font-medium">
+                            {typeof ride.dropoff_location === 'object' && ride.dropoff_location !== null && 'name' in ride.dropoff_location
+                              ? ride.dropoff_location.name
+                              : 'Dropoff Location'}
+                          </p>
                         </div>
                       </div>
                     </div>

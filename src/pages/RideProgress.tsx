@@ -6,6 +6,7 @@ import { useToast } from '@/hooks/use-toast';
 import RideMap from '@/components/map/RideMap';
 import RideDetails from '@/components/ride/RideDetails';
 import { Button } from '@/components/ui/button';
+import { getRideDetails } from '@/lib/utils/dbFunctions';
 
 const RideProgress: React.FC = () => {
   const navigate = useNavigate();
@@ -15,13 +16,55 @@ const RideProgress: React.FC = () => {
   const [isCompleted, setIsCompleted] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [rideData, setRideData] = useState<any>(null);
 
   useEffect(() => {
     // Verify a ride exists
     if (!currentRide) {
       navigate('/');
+      return;
     }
-  }, [currentRide, navigate]);
+
+    // Fetch the latest ride details
+    const fetchRideData = async () => {
+      setLoading(true);
+      try {
+        const { ride, error } = await getRideDetails(currentRide.id);
+        
+        if (error || !ride) {
+          console.error("Error fetching ride details:", error);
+          toast({
+            title: "Error",
+            description: "Could not load ride details",
+            variant: "destructive"
+          });
+          return;
+        }
+        
+        setRideData(ride);
+        
+        // Update ride status based on fetched data
+        if (ride.status === 'in_progress') {
+          setIsStarted(true);
+        } else if (ride.status === 'completed') {
+          setIsStarted(true);
+          setIsCompleted(true);
+        }
+      } catch (err) {
+        console.error("Error:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchRideData();
+
+    // Set up interval to periodically refresh ride data
+    const interval = setInterval(fetchRideData, 30000); // Every 30 seconds
+    
+    return () => clearInterval(interval);
+  }, [currentRide, navigate, toast]);
 
   const handleStartRide = async () => {
     if (!currentRide) return;
@@ -126,6 +169,15 @@ const RideProgress: React.FC = () => {
       setCancelReason('');
     }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center">
+        <div className="w-12 h-12 border-4 border-gray-200 border-t-violet-600 rounded-full animate-spin mb-4"></div>
+        <p className="text-gray-600">Loading ride details...</p>
+      </div>
+    );
+  }
 
   if (!currentRide) {
     return null;

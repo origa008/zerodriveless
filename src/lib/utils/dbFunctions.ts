@@ -591,8 +591,7 @@ export const acceptRideRequestSafe = async (
 
     if (profileError) throw profileError;
 
-    // Check if driver is verified, we can't use is_online since it doesn't exist
-    // Use is_verified_driver which should exist in profiles table
+    // Check if driver is verified
     const isVerifiedDriver = profile?.is_verified_driver === true;
 
     if (!isVerifiedDriver) {
@@ -605,7 +604,7 @@ export const acceptRideRequestSafe = async (
     // Get driver details
     const { data: driverDetails, error: detailsError } = await supabase
       .from('driver_details')
-      .select('vehicle_type, status, vehicle_model')
+      .select('vehicle_type, status, vehicle_model, deposit_amount_required')
       .eq('user_id', driverId)
       .single();
 
@@ -618,21 +617,28 @@ export const acceptRideRequestSafe = async (
       };
     }
 
-    // Check for has_sufficient_deposit property from vehicle_model field
+    // Check for sufficient deposit - first from has_sufficient_deposit field if exists
+    // otherwise check manually through wallet balance
     let hasSufficientDeposit = false;
-    try {
-      if (driverDetails.vehicle_model) {
-        if (typeof driverDetails.vehicle_model === 'string') {
-          const vehicleModel = JSON.parse(driverDetails.vehicle_model);
-          hasSufficientDeposit = vehicleModel?.has_sufficient_deposit === true;
-        } else if (typeof driverDetails.vehicle_model === 'object') {
-          hasSufficientDeposit = (driverDetails.vehicle_model as any)?.has_sufficient_deposit === true;
-        }
+    
+    // First try to get it from the driver_details table
+    if ('has_sufficient_deposit' in driverDetails) {
+      hasSufficientDeposit = driverDetails.has_sufficient_deposit === true;
+    } else {
+      // If not available in driver_details, check wallet balance
+      const { data: walletData } = await supabase
+        .from('wallets')
+        .select('balance')
+        .eq('user_id', driverId)
+        .single();
+        
+      if (!walletData) {
+        hasSufficientDeposit = false;
+      } else {
+        hasSufficientDeposit = walletData.balance >= (driverDetails.deposit_amount_required || 3000);
       }
-    } catch (e) {
-      console.error('Error parsing vehicle_model:', e);
     }
-
+    
     if (!hasSufficientDeposit) {
       return { 
         success: false, 
@@ -907,71 +913,198 @@ function extractLocationName(locationData: any): string {
 /**
  * Checks if a driver is eligible to accept rides
  */
-export const isEligibleDriver = async (userId: string): Promise<boolean | { success: boolean; error: string }> => {
+export const isEligibleDriver = async (userId: string): Promise<{ eligible: boolean; reason?: string; redirectTo?: string }> => {
   try {
-    // Check if user has a driver profile and handle possible errors
+    // Check if user has a driver profile
     const { data: driver, error: driverError } = await supabase
       .from('driver_details')
-      .select('status, deposit_amount_required')
+      .select('status, deposit_amount_required, has_sufficient_deposit')
       .eq('user_id', userId)
       .maybeSingle();
 
-    if (driverError || !driver) {
+    if (driverError) {
       console.error("Error checking driver status:", driverError);
-      return false;
+      return { eligible: false, reason: 'Error checking driver status', redirectTo: '/register-driver' };
+    }
+
+    // If no driver profile exists
+    if (!driver) {
+      return { eligible: false, reason: 'Driver registration required', redirectTo: '/register-driver' };
     }
 
     // Check if driver is approved
     if (driver.status !== 'approved') {
-      return false;
+      return { eligible: false, reason: 'Driver account is pending approval', redirectTo: '/register-driver' };
     }
 
-    // Check wallet balance if trying to go online
-    const { data: wallet, error: walletError } = await supabase
-      .from('wallets')
-      .select('balance')
-      .eq('user_id', userId)
-      .single();
-
-    if (walletError) {
-      console.error('Error fetching wallet:', walletError);
-      return {
-        success: false,
-        error: 'Failed to verify deposit balance'
-      };
-    }
-
-    console.log('Wallet balance:', wallet?.balance, 'Required:', driver.deposit_amount_required);
-
-    const hasEnoughDeposit = wallet && wallet.balance >= (driver.deposit_amount_required || 3000);
+    // Check for sufficient deposit
+    let hasSufficientDeposit = false;
     
-    if (!hasEnoughDeposit) {
-      // Update driver_details to reflect deposit status
-      await supabase
-        .from('driver_details')
-        .update({ 
-          vehicle_model: JSON.stringify({ has_sufficient_deposit: false })
-        })
-        .eq('user_id', userId);
-
-      return { 
-        success: false, 
-        error: `Insufficient deposit balance. Required: RS ${driver.deposit_amount_required || 3000}` 
-      };
+    // First check has_sufficient_deposit if available
+    if ('has_sufficient_deposit' in driver) {
+      hasSufficientDeposit = driver.has_sufficient_deposit === true;
+    } else {
+      // Otherwise check wallet balance
+      const { data: wallet, error: walletError } = await supabase
+        .from('wallets')
+        .select('balance')
+        .eq('user_id', userId)
+        .maybeSingle();
+        
+      if (!walletError && wallet) {
+        hasSufficientDeposit = wallet.balance >= (driver.deposit_amount_required || 3000);
+      }
+    }
+    
+    if (!hasSufficientDeposit) {
+      return { eligible: false, reason: 'Insufficient deposit balance', redirectTo: '/wallet' };
     }
 
-    // Update deposit status if it was previously insufficient
-    // Store this in the vehicle_model JSON
-    await supabase
-      .from('driver_details')
-      .update({ 
-        vehicle_model: JSON.stringify({ has_sufficient_deposit: true })
-      })
-      .eq('user_id', userId);
-
-    return hasEnoughDeposit;
-  } catch (error) {
+    // Driver is eligible
+    return { eligible: true };
+    
+  } catch (error: any) {
     console.error("Error checking driver eligibility:", error);
-    return false;
+    return { eligible: false, reason: error.message, redirectTo: '/register-driver' };
   }
+};
+
+/**
+ * Get ride details by ID
+ */
+export const getRideDetails = async (rideId: string) => {
+  try {
+    const { data, error } = await supabase
+      .from('rides')
+      .select(`
+        *,
+        passenger:profiles!passenger_id (
+          id, name, avatar, phone
+        ),
+        driver:profiles!driver_id (
+          id, name, avatar, phone
+        )
+      `)
+      .eq('id', rideId)
+      .single();
+      
+    if (error) throw error;
+    
+    return { 
+      ride: data, 
+      error: null 
+    };
+  } catch (error: any) {
+    console.error('Error fetching ride details:', error);
+    return { 
+      ride: null, 
+      error: error.message 
+    };
+  }
+};
+
+/**
+ * Subscribe to new ride requests in a given area
+ */
+export const subscribeToNewRidesInArea = (
+  driverLocation: { latitude: number; longitude: number },
+  radiusKm: number,
+  callback: (rides: any[]) => void
+) => {
+  console.log('Setting up subscription for new rides');
+  
+  // Set up subscription for new ride requests
+  const channel = supabase
+    .channel('realtime_rides')
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'rides',
+        filter: 'status=eq.searching'
+      },
+      async (payload) => {
+        console.log('New ride detected:', payload);
+        
+        // Extract coordinates from the new ride
+        const pickupLocation = payload.new.pickup_location;
+        const coords = extractCoordinates(pickupLocation);
+        
+        if (!coords) {
+          console.log('Could not extract coordinates from new ride');
+          return;
+        }
+        
+        const [pickupLng, pickupLat] = coords;
+        
+        // Calculate distance to the pickup location
+        const distance = getDistanceFromLatLonInKm(
+          driverLocation.latitude,
+          driverLocation.longitude,
+          pickupLat,
+          pickupLng
+        );
+        
+        // If the ride is within the desired radius, add it to the list
+        if (distance <= radiusKm) {
+          console.log(`New ride is ${distance.toFixed(1)}km away, within ${radiusKm}km radius`);
+          
+          // Get full ride details with passenger info
+          const { data: fullRideDetails } = await supabase
+            .from('rides')
+            .select(`
+              *,
+              passenger:profiles!passenger_id (
+                id, name, avatar
+              )
+            `)
+            .eq('id', payload.new.id)
+            .single();
+            
+          if (fullRideDetails) {
+            // Trigger the callback with the updated rides list
+            const { data: currentRides } = await getNearbyRideRequests(
+              driverLocation.latitude, 
+              driverLocation.longitude,
+              radiusKm
+            );
+            
+            callback(currentRides || []);
+          }
+        } else {
+          console.log(`New ride is ${distance.toFixed(1)}km away, outside ${radiusKm}km radius`);
+        }
+      }
+    )
+    .subscribe();
+  
+  // Also subscribe to ride status changes (e.g., if someone else accepts a ride)
+  const statusChannel = supabase
+    .channel('ride_status_changes')
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'rides'
+      },
+      async () => {
+        // When any ride is updated, refresh the list of available rides
+        const { data: currentRides } = await getNearbyRideRequests(
+          driverLocation.latitude, 
+          driverLocation.longitude,
+          radiusKm
+        );
+        
+        callback(currentRides || []);
+      }
+    )
+    .subscribe();
+  
+  // Return unsubscribe function
+  return () => {
+    supabase.removeChannel(channel);
+    supabase.removeChannel(statusChannel);
+  };
 };
