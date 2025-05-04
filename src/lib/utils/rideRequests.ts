@@ -1,6 +1,6 @@
 
 import { supabase } from '@/integrations/supabase/client';
-import { RideRequest, RideOption, Location } from '@/lib/types';
+import { RideRequest, RideOption, Location, Json } from '@/lib/types';
 
 /**
  * Get nearby ride requests for drivers
@@ -116,7 +116,7 @@ export async function getNearbyRideRequests(
           }
         }
 
-        // Extract location name
+        // Extract location name with proper type checking
         let pickupName = "Unknown";
         if (ride.pickup_location) {
           if (typeof ride.pickup_location === 'string') {
@@ -127,7 +127,9 @@ export async function getNearbyRideRequests(
               console.error("Error parsing location:", e);
             }
           } else if (typeof ride.pickup_location === 'object' && ride.pickup_location !== null) {
-            pickupName = ride.pickup_location.name || "Unknown";
+            // Fix: Check if name property exists on the object
+            const locationObj = ride.pickup_location as {[key: string]: any};
+            pickupName = locationObj.name || "Unknown";
           }
         }
         
@@ -159,6 +161,7 @@ export async function getNearbyRideRequests(
             } else if (locationObj.longitude !== undefined && locationObj.latitude !== undefined) {
               dropoffCoords = [locationObj.longitude, locationObj.latitude];
             }
+            // Fix: Check if name property exists on the object
             dropoffName = locationObj.name || "Unknown";
           }
         }

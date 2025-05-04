@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRide } from '@/lib/context/RideContext';
@@ -8,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Clock, MapPin, User, ArrowLeft, AlertTriangle, CheckCircle, Loader } from 'lucide-react';
-import { RideRequest, RideOption, Location } from '@/lib/types';
+import { RideRequest, RideOption, Location, Ride } from '@/lib/types';
 import { supabase } from '@/integrations/supabase/client';
 import { useLocationTracking } from '@/hooks/useLocationTracking';
 
@@ -229,8 +228,8 @@ const RideRequests: React.FC = () => {
               console.error("Error parsing ride option:", e);
             }
           } else if (ride.ride_option && typeof ride.ride_option === 'object') {
-            // Handle as object with proper type check 
-            if (!Array.isArray(ride.ride_option) && ride.ride_option.type) {
+            // Handle as object with proper type check
+            if (!Array.isArray(ride.ride_option) && 'type' in ride.ride_option) {
               const typeValue = ride.ride_option.type;
               rideVehicleType = typeof typeValue === 'string' ? typeValue.toLowerCase() : "";
             }
@@ -321,7 +320,7 @@ const RideRequests: React.FC = () => {
           }
         }
         
-        // Convert to RideRequest type
+        // Convert to RideRequest type with proper typing
         const rideRequest: RideRequest = {
           id: ride.id,
           passenger_id: ride.passenger_id,
@@ -337,7 +336,7 @@ const RideRequests: React.FC = () => {
           pickup_location: ride.pickup_location,
           dropoff_location: ride.dropoff_location,
           ride_option: rideOptionData,
-          status: ride.status,
+          status: ride.status as 'searching' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled',
           price: ride.price,
           currency: ride.currency,
           distance: ride.distance,
@@ -486,8 +485,8 @@ const RideRequests: React.FC = () => {
         }
       }
       
-      // Set as current ride in context
-      const currentRide = {
+      // Set as current ride in context with proper typing
+      const currentRide: Ride = {
         id: acceptedRide.id,
         pickup: {
           name: extractLocationName(acceptedRide.pickup_location),
@@ -502,7 +501,7 @@ const RideRequests: React.FC = () => {
         distance: acceptedRide.distance,
         duration: acceptedRide.duration,
         status: 'confirmed',
-        paymentMethod: acceptedRide.payment_method,
+        paymentMethod: acceptedRide.payment_method as 'cash' | 'wallet',
         currency: acceptedRide.currency,
         passenger: acceptedRide.passenger
       };
