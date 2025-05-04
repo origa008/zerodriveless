@@ -952,7 +952,8 @@ export const isEligibleDriver = async (userId: string): Promise<{ eligible: bool
         .maybeSingle();
         
       if (!walletError && wallet) {
-        hasSufficientDeposit = wallet.balance >= (driver.deposit_amount_required || 3000);
+        const requiredAmount = (driver as any).deposit_amount_required || 3000;
+        hasSufficientDeposit = wallet.balance >= requiredAmount;
       }
     }
     

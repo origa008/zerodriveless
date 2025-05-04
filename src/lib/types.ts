@@ -1,3 +1,4 @@
+
 // Basic types for the ride application
 
 export type Location = {
@@ -177,6 +178,7 @@ export interface RideRequest {
   created_at: string;
   bid_amount?: number;
   passenger?: any;
+  distance_to_pickup?: number; // Adding this to fix the error
 };
 
 // Type for Json handling in supabase

@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRide } from '@/lib/context/RideContext';
@@ -190,7 +189,7 @@ const RideRequests: React.FC = () => {
           id: acceptedRide.id,
           pickup: acceptedRide.pickup_location,
           dropoff: acceptedRide.dropoff_location,
-          ride_option: acceptedRide.ride_option,
+          rideOption: acceptedRide.ride_option, // Fixed property name to match Ride type
           price: acceptedRide.price,
           distance: acceptedRide.distance,
           duration: acceptedRide.duration,
