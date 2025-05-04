@@ -21,18 +21,7 @@ const OfficialDriver: React.FC = () => {
   const [currentFormStep, setCurrentFormStep] = useState(0);
 
   // Form state
-  const [formData, setFormData] = useState<DriverDocument>({
-    fullName: '',
-    phoneNumber: '',
-    cnicNumber: '',
-    vehicleType: 'Bike',
-    vehicleRegistrationNumber: '',
-    vehicleModel: '',
-    vehicleColor: '',
-    driverLicenseNumber: '',
-    address: '',
-    agreedToTerms: false
-  });
+  const [formData, setFormData] = useState<DriverDocument>(initialDocumentState);
   const [documents, setDocuments] = useState<{
     cnicFront?: File;
     cnicBack?: File;

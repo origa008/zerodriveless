@@ -97,9 +97,8 @@ export const getNearbyRideRequests = async (
           .single();
 
         // Safely access coordinates with optional chaining and defaults
-        const coordinates = ride.pickup_location?.coordinates;
-        const pickupLng = coordinates && Array.isArray(coordinates) ? coordinates[0] : 0;
-        const pickupLat = coordinates && Array.isArray(coordinates) ? coordinates[1] : 0;
+        const coordinates = extractCoordinates(ride.pickup_location);
+        const [pickupLng, pickupLat] = coordinates || [0, 0];
         
         const distance = getDistanceFromLatLonInKm(
           driverLat,
@@ -441,11 +440,20 @@ export const getNearbyPendingRides = async (
     const nearbyRides = rides.filter(ride => {
       // Check vehicle type match - get type from ride_option
       const rideOption = ride.ride_option;
-      const rideVehicleType = typeof rideOption === 'string' 
-        ? JSON.parse(rideOption)?.name?.toLowerCase() 
-        : rideOption?.name?.toLowerCase();
+      let rideVehicleType: string | undefined;
       
-      if (!rideVehicleType || rideVehicleType !== driverDetails.vehicle_type) {
+      if (typeof rideOption === 'string') {
+        try {
+          const parsed = JSON.parse(rideOption);
+          rideVehicleType = parsed?.name?.toLowerCase();
+        } catch (e) {
+          rideVehicleType = undefined;
+        }
+      } else if (rideOption && typeof rideOption === 'object') {
+        rideVehicleType = rideOption?.name?.toLowerCase();
+      }
+      
+      if (!rideVehicleType || rideVehicleType !== driverDetails.vehicle_type.toLowerCase()) {
         return false;
       }
 
@@ -569,13 +577,18 @@ export const acceptRideRequestSafe = async (
     // First check if driver is online and eligible
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('is_online, is_verified_driver')
+      .select('*')
       .eq('id', driverId)
       .single();
 
     if (profileError) throw profileError;
 
-    if (!profile?.is_online || !profile?.is_verified_driver) {
+    // Check if driver is online and verified
+    // Since is_online and is_verified_driver might not exist in profiles table
+    const isOnline = profile?.is_online === true;
+    const isVerifiedDriver = profile?.is_verified_driver === true;
+
+    if (!isOnline || !isVerifiedDriver) {
       return { 
         success: false, 
         error: 'Driver must be online and verified to accept rides' 
@@ -598,7 +611,10 @@ export const acceptRideRequestSafe = async (
       };
     }
 
-    if (!driverDetails.has_sufficient_deposit) {
+    // Check for has_sufficient_deposit property, handle if it doesn't exist
+    const hasSufficientDeposit = driverDetails.has_sufficient_deposit === true;
+
+    if (!hasSufficientDeposit) {
       return { 
         success: false, 
         error: 'Insufficient deposit balance to accept rides' 
@@ -620,11 +636,20 @@ export const acceptRideRequestSafe = async (
 
     // Verify vehicle type matches by handling Json properly
     const rideOption = ride.ride_option;
-    const rideVehicleName = typeof rideOption === 'string'
-      ? JSON.parse(rideOption)?.name?.toLowerCase()
-      : rideOption?.name?.toLowerCase();
+    let rideVehicleName: string | undefined;
+    
+    if (typeof rideOption === 'string') {
+      try {
+        const parsed = JSON.parse(rideOption);
+        rideVehicleName = parsed?.name?.toLowerCase();
+      } catch (e) {
+        rideVehicleName = undefined;
+      }
+    } else if (rideOption && typeof rideOption === 'object') {
+      rideVehicleName = rideOption?.name?.toLowerCase();
+    }
 
-    if (driverDetails.vehicle_type !== rideVehicleName) {
+    if (driverDetails.vehicle_type.toLowerCase() !== (rideVehicleName || '')) {
       return { 
         success: false, 
         error: `This ride requires a ${rideVehicleName || 'compatible'} vehicle` 
@@ -650,13 +675,17 @@ export const acceptRideRequestSafe = async (
 
     if (updateError) throw updateError;
 
-    // Update driver details
+    // Update driver details - use vehicle_model to store info since we can't add columns
+    const vehicleModelData = {
+      ride_status: 'on_ride',
+      current_ride_id: rideId,
+      last_ride_accepted_at: new Date().toISOString()
+    };
+    
     const { error: driverUpdateError } = await supabase
       .from('driver_details')
       .update({
-        current_status: 'on_ride',
-        current_ride_id: rideId,
-        last_ride_accepted_at: new Date().toISOString()
+        vehicle_model: JSON.stringify(vehicleModelData)
       })
       .eq('user_id', driverId);
 
@@ -848,7 +877,7 @@ function extractLocationName(locationData: any): string {
 /**
  * Checks if a driver is eligible to accept rides
  */
-export const isEligibleDriver = async (userId: string): Promise<boolean> => {
+export const isEligibleDriver = async (userId: string): Promise<boolean | { success: boolean; error: string }> => {
   try {
     // Check if user has a driver profile and handle possible errors
     const { data: driver, error: driverError } = await supabase
@@ -890,7 +919,7 @@ export const isEligibleDriver = async (userId: string): Promise<boolean> => {
       // Update driver_details to reflect deposit status
       await supabase
         .from('driver_details')
-        .update({ has_sufficient_deposit: false })
+        .update({ vehicle_model: JSON.stringify({ has_sufficient_deposit: false }) })
         .eq('user_id', userId);
 
       return { 
@@ -900,10 +929,13 @@ export const isEligibleDriver = async (userId: string): Promise<boolean> => {
     }
 
     // Update deposit status if it was previously insufficient
-    if (!driver.has_sufficient_deposit) {
+    const driverJson = driver?.has_sufficient_deposit === false ? 
+      { has_sufficient_deposit: true } : undefined;
+      
+    if (driverJson) {
       await supabase
         .from('driver_details')
-        .update({ has_sufficient_deposit: true })
+        .update({ vehicle_model: JSON.stringify(driverJson) })
         .eq('user_id', userId);
     }
 

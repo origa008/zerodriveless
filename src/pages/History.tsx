@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/context/AuthContext';
@@ -27,7 +28,84 @@ const History: React.FC = () => {
         if (error) {
           console.error('Error fetching ride history:', error);
         } else {
-          setRides(data as Ride[]);
+          // Transform the data to match the Ride type
+          const transformedRides = (data || []).map((ride: any): Ride => {
+            // Process pickup location
+            let pickup = {
+              name: 'Unknown location',
+              coordinates: [0, 0] as [number, number]
+            };
+            
+            if (ride.pickup_location) {
+              const pickupData = typeof ride.pickup_location === 'string' 
+                ? JSON.parse(ride.pickup_location) 
+                : ride.pickup_location;
+                
+              pickup = {
+                name: pickupData.name || 'Unknown pickup',
+                coordinates: Array.isArray(pickupData.coordinates) 
+                  ? pickupData.coordinates 
+                  : [0, 0]
+              };
+            }
+            
+            // Process dropoff location
+            let dropoff = {
+              name: 'Unknown location',
+              coordinates: [0, 0] as [number, number]
+            };
+            
+            if (ride.dropoff_location) {
+              const dropoffData = typeof ride.dropoff_location === 'string'
+                ? JSON.parse(ride.dropoff_location)
+                : ride.dropoff_location;
+                
+              dropoff = {
+                name: dropoffData.name || 'Unknown dropoff',
+                coordinates: Array.isArray(dropoffData.coordinates)
+                  ? dropoffData.coordinates
+                  : [0, 0]
+              };
+            }
+            
+            // Process ride option
+            let rideOption = {
+              id: 'unknown',
+              name: 'Unknown',
+              type: 'unknown',
+              basePrice: 0
+            };
+            
+            if (ride.ride_option) {
+              const optionData = typeof ride.ride_option === 'string'
+                ? JSON.parse(ride.ride_option)
+                : ride.ride_option;
+                
+              rideOption = {
+                id: optionData.id || 'unknown',
+                name: optionData.name || 'Unknown',
+                type: optionData.type || 'unknown',
+                basePrice: optionData.basePrice || ride.price || 0
+              };
+            }
+            
+            return {
+              id: ride.id,
+              pickup,
+              dropoff,
+              rideOption,
+              status: ride.status,
+              price: ride.price || 0,
+              distance: ride.distance || 0,
+              duration: ride.duration || 0,
+              currency: ride.currency || 'RS',
+              start_time: ride.start_time,
+              end_time: ride.end_time,
+              paymentMethod: ride.payment_method || 'cash'
+            } as Ride;
+          });
+          
+          setRides(transformedRides);
         }
       } catch (error) {
         console.error('Error fetching ride history:', error);
