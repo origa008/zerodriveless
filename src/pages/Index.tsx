@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/context/AuthContext';
@@ -20,6 +21,7 @@ const Index: React.FC = () => {
   const { isDriverMode, setDriverMode } = useRide();
   const [pageLoaded, setPageLoaded] = useState(false);
   const [initComplete, setInitComplete] = useState(false);
+  const [isEligible, setIsEligible] = useState(false);
 
   // Debug logs for authentication state
   useEffect(() => {
@@ -41,7 +43,23 @@ const Index: React.FC = () => {
     return () => clearTimeout(timer);
   }, []);
 
-
+  // Check if user is eligible to be a driver
+  useEffect(() => {
+    const checkDriverEligibility = async () => {
+      if (user?.id) {
+        try {
+          const eligible = await isEligibleDriver(user.id);
+          console.log("Driver eligibility check:", eligible);
+          setIsEligible(eligible);
+        } catch (error) {
+          console.error("Error checking driver eligibility:", error);
+          setIsEligible(false);
+        }
+      }
+    };
+    
+    checkDriverEligibility();
+  }, [user?.id]);
 
   // Wait for auth to initialize and handle authentication flow
   useEffect(() => {
@@ -96,6 +114,19 @@ const Index: React.FC = () => {
     return null;
   }
   
+  const handleSwitchToDriver = () => {
+    if (isEligible) {
+      navigate('/ride-requests');
+    } else {
+      toast({
+        title: "Driver Registration Required",
+        description: "You need to register as a driver before accessing this feature.",
+        variant: "default"
+      });
+      navigate('/official-driver');
+    }
+  };
+  
   console.log("Rendering main Index content for user:", user.name);
   return <div className="min-h-screen bg-white">
       <div className="relative">
@@ -103,7 +134,7 @@ const Index: React.FC = () => {
           <Button 
             variant="outline" 
             className="flex items-center gap-2"
-            onClick={() => navigate('/ride-requests')}
+            onClick={handleSwitchToDriver}
           >
             <Car className="h-4 w-4" />
             Switch to Driver

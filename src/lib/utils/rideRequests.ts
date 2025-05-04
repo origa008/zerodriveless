@@ -12,12 +12,19 @@ export async function getNearbyRideRequests(
   driverLat: number,
   driverLng: number,
   radiusInKm: number = 10
-): Promise<any[]> {
+): Promise<RideRequest[]> {
   try {
+    console.log(`Fetching nearby ride requests for driver at [${driverLng}, ${driverLat}] within ${radiusInKm}km`);
+    
     // Query rides table for searching rides
     const { data, error } = await supabase
       .from('rides')
-      .select('*')
+      .select(`
+        *,
+        passenger:profiles!passenger_id (
+          id, name, avatar
+        )
+      `)
       .eq('status', 'searching')
       .is('driver_id', null);
 
@@ -27,6 +34,8 @@ export async function getNearbyRideRequests(
     }
 
     if (!data) return [];
+    
+    console.log(`Found ${data.length} ride requests in 'searching' status`);
 
     // Process and calculate distances
     const ridesWithDistance = data.map(ride => {
@@ -57,6 +66,10 @@ export async function getNearbyRideRequests(
             // Check for longitude,latitude format
             else if (locationObj.longitude !== undefined && locationObj.latitude !== undefined) {
               pickupCoords = [locationObj.longitude, locationObj.latitude];
+            }
+            // Check for lng,lat format
+            else if (locationObj.lng !== undefined && locationObj.lat !== undefined) {
+              pickupCoords = [locationObj.lng, locationObj.lat];
             }
           }
         }
@@ -160,6 +173,8 @@ export async function getNearbyRideRequests(
               dropoffCoords = locationObj.coordinates;
             } else if (locationObj.longitude !== undefined && locationObj.latitude !== undefined) {
               dropoffCoords = [locationObj.longitude, locationObj.latitude];
+            } else if (locationObj.lng !== undefined && locationObj.lat !== undefined) {
+              dropoffCoords = [locationObj.lng, locationObj.lat];
             }
             // Fix: Check if name property exists on the object
             dropoffName = locationObj.name || "Unknown";
@@ -172,24 +187,42 @@ export async function getNearbyRideRequests(
           coordinates: dropoffCoords as [number, number]
         };
         
-        return {
-          ...ride,
+        // Create a properly typed RideRequest object
+        const rideRequest: RideRequest = {
+          id: ride.id,
+          passenger_id: ride.passenger_id,
+          driver_id: ride.driver_id,
           pickup,
           dropoff,
+          pickup_location: ride.pickup_location,
+          dropoff_location: ride.dropoff_location,
           ride_option: rideOptionData,
+          status: ride.status as 'searching' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled',
+          price: ride.price,
+          currency: ride.currency,
+          distance: ride.distance,
+          duration: ride.duration,
+          start_time: ride.start_time,
+          end_time: ride.end_time,
+          payment_method: ride.payment_method,
+          created_at: ride.created_at,
+          passenger: ride.passenger,
           distance_to_pickup: parseFloat(distance.toFixed(2))
         };
+        
+        return rideRequest;
       } catch (err) {
         console.error("Error processing ride:", err);
         return null;
       }
-    }).filter(Boolean);
+    }).filter(Boolean) as RideRequest[];
     
     // Filter by distance and sort by nearest
     const nearbyRides = ridesWithDistance
       .filter(ride => ride && ride.distance_to_pickup <= radiusInKm)
       .sort((a, b) => a.distance_to_pickup - b.distance_to_pickup);
     
+    console.log(`Returning ${nearbyRides.length} rides within ${radiusInKm}km`);
     return nearbyRides;
   } catch (error) {
     console.error('Error fetching nearby ride requests:', error);
