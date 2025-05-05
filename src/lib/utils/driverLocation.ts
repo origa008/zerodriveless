@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 
 /**
@@ -16,16 +15,15 @@ export async function updateDriverLocation(
     console.log(`Updating driver location for ${driverId}: [${longitude}, ${latitude}]`);
     
     // Update the driver's location in the driver_details table
-    const { error } = await supabase
-      .from('driver_details')
-      .update({
-        current_location: {
-          type: 'Point',
-          coordinates: [longitude, latitude],
-          updated_at: new Date().toISOString()
-        }
-      })
-      .eq('user_id', driverId);
+    // Using a raw query to update the current_location field
+    const { error } = await supabase.rpc(
+      'update_driver_location',
+      { 
+        driver_id: driverId, 
+        longitude, 
+        latitude 
+      }
+    );
       
     if (error) {
       console.error('Error updating driver location:', error);
@@ -48,22 +46,20 @@ export async function getDriverLocation(
   driverId: string
 ): Promise<[number, number] | null> {
   try {
-    const { data, error } = await supabase
-      .from('driver_details')
-      .select('current_location')
-      .eq('user_id', driverId)
-      .maybeSingle();
+    // Use a raw query to get the location since TypeScript doesn't recognize the current_location field
+    const { data, error } = await supabase.rpc(
+      'get_driver_location',
+      { driver_id: driverId }
+    );
       
-    if (error || !data || !data.current_location) {
+    if (error || !data) {
       console.error('Error getting driver location:', error);
       return null;
     }
     
-    // Parse location from the current_location JSON field
-    if (data.current_location?.coordinates && 
-        Array.isArray(data.current_location.coordinates) && 
-        data.current_location.coordinates.length === 2) {
-      return data.current_location.coordinates as [number, number];
+    // Parse coordinates from the response
+    if (data && Array.isArray(data) && data.length === 2) {
+      return data as [number, number];
     }
     
     return null;
@@ -84,40 +80,25 @@ export async function getNearbyDrivers(
   radiusInKm: number = 5
 ): Promise<{ driverId: string; coordinates: [number, number] }[]> {
   try {
-    // Get all driver details
-    const { data, error } = await supabase
-      .from('driver_details')
-      .select('user_id, current_location');
+    // Use a raw query to get nearby drivers
+    const { data, error } = await supabase.rpc(
+      'get_nearby_drivers',
+      { 
+        center_lng: coordinates[0], 
+        center_lat: coordinates[1], 
+        radius_km: radiusInKm 
+      }
+    );
       
     if (error || !data) {
       console.error('Error getting nearby drivers:', error);
       return [];
     }
     
-    // Filter out drivers with no location
-    const driversWithLocation = data.filter(driver => 
-      driver && driver.current_location && 
-      driver.current_location.coordinates && 
-      Array.isArray(driver.current_location.coordinates)
-    );
-    
-    // Calculate distance and filter by radius
-    const nearbyDrivers = driversWithLocation.map(driver => {
-      const driverCoords = driver.current_location.coordinates as [number, number];
-      const distance = calculateDistance(coordinates, driverCoords);
-      
-      return {
-        driverId: driver.user_id,
-        coordinates: driverCoords,
-        distance
-      };
-    }).filter(driver => driver.distance <= radiusInKm)
-      .sort((a, b) => a.distance - b.distance);
-    
-    // Return only the necessary data
-    return nearbyDrivers.map(({ driverId, coordinates }) => ({
-      driverId,
-      coordinates
+    // Parse driver data from the response
+    return (data as any[]).map(item => ({
+      driverId: item.user_id,
+      coordinates: item.coordinates
     }));
   } catch (err) {
     console.error('Error getting nearby drivers:', err);

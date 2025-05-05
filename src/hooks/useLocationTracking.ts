@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { LocationTrackingResult } from '@/lib/types';
 import { updateDriverLocation } from '@/lib/utils/driverLocation';
@@ -17,12 +16,13 @@ export function useLocationTracking(
   // Function to update location in state and database
   const updateLocation = (position: GeolocationPosition) => {
     const { longitude, latitude } = position.coords;
-    setCoordinates([longitude, latitude]);
+    const coords: [number, number] = [longitude, latitude];
+    setCoordinates(coords);
     setError(null);
     
     // Update driver location in the database if user is logged in
     if (user?.id) {
-      updateDriverLocation(user.id, [longitude, latitude])
+      updateDriverLocation(user.id, coords)
         .catch(err => console.error('Error updating driver location:', err));
     }
   };

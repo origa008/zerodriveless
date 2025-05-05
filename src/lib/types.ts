@@ -1,4 +1,3 @@
-
 // Basic types for the ride application
 
 export type Location = {
@@ -196,4 +195,18 @@ export interface RideContextType {
   // ... existing properties
   updateWalletBalance?: (amount: number) => Promise<boolean>;
   // other missing properties can be added here
+}
+
+// Add a new type for driver location data
+export interface DriverLocation {
+  driverId: string;
+  coordinates: [number, number];
+  lastUpdated?: string;
+}
+
+// Add a new type for location JSON
+export interface LocationPoint {
+  type: string;
+  coordinates: [number, number];
+  updated_at?: string;
 }
