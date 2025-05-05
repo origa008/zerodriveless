@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { RideRequest, RideOption } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
-import { extractCoordinates, extractLocationName, calculateDistance } from '@/lib/utils/locationUtils';
+import { extractCoordinates, extractLocationName } from '@/lib/utils/locationUtils';
 
 export function useRideRequests(
   userId: string | undefined,
@@ -27,20 +27,6 @@ export function useRideRequests(
     console.log("Loading ride requests with coordinates:", coordinates);
     
     try {
-      // Get driver details to check vehicle type
-      const { data: driverDetails } = await supabase
-        .from('driver_details')
-        .select('vehicle_type')
-        .eq('user_id', userId)
-        .single();
-        
-      if (!driverDetails) {
-        console.log("Driver details not found");
-        throw new Error("Driver details not found");
-      }
-      
-      console.log("Driver vehicle type:", driverDetails.vehicle_type);
-      
       // Get all searching rides
       const { data: rides, error } = await supabase
         .from('rides')
@@ -66,154 +52,91 @@ export function useRideRequests(
         return;
       }
 
-      // Filter rides by proximity and vehicle type
-      const nearbyRides = rides
-        .filter(ride => {
-          // Extract vehicle type from ride option
-          let rideVehicleType = "";
-          if (ride.ride_option) {
-            if (typeof ride.ride_option === 'string') {
-              try {
-                const parsed = JSON.parse(ride.ride_option);
-                rideVehicleType = parsed?.type?.toLowerCase() || "";
-              } catch (e) {
-                console.error("Error parsing ride option:", e);
+      // Process rides and add distance calculation
+      const rideRequests = rides.map(ride => {
+        // Extract pickup coordinates
+        const pickupCoords = extractCoordinates(ride.pickup_location) || [0, 0];
+        const dropoffCoords = extractCoordinates(ride.dropoff_location) || [0, 0];
+        
+        // Calculate distance to pickup
+        const distanceToPickup = calculateDistance(
+          [coordinates[0], coordinates[1]], 
+          pickupCoords
+        );
+        
+        // Create proper RideOption object
+        const rideOptionData: RideOption = {
+          id: '1',
+          name: 'Standard',
+          type: 'car',
+          basePrice: ride.price || 0
+        };
+        
+        // Parse ride_option if it exists
+        if (ride.ride_option) {
+          if (typeof ride.ride_option === 'string') {
+            try {
+              const parsed = JSON.parse(ride.ride_option);
+              if (parsed) {
+                Object.assign(rideOptionData, {
+                  id: parsed.id || '1',
+                  name: parsed.name || 'Standard',
+                  type: parsed.type || 'car',
+                  basePrice: parsed.basePrice || ride.price || 0,
+                });
               }
-            } else if (ride.ride_option && typeof ride.ride_option === 'object') {
-              // Handle as object with proper type check
-              if (!Array.isArray(ride.ride_option) && 'type' in ride.ride_option) {
-                const typeValue = ride.ride_option.type;
-                rideVehicleType = typeof typeValue === 'string' ? typeValue.toLowerCase() : "";
-              }
+            } catch (e) {
+              console.error("Error parsing ride_option:", e);
             }
+          } else if (typeof ride.ride_option === 'object' && ride.ride_option !== null) {
+            const opt = ride.ride_option as any;
+            Object.assign(rideOptionData, {
+              id: opt.id || '1',
+              name: opt.name || 'Standard',
+              type: opt.type || 'car',
+              basePrice: opt.basePrice || ride.price || 0,
+            });
           }
-          
-          // Skip vehicle type check if rideVehicleType is empty
-          const vehicleMatches = !rideVehicleType || 
-            rideVehicleType === driverDetails.vehicle_type.toLowerCase();
-          
-          if (!vehicleMatches) return false;
-
-          // Extract coordinates
-          const pickupCoords = extractCoordinates(ride.pickup_location);
-          if (!pickupCoords) return false;
-          
-          const [pickupLng, pickupLat] = pickupCoords;
-          
-          // Calculate distance to pickup
-          const distance = calculateDistance(
-            [coordinates[0], coordinates[1]], // [longitude, latitude]
-            [pickupLng, pickupLat]
-          );
-          
-          // Only include rides within 10km
-          return distance <= 10;
-        })
-        .map(ride => {
-          // Extract coordinates
-          const pickupCoords = extractCoordinates(ride.pickup_location);
-          const [pickupLng, pickupLat] = pickupCoords || [0, 0];
-          
-          const dropoffCoords = extractCoordinates(ride.dropoff_location);
-          
-          // Calculate distance to pickup
-          const distanceToPickup = calculateDistance(
-            [coordinates[0], coordinates[1]], // [longitude, latitude] 
-            [pickupLng, pickupLat]
-          );
-          
-          // Create a properly typed RideOption
-          let rideOptionData: RideOption = {
-            id: '1',
-            name: 'Standard',
-            type: 'car',
-            basePrice: ride.price || 0
-          };
-          
-          // Try to parse ride_option if it exists
-          if (ride.ride_option) {
-            if (typeof ride.ride_option === 'string') {
-              try {
-                const parsed = JSON.parse(ride.ride_option);
-                if (parsed) {
-                  rideOptionData = {
-                    id: parsed.id || '1',
-                    name: parsed.name || 'Standard',
-                    type: parsed.type || 'car',
-                    basePrice: parsed.basePrice || ride.price || 0,
-                    // Add optional fields if they exist
-                    price: parsed.price,
-                    currency: parsed.currency,
-                    description: parsed.description,
-                    capacity: parsed.capacity,
-                    duration: parsed.duration,
-                    eta: parsed.eta,
-                    image: parsed.image
-                  };
-                }
-              } catch (e) {
-                console.error("Error parsing ride_option:", e);
-              }
-            } else if (typeof ride.ride_option === 'object' && ride.ride_option !== null) {
-              const opt = ride.ride_option as any;
-              rideOptionData = {
-                id: opt.id || '1',
-                name: opt.name || 'Standard',
-                type: opt.type || 'car',
-                basePrice: opt.basePrice || ride.price || 0,
-                // Add optional fields if they exist
-                price: opt.price,
-                currency: opt.currency,
-                description: opt.description,
-                capacity: opt.capacity,
-                duration: opt.duration,
-                eta: opt.eta,
-                image: opt.image
-              };
-            }
-          }
-          
-          // Convert to RideRequest type with proper typing
-          const rideRequest: RideRequest = {
-            id: ride.id,
-            passenger_id: ride.passenger_id,
-            driver_id: ride.driver_id,
-            pickup: {
-              name: extractLocationName(ride.pickup_location),
-              coordinates: [pickupLng, pickupLat] as [number, number]
-            },
-            dropoff: {
-              name: extractLocationName(ride.dropoff_location),
-              coordinates: dropoffCoords ? dropoffCoords as [number, number] : [0, 0] as [number, number]
-            },
-            pickup_location: ride.pickup_location,
-            dropoff_location: ride.dropoff_location,
-            ride_option: rideOptionData,
-            status: ride.status as 'searching' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled',
-            price: ride.price,
-            currency: ride.currency,
-            distance: ride.distance,
-            duration: ride.duration,
-            start_time: ride.start_time,
-            end_time: ride.end_time,
-            payment_method: ride.payment_method,
-            created_at: ride.created_at,
-            passenger: ride.passenger,
-            distance_to_pickup: Number(distanceToPickup.toFixed(1))
-          };
-          
-          return rideRequest;
-        });
+        }
+        
+        // Create fully typed RideRequest object
+        return {
+          id: ride.id,
+          passenger_id: ride.passenger_id,
+          driver_id: ride.driver_id,
+          pickup: {
+            name: extractLocationName(ride.pickup_location),
+            coordinates: pickupCoords as [number, number]
+          },
+          dropoff: {
+            name: extractLocationName(ride.dropoff_location),
+            coordinates: dropoffCoords as [number, number]
+          },
+          pickup_location: ride.pickup_location,
+          dropoff_location: ride.dropoff_location,
+          ride_option: rideOptionData,
+          status: ride.status as 'searching' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled',
+          price: ride.price,
+          currency: ride.currency,
+          distance: ride.distance,
+          duration: ride.duration,
+          start_time: ride.start_time,
+          end_time: ride.end_time,
+          payment_method: ride.payment_method,
+          created_at: ride.created_at,
+          passenger: ride.passenger,
+          distance_to_pickup: Math.round(distanceToPickup * 10) / 10
+        };
+      }).filter(ride => {
+        // Only include rides within 20km of driver's location
+        return ride.distance_to_pickup <= 20;
+      }).sort((a, b) => {
+        // Sort by distance (closest first)
+        return a.distance_to_pickup - b.distance_to_pickup;
+      });
       
-      // Sort by distance to pickup
-      nearbyRides.sort((a, b) => 
-        (a.distance_to_pickup || 0) - (b.distance_to_pickup || 0)
-      );
-      
-      console.log(`Processed ${nearbyRides.length} nearby rides`);
-      
-      // Set ride requests
-      setRideRequests(nearbyRides);
+      console.log(`Processed ${rideRequests.length} nearby rides`);
+      setRideRequests(rideRequests);
     } catch (err) {
       console.error("Error fetching ride requests:", err);
       toast({
@@ -240,7 +163,7 @@ export function useRideRequests(
     setAcceptingRide(ride.id);
     
     try {
-      // First check if ride is still available
+      // Check if ride is still available
       const { data: rideCheck, error: checkError } = await supabase
         .from('rides')
         .select('*')
@@ -270,7 +193,7 @@ export function useRideRequests(
         
       if (updateError) throw updateError;
       
-      // Get updated ride details
+      // Get updated ride details with passenger info
       const { data: acceptedRide, error } = await supabase
         .from('rides')
         .select(`
@@ -285,6 +208,11 @@ export function useRideRequests(
       if (error || !acceptedRide) {
         throw new Error("Could not retrieve updated ride information");
       }
+
+      toast({
+        title: "Success",
+        description: "You have accepted the ride",
+      });
       
       return acceptedRide;
     } catch (err: any) {
@@ -332,6 +260,36 @@ export function useRideRequests(
       supabase.removeChannel(channel);
     };
   }, [userId, coordinates, isEligible]);
+
+  // Function to calculate distance between two points using Haversine formula
+  function calculateDistance(
+    point1: [number, number], 
+    point2: [number, number]
+  ): number {
+    const [lon1, lat1] = point1;
+    const [lon2, lat2] = point2;
+    
+    const R = 6371; // Earth's radius in kilometers
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const distance = R * c;
+    
+    return distance;
+  }
+
+  // Initial load of ride requests
+  useEffect(() => {
+    if (isEligible && coordinates) {
+      loadRideRequests();
+    }
+  }, [isEligible, coordinates]);
 
   return { 
     rideRequests, 

@@ -65,11 +65,11 @@ export function useDriverStatus(userId: string | undefined) {
         // User is registered, check approval status
         const isApproved = driverDetails.status === 'approved';
         
-        // If approved, check deposit status
+        // Check deposit status
         let hasSufficientDeposit = driverDetails.has_sufficient_deposit;
         const depositRequired = driverDetails.deposit_amount_required || 3000;
 
-        // If has_sufficient_deposit field isn't available or reliable, check wallet directly
+        // If deposit field isn't reliable, check wallet directly
         if (isApproved && !hasSufficientDeposit) {
           console.log("Checking wallet balance for deposit requirement");
           const { data: wallet } = await supabase

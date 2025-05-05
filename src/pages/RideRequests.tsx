@@ -44,15 +44,10 @@ const RideRequests: React.FC = () => {
     setDriverMode(isEligible);
   }, [isEligible, setDriverMode]);
 
-  // Load ride requests when coordinates or eligibility changes
-  useEffect(() => {
-    if (isEligible && coordinates) {
-      loadRideRequests();
-    }
-  }, [isEligible, coordinates]);
-
   // Handle accepting a ride
   const handleAcceptRide = async (ride: RideRequest) => {
+    if (!user?.id) return;
+    
     const acceptedRide = await acceptRide(ride);
     
     if (!acceptedRide) return;
@@ -86,6 +81,8 @@ const RideRequests: React.FC = () => {
       currency: acceptedRide.currency,
       passenger: acceptedRide.passenger
     };
+    
+    console.log("Setting current ride:", currentRide);
     
     // Set as current ride and navigate
     setCurrentRide(currentRide);
@@ -175,7 +172,7 @@ const RideRequests: React.FC = () => {
           <p className="text-gray-600">Loading ride requests...</p>
         </div>
       );
-    } else if (rideRequests.length > 0) {
+    } else if (rideRequests && rideRequests.length > 0) {
       return (
         <div className="grid gap-4">
           {rideRequests.map(ride => (
@@ -255,8 +252,10 @@ const RideRequests: React.FC = () => {
       return (
         <div className="py-10 text-center">
           <CheckCircle className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-          <p className="text-gray-600 mb-4">No ride requests available at the moment</p>
-          <Button onClick={loadRideRequests}>Refresh</Button>
+          <p className="text-gray-600 mb-6">No ride requests available at the moment</p>
+          <Button onClick={loadRideRequests} className="bg-violet-600 hover:bg-violet-700">
+            Refresh
+          </Button>
         </div>
       );
     }
@@ -283,7 +282,12 @@ const RideRequests: React.FC = () => {
             className="ml-auto"
             disabled={loading}
           >
-            Refresh
+            {loading ? (
+              <>
+                <Loader size={14} className="mr-2 animate-spin" />
+                Loading...
+              </>
+            ) : 'Refresh'}
           </Button>
         )}
       </div>

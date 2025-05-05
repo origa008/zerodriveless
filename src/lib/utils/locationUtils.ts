@@ -37,6 +37,14 @@ export const extractCoordinates = (location: any): [number, number] | null => {
       return [location.lng, location.lat];
     }
     
+    // If it's an array of length 2, assume it's coordinates
+    if (Array.isArray(location) && location.length === 2) {
+      const [first, second] = location;
+      if (typeof first === 'number' && typeof second === 'number') {
+        return [first, second];
+      }
+    }
+    
     return null;
   } catch (e) {
     console.error('Error extracting coordinates:', e);
@@ -61,8 +69,27 @@ export const extractLocationName = (location: any): string => {
     }
     
     // Check if name exists directly
-    if (typeof location === 'object' && location !== null && 'name' in location) {
-      return location.name || "Unknown";
+    if (typeof location === 'object' && location !== null) {
+      if ('name' in location && location.name) {
+        return String(location.name);
+      }
+      // Check for display_name (common in some geocoding APIs)
+      if ('display_name' in location && location.display_name) {
+        return String(location.display_name);
+      }
+      // Check for address
+      if ('address' in location && typeof location.address === 'object' && location.address !== null) {
+        const address = location.address;
+        // Try to build a name from address components
+        const parts = [];
+        if (address.road) parts.push(address.road);
+        if (address.house_number) parts.push(address.house_number);
+        if (address.city) parts.push(address.city);
+        
+        if (parts.length > 0) {
+          return parts.join(', ');
+        }
+      }
     }
     
     return "Unknown";
