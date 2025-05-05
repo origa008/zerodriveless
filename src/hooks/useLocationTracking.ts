@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { LocationTrackingResult } from '@/lib/types';
 import { updateDriverLocation } from '@/lib/utils/driverLocation';

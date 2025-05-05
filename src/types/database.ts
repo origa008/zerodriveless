@@ -1,11 +1,13 @@
+
 export interface DriverDetails {
   id: string;
   user_id: string;
   status: string;
   has_sufficient_deposit: boolean;
   current_location: {
-    x: number;
-    y: number;
+    type: string;
+    coordinates: [number, number];
+    updated_at: string;
   } | null;
   created_at: string;
   updated_at: string;

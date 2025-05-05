@@ -24,7 +24,7 @@ export async function updateDriverLocation(
           coordinates: [longitude, latitude],
           updated_at: new Date().toISOString()
         }
-      })
+      } as any)
       .eq('user_id', driverId);
       
     if (error) {
@@ -55,13 +55,18 @@ export async function getDriverLocation(
       .eq('user_id', driverId)
       .single();
       
-    if (error || !data || !data.current_location) {
+    if (error || !data) {
       console.error('Error getting driver location:', error);
       return null;
     }
     
     // Parse coordinates from the JSONB response
-    const coordinates = data.current_location.coordinates;
+    const locationData = data.current_location as any;
+    if (!locationData || !locationData.coordinates) {
+      return null;
+    }
+    
+    const coordinates = locationData.coordinates;
     
     if (Array.isArray(coordinates) && coordinates.length === 2) {
       return [Number(coordinates[0]), Number(coordinates[1])];
@@ -115,11 +120,16 @@ export async function getNearbyDrivers(
     // Filter results using Haversine distance and format response
     return data
       .filter(item => {
-        if (!item.current_location || !item.current_location.coordinates) {
+        if (!item.current_location) {
           return false;
         }
         
-        const driverCoords = item.current_location.coordinates;
+        const locationData = item.current_location as any;
+        if (!locationData.coordinates) {
+          return false;
+        }
+        
+        const driverCoords = locationData.coordinates;
         if (!Array.isArray(driverCoords) || driverCoords.length !== 2) {
           return false;
         }
@@ -135,8 +145,8 @@ export async function getNearbyDrivers(
       .map(item => ({
         driverId: item.user_id,
         coordinates: [
-          Number(item.current_location.coordinates[0]), 
-          Number(item.current_location.coordinates[1])
+          Number((item.current_location as any).coordinates[0]), 
+          Number((item.current_location as any).coordinates[1])
         ] as [number, number]
       }));
   } catch (err) {

@@ -116,6 +116,7 @@ export type Database = {
           cnic_front_url: string | null
           cnic_number: string
           created_at: string
+          current_location: Json | null
           deposit_amount_required: number
           driver_license_number: string | null
           email: string | null
@@ -141,6 +142,7 @@ export type Database = {
           cnic_front_url?: string | null
           cnic_number: string
           created_at?: string
+          current_location?: Json | null
           deposit_amount_required?: number
           driver_license_number?: string | null
           email?: string | null
@@ -166,6 +168,7 @@ export type Database = {
           cnic_front_url?: string | null
           cnic_number?: string
           created_at?: string
+          current_location?: Json | null
           deposit_amount_required?: number
           driver_license_number?: string | null
           email?: string | null
