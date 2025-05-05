@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 
 /**
@@ -14,16 +15,17 @@ export async function updateDriverLocation(
   try {
     console.log(`Updating driver location for ${driverId}: [${longitude}, ${latitude}]`);
     
-    // Update the driver's location in the driver_details table
-    // Using a raw query to update the current_location field
-    const { error } = await supabase.rpc(
-      'update_driver_location',
-      { 
-        driver_id: driverId, 
-        longitude, 
-        latitude 
-      }
-    );
+    // Update the driver's location using standard Supabase update
+    const { error } = await supabase
+      .from('driver_details')
+      .update({
+        current_location: {
+          type: 'Point',
+          coordinates: [longitude, latitude],
+          updated_at: new Date().toISOString()
+        }
+      })
+      .eq('user_id', driverId);
       
     if (error) {
       console.error('Error updating driver location:', error);
@@ -46,20 +48,23 @@ export async function getDriverLocation(
   driverId: string
 ): Promise<[number, number] | null> {
   try {
-    // Use a raw query to get the location since TypeScript doesn't recognize the current_location field
-    const { data, error } = await supabase.rpc(
-      'get_driver_location',
-      { driver_id: driverId }
-    );
+    // Get driver location with standard query
+    const { data, error } = await supabase
+      .from('driver_details')
+      .select('current_location')
+      .eq('user_id', driverId)
+      .single();
       
-    if (error || !data) {
+    if (error || !data || !data.current_location) {
       console.error('Error getting driver location:', error);
       return null;
     }
     
-    // Parse coordinates from the response
-    if (data && Array.isArray(data) && data.length === 2) {
-      return data as [number, number];
+    // Parse coordinates from the JSONB response
+    const coordinates = data.current_location.coordinates;
+    
+    if (Array.isArray(coordinates) && coordinates.length === 2) {
+      return [Number(coordinates[0]), Number(coordinates[1])];
     }
     
     return null;
@@ -80,26 +85,60 @@ export async function getNearbyDrivers(
   radiusInKm: number = 5
 ): Promise<{ driverId: string; coordinates: [number, number] }[]> {
   try {
-    // Use a raw query to get nearby drivers
-    const { data, error } = await supabase.rpc(
-      'get_nearby_drivers',
-      { 
-        center_lng: coordinates[0], 
-        center_lat: coordinates[1], 
-        radius_km: radiusInKm 
-      }
-    );
+    // Use a spatial query to find drivers within a radius
+    const [centerLng, centerLat] = coordinates;
+    
+    // Calculate approximate bounding box for faster filtering
+    const degreePerKm = 1 / 111.0; // rough approximation
+    const lngDiff = radiusInKm * degreePerKm;
+    const latDiff = radiusInKm * degreePerKm;
+    
+    // Query drivers within the bounding box
+    const { data, error } = await supabase
+      .from('driver_details')
+      .select('user_id, current_location')
+      .not('current_location', 'is', null)
+      .gte('current_location->coordinates->1', centerLat - latDiff)
+      .lte('current_location->coordinates->1', centerLat + latDiff)
+      .gte('current_location->coordinates->0', centerLng - lngDiff)
+      .lte('current_location->coordinates->0', centerLng + lngDiff);
       
-    if (error || !data) {
+    if (error) {
       console.error('Error getting nearby drivers:', error);
       return [];
     }
     
-    // Parse driver data from the response
-    return (data as any[]).map(item => ({
-      driverId: item.user_id,
-      coordinates: item.coordinates
-    }));
+    if (!data || data.length === 0) {
+      return [];
+    }
+    
+    // Filter results using Haversine distance and format response
+    return data
+      .filter(item => {
+        if (!item.current_location || !item.current_location.coordinates) {
+          return false;
+        }
+        
+        const driverCoords = item.current_location.coordinates;
+        if (!Array.isArray(driverCoords) || driverCoords.length !== 2) {
+          return false;
+        }
+        
+        // Calculate actual distance
+        const distance = calculateDistance(
+          coordinates,
+          [Number(driverCoords[0]), Number(driverCoords[1])]
+        );
+        
+        return distance <= radiusInKm;
+      })
+      .map(item => ({
+        driverId: item.user_id,
+        coordinates: [
+          Number(item.current_location.coordinates[0]), 
+          Number(item.current_location.coordinates[1])
+        ] as [number, number]
+      }));
   } catch (err) {
     console.error('Error getting nearby drivers:', err);
     return [];
