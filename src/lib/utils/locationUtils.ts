@@ -1,5 +1,5 @@
 
-import { Json, Location } from '@/lib/types';
+import { Location } from '@/lib/types';
 
 /**
  * Extract coordinates from location object with type safety
@@ -13,27 +13,34 @@ export const extractCoordinates = (location: any): [number, number] | null => {
       try {
         location = JSON.parse(location);
       } catch (e) {
+        console.error('Error parsing location string:', e, location);
         return null;
       }
     }
     
+    console.log('Extracting coordinates from:', location);
+    
     // Check if coordinates exist directly
     if (location.coordinates && Array.isArray(location.coordinates) && location.coordinates.length === 2) {
+      console.log('Found coordinates array:', location.coordinates);
       return location.coordinates as [number, number];
     }
     
     // Check for x,y format
     if (location.x !== undefined && location.y !== undefined) {
+      console.log('Found x,y coordinates:', [location.x, location.y]);
       return [location.x, location.y];
     }
     
     // Check for longitude,latitude format
     if (location.longitude !== undefined && location.latitude !== undefined) {
+      console.log('Found longitude,latitude format:', [location.longitude, location.latitude]);
       return [location.longitude, location.latitude];
     }
     
     // Check for lng,lat format
     if (location.lng !== undefined && location.lat !== undefined) {
+      console.log('Found lng,lat format:', [location.lng, location.lat]);
       return [location.lng, location.lat];
     }
     
@@ -41,13 +48,15 @@ export const extractCoordinates = (location: any): [number, number] | null => {
     if (Array.isArray(location) && location.length === 2) {
       const [first, second] = location;
       if (typeof first === 'number' && typeof second === 'number') {
+        console.log('Found direct array coordinates:', location);
         return [first, second];
       }
     }
     
+    console.warn('Could not extract coordinates from location:', location);
     return null;
   } catch (e) {
-    console.error('Error extracting coordinates:', e);
+    console.error('Error extracting coordinates:', e, location);
     return null;
   }
 };
@@ -121,4 +130,23 @@ export const calculateDistance = (
   const distance = R * c;
   
   return distance;
+};
+
+/**
+ * Format location for display
+ */
+export const formatLocationForDisplay = (location: Location): string => {
+  if (location.name && location.name !== "Unknown") {
+    return location.name;
+  }
+  
+  if (location.address) {
+    return location.address;
+  }
+  
+  if (location.coordinates) {
+    return `${location.coordinates[1].toFixed(6)}, ${location.coordinates[0].toFixed(6)}`;
+  }
+  
+  return "Unknown location";
 };

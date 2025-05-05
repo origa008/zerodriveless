@@ -14,9 +14,9 @@ export function useLocationTracking(
   const [error, setError] = useState<string | null>(null);
   const [watchId, setWatchId] = useState<number | null>(null);
   
-  // Function to update location in state
-  const updateLocation = (position: GeolocationCoordinates) => {
-    const { longitude, latitude } = position;
+  // Function to update location in state and database
+  const updateLocation = (position: GeolocationPosition) => {
+    const { longitude, latitude } = position.coords;
     setCoordinates([longitude, latitude]);
     setError(null);
     
@@ -60,14 +60,14 @@ export function useLocationTracking(
     
     // Get initial position
     navigator.geolocation.getCurrentPosition(
-      (position) => updateLocation(position.coords),
+      (position) => updateLocation(position),
       handleLocationError,
       { enableHighAccuracy: true }
     );
     
     // Watch position regularly
     const id = navigator.geolocation.watchPosition(
-      (position) => updateLocation(position.coords),
+      (position) => updateLocation(position),
       handleLocationError,
       { 
         enableHighAccuracy: true, 
@@ -82,7 +82,7 @@ export function useLocationTracking(
     // Also set up an interval to force regular updates
     const intervalId = setInterval(() => {
       navigator.geolocation.getCurrentPosition(
-        (position) => updateLocation(position.coords),
+        (position) => updateLocation(position),
         () => {}, // Silent error handling for interval updates
         { enableHighAccuracy: true }
       );
@@ -126,7 +126,7 @@ export function useLocationTracking(
     error,
     startTracking,
     stopTracking,
-    updateLocation: (coords) => updateLocation(coords)
+    updateLocation: (coords) => updateLocation(coords as any)
   };
 }
 

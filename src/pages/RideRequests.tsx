@@ -1,5 +1,5 @@
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRide } from '@/lib/context/RideContext';
 import { useAuth } from '@/lib/context/AuthContext';
@@ -23,6 +23,14 @@ const RideRequests: React.FC = () => {
   // Check if user is eligible to see ride requests
   const isEligible = driverStatus.isApproved && driverStatus.hasSufficientDeposit;
   
+  // Debug info
+  console.log("Component rendered with:", { 
+    userId: user?.id,
+    coordinates,
+    isEligible,
+    driverStatus
+  });
+  
   // Load ride requests if eligible
   const { 
     rideRequests, 
@@ -34,6 +42,7 @@ const RideRequests: React.FC = () => {
 
   // Start location tracking when component mounts
   useEffect(() => {
+    console.log("Starting location tracking, current status:", isTracking);
     if (!isTracking) {
       startTracking();
     }
@@ -42,15 +51,25 @@ const RideRequests: React.FC = () => {
   // Set driver mode based on eligibility
   useEffect(() => {
     setDriverMode(isEligible);
+    console.log("Driver mode set to:", isEligible);
   }, [isEligible, setDriverMode]);
 
   // Handle accepting a ride
   const handleAcceptRide = async (ride: RideRequest) => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      console.error("Cannot accept ride: user ID missing");
+      return;
+    }
     
+    console.log("Accepting ride:", ride.id);
     const acceptedRide = await acceptRide(ride);
     
-    if (!acceptedRide) return;
+    if (!acceptedRide) {
+      console.error("Failed to accept ride");
+      return;
+    }
+    
+    console.log("Ride accepted, processing:", acceptedRide);
     
     // Extract location details for the ride context
     const pickupCoords = extractCoordinates(acceptedRide.pickup_location);
@@ -87,6 +106,12 @@ const RideRequests: React.FC = () => {
     // Set as current ride and navigate
     setCurrentRide(currentRide);
     navigate('/ride-progress');
+  };
+
+  // Add a manual refresh function
+  const handleManualRefresh = () => {
+    console.log("Manual refresh triggered");
+    loadRideRequests();
   };
 
   // Render content based on driver status
@@ -180,7 +205,7 @@ const RideRequests: React.FC = () => {
               <div className="p-4">
                 <div className="flex justify-between items-start mb-4">
                   <Badge className="bg-blue-500">
-                    {ride.ride_option.name || 'Standard'}
+                    {ride.ride_option?.name || 'Standard'}
                   </Badge>
                   <div className="text-right">
                     <p className="font-bold text-lg">{ride.price} {ride.currency || 'RS'}</p>
@@ -195,7 +220,7 @@ const RideRequests: React.FC = () => {
                     </div>
                     <div>
                       <p className="text-sm text-gray-500">Pickup</p>
-                      <p className="font-medium">{ride.pickup.name || 'Pickup Location'}</p>
+                      <p className="font-medium">{ride.pickup?.name || 'Pickup Location'}</p>
                     </div>
                   </div>
                   
@@ -205,7 +230,7 @@ const RideRequests: React.FC = () => {
                     </div>
                     <div>
                       <p className="text-sm text-gray-500">Dropoff</p>
-                      <p className="font-medium">{ride.dropoff.name || 'Dropoff Location'}</p>
+                      <p className="font-medium">{ride.dropoff?.name || 'Dropoff Location'}</p>
                     </div>
                   </div>
                 </div>
@@ -213,7 +238,7 @@ const RideRequests: React.FC = () => {
                 <div className="flex items-center justify-between text-sm text-gray-600 mb-4">
                   <span className="flex items-center">
                     <Clock size={16} className="mr-1" />
-                    {ride.duration} min
+                    {ride.duration || 0} min
                   </span>
                   
                   {ride.distance_to_pickup !== undefined && (
@@ -253,9 +278,16 @@ const RideRequests: React.FC = () => {
         <div className="py-10 text-center">
           <CheckCircle className="mx-auto h-12 w-12 text-gray-400 mb-4" />
           <p className="text-gray-600 mb-6">No ride requests available at the moment</p>
-          <Button onClick={loadRideRequests} className="bg-violet-600 hover:bg-violet-700">
+          <Button onClick={handleManualRefresh} className="bg-violet-600 hover:bg-violet-700">
             Refresh
           </Button>
+          
+          {coordinates && (
+            <div className="mt-4 text-sm text-gray-500">
+              <p>Your current location: [{coordinates[1].toFixed(5)}, {coordinates[0].toFixed(5)}]</p>
+              <p>System is actively searching for nearby ride requests.</p>
+            </div>
+          )}
         </div>
       );
     }
@@ -276,7 +308,7 @@ const RideRequests: React.FC = () => {
         
         {driverStatus.isApproved && driverStatus.hasSufficientDeposit && (
           <Button 
-            onClick={loadRideRequests} 
+            onClick={handleManualRefresh}
             variant="outline" 
             size="sm" 
             className="ml-auto"
@@ -295,6 +327,22 @@ const RideRequests: React.FC = () => {
       <div className="p-4">
         {renderContent()}
       </div>
+      
+      {/* Debug Info (for development only) */}
+      {import.meta.env.DEV && (
+        <div className="p-4 mt-4 bg-gray-100 border-t text-xs text-gray-500">
+          <details>
+            <summary className="cursor-pointer font-medium">Debug Information</summary>
+            <pre className="mt-2 whitespace-pre-wrap">
+              User: {JSON.stringify(user?.id, null, 2)}<br />
+              Eligible: {JSON.stringify(isEligible)}<br />
+              Driver Status: {JSON.stringify(driverStatus, null, 2)}<br />
+              Location: {JSON.stringify(coordinates, null, 2)}<br />
+              Ride Requests: {JSON.stringify(rideRequests?.length || 0)}
+            </pre>
+          </details>
+        </div>
+      )}
     </div>
   );
 };

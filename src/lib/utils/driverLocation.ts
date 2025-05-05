@@ -1,6 +1,5 @@
 
 import { supabase } from '@/integrations/supabase/client';
-import { calculateDistance } from '@/lib/utils/rideRequests';
 
 /**
  * Updates the driver's location in the database
@@ -16,15 +15,15 @@ export async function updateDriverLocation(
   try {
     console.log(`Updating driver location for ${driverId}: [${longitude}, ${latitude}]`);
     
-    // Since the RPC function doesn't exist and current_location isn't in the schema,
-    // We'll store the location in the vehicle_model field as a JSON string
-    const locationData = JSON.stringify({ lng: longitude, lat: latitude });
-    
+    // Update the driver's location in the driver_details table
     const { error } = await supabase
       .from('driver_details')
       .update({
-        // Store as serialized JSON in the vehicle_model field
-        vehicle_model: locationData
+        current_location: {
+          type: 'Point',
+          coordinates: [longitude, latitude],
+          updated_at: new Date().toISOString()
+        }
       })
       .eq('user_id', driverId);
       
@@ -51,25 +50,20 @@ export async function getDriverLocation(
   try {
     const { data, error } = await supabase
       .from('driver_details')
-      .select('vehicle_model') // Using vehicle_model as our temporary location store
+      .select('current_location')
       .eq('user_id', driverId)
       .maybeSingle();
       
-    if (error || !data) {
+    if (error || !data || !data.current_location) {
       console.error('Error getting driver location:', error);
       return null;
     }
     
-    // Parse location from the field we're using as storage
-    if (data && data.vehicle_model) {
-      try {
-        const locationData = JSON.parse(data.vehicle_model);
-        if (locationData && 'lng' in locationData && 'lat' in locationData) {
-          return [locationData.lng, locationData.lat];
-        }
-      } catch (e) {
-        console.warn('Could not parse location data from vehicle_model');
-      }
+    // Parse location from the current_location JSON field
+    if (data.current_location?.coordinates && 
+        Array.isArray(data.current_location.coordinates) && 
+        data.current_location.coordinates.length === 2) {
+      return data.current_location.coordinates as [number, number];
     }
     
     return null;
@@ -93,7 +87,7 @@ export async function getNearbyDrivers(
     // Get all driver details
     const { data, error } = await supabase
       .from('driver_details')
-      .select('user_id, vehicle_model');
+      .select('user_id, current_location');
       
     if (error || !data) {
       console.error('Error getting nearby drivers:', error);
@@ -101,46 +95,57 @@ export async function getNearbyDrivers(
     }
     
     // Filter out drivers with no location
-    const driversWithLocation = data.filter(driver => {
-      return driver && driver.vehicle_model !== null;
-    });
+    const driversWithLocation = data.filter(driver => 
+      driver && driver.current_location && 
+      driver.current_location.coordinates && 
+      Array.isArray(driver.current_location.coordinates)
+    );
     
-    // Filter drivers by distance
-    const nearbyDrivers = driversWithLocation.filter(driver => {
-      if (!driver.vehicle_model) return false;
+    // Calculate distance and filter by radius
+    const nearbyDrivers = driversWithLocation.map(driver => {
+      const driverCoords = driver.current_location.coordinates as [number, number];
+      const distance = calculateDistance(coordinates, driverCoords);
       
-      try {
-        // Parse location from our storage field
-        const locationData = JSON.parse(driver.vehicle_model);
-        if (locationData && 'lng' in locationData && 'lat' in locationData) {
-          const driverCoords: [number, number] = [locationData.lng, locationData.lat];
-          const distance = calculateDistance(coordinates, driverCoords);
-          return distance <= radiusInKm;
-        }
-      } catch (e) {
-        return false;
-      }
-      
-      return false;
-    });
+      return {
+        driverId: driver.user_id,
+        coordinates: driverCoords,
+        distance
+      };
+    }).filter(driver => driver.distance <= radiusInKm)
+      .sort((a, b) => a.distance - b.distance);
     
-    return nearbyDrivers.map(driver => {
-      try {
-        const locationData = JSON.parse(driver.vehicle_model as string);
-        return {
-          driverId: driver.user_id,
-          coordinates: [locationData.lng, locationData.lat] as [number, number]
-        };
-      } catch (e) {
-        // This shouldn't happen based on our filter, but just in case
-        return {
-          driverId: driver.user_id,
-          coordinates: [0, 0] as [number, number]
-        };
-      }
-    });
+    // Return only the necessary data
+    return nearbyDrivers.map(({ driverId, coordinates }) => ({
+      driverId,
+      coordinates
+    }));
   } catch (err) {
     console.error('Error getting nearby drivers:', err);
     return [];
   }
+}
+
+/**
+ * Calculate distance between two points using Haversine formula
+ */
+function calculateDistance(
+  point1: [number, number], 
+  point2: [number, number]
+): number {
+  const [lon1, lat1] = point1;
+  const [lon2, lat2] = point2;
+  
+  const R = 6371; // Earth's radius in kilometers
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+    Math.sin(dLon/2) * Math.sin(dLon/2);
+  
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  const distance = R * c;
+  
+  return distance;
 }
