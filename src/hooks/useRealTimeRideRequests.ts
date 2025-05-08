@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -25,6 +26,7 @@ export function useRealTimeRideRequests({
   const [rides, setRides] = useState<RideRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [acceptingRide, setAcceptingRide] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
   
   // Function to fetch current ride requests
@@ -36,6 +38,7 @@ export function useRealTimeRideRequests({
     
     try {
       setLoading(true);
+      setError(null);
       console.log(`Fetching ride requests near [${coordinates[0]}, ${coordinates[1]}]`);
       
       // Get all searching rides
@@ -50,9 +53,13 @@ export function useRealTimeRideRequests({
         .eq('status', 'searching')
         .is('driver_id', null);
       
-      if (error) throw error;
+      if (error) {
+        console.error("Supabase error:", error);
+        throw error;
+      }
       
       if (!rides || rides.length === 0) {
+        console.log("No ride requests found");
         setRides([]);
         setLoading(false);
         return;
@@ -149,13 +156,15 @@ export function useRealTimeRideRequests({
       
       console.log(`Found ${nearbyRides.length} rides within ${maxDistance}km`);
       setRides(nearbyRides);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error fetching ride requests:', err);
+      setError(err.message || "Could not load ride requests");
       toast({
         title: "Error",
         description: "Could not load ride requests",
         variant: "destructive"
       });
+      setRides([]);
     } finally {
       setLoading(false);
     }
@@ -280,6 +289,7 @@ export function useRealTimeRideRequests({
   return {
     rides,
     loading,
+    error,
     fetchRideRequests,
     acceptRide,
     acceptingRide

@@ -5,7 +5,7 @@ import { useAuth } from '@/lib/context/AuthContext';
 import { useRide } from '@/lib/context/RideContext';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, MapPin, Loader2, RefreshCw, Power } from 'lucide-react';
+import { ArrowLeft, MapPin, Loader2, RefreshCw, Power, AlertTriangle } from 'lucide-react';
 import { useRealTimeDriverLocation } from '@/hooks/useRealTimeDriverLocation';
 import { useRealTimeRideRequests } from '@/hooks/useRealTimeRideRequests';
 import { useDriverStatus } from '@/hooks/useDriverStatus';
@@ -41,6 +41,7 @@ const RideRequests: React.FC = () => {
   const {
     rides: rideRequests,
     loading: loadingRides,
+    error: ridesError,
     acceptRide,
     acceptingRide,
     fetchRideRequests
@@ -65,6 +66,13 @@ const RideRequests: React.FC = () => {
   useEffect(() => {
     setDriverMode(isEligible);
   }, [isEligible, setDriverMode]);
+  
+  // Debug logging
+  useEffect(() => {
+    console.log("Driver status:", { isEligible, driverStatus });
+    console.log("Current coordinates:", coordinates);
+    console.log("Ride requests:", rideRequests);
+  }, [isEligible, driverStatus, coordinates, rideRequests]);
   
   // Handle going online/offline
   const toggleOnlineStatus = () => {
@@ -270,6 +278,25 @@ const RideRequests: React.FC = () => {
           </div>
         </div>
         
+        {/* Error Display */}
+        {ridesError && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start">
+            <AlertTriangle className="h-5 w-5 text-red-500 mt-0.5 mr-2 flex-shrink-0" />
+            <div>
+              <p className="font-medium text-red-800">Error loading ride requests</p>
+              <p className="text-sm text-red-600 mt-1">Please try refreshing or check your internet connection.</p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRefresh}
+                className="mt-2 text-red-600 border-red-200 hover:bg-red-50"
+              >
+                Try Again
+              </Button>
+            </div>
+          </div>
+        )}
+        
         {/* Ride Requests */}
         {loadingRides ? (
           <div className="py-6 flex flex-col items-center">
@@ -348,6 +375,7 @@ const RideRequests: React.FC = () => {
               Ride Requests: {rideRequests.length}<br />
               Online: {isOnline.toString()}<br />
               Tracking: {isTracking.toString()}<br />
+              Error: {ridesError || 'none'}<br />
             </pre>
           </details>
         </div>

@@ -21,6 +21,15 @@ export const RideRequestItem: React.FC<RideRequestItemProps> = ({
     await onAccept(ride);
   };
   
+  // Safely get name values with fallbacks
+  const pickupName = ride.pickup?.name || 'Pickup Location';
+  const dropoffName = ride.dropoff?.name || 'Dropoff Location';
+  const priceValue = typeof ride.price === 'number' ? ride.price : 0;
+  const currencySymbol = ride.currency || 'RS';
+  const distance = typeof ride.distance === 'number' ? ride.distance.toFixed(1) : '0';
+  const duration = typeof ride.duration === 'number' ? Math.round(ride.duration / 60) : 0;
+  const distanceToPickup = typeof ride.distance_to_pickup === 'number' ? ride.distance_to_pickup.toFixed(1) : '0';
+  
   return (
     <Card className="overflow-hidden bg-white">
       <CardHeader className="pb-2 pt-4 px-4">
@@ -31,10 +40,10 @@ export const RideRequestItem: React.FC<RideRequestItemProps> = ({
           
           <div className="text-right">
             <p className="font-bold text-lg">
-              {ride.price} {ride.currency || 'RS'}
+              {priceValue} {currencySymbol}
             </p>
             <p className="text-gray-500 text-xs">
-              {ride.distance?.toFixed(1) || '0'} km · {Math.round((ride.duration || 0) / 60) || '0'} min
+              {distance} km · {duration} min
             </p>
           </div>
         </div>
@@ -51,11 +60,11 @@ export const RideRequestItem: React.FC<RideRequestItemProps> = ({
             <div className="flex-1 space-y-4">
               <div>
                 <p className="text-xs text-gray-500">Pickup</p>
-                <p className="font-medium text-sm truncate">{ride.pickup?.name || 'Pickup Location'}</p>
+                <p className="font-medium text-sm truncate">{pickupName}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-500">Dropoff</p>
-                <p className="font-medium text-sm truncate">{ride.dropoff?.name || 'Dropoff Location'}</p>
+                <p className="font-medium text-sm truncate">{dropoffName}</p>
               </div>
             </div>
           </div>
@@ -64,12 +73,12 @@ export const RideRequestItem: React.FC<RideRequestItemProps> = ({
         <div className="flex justify-between items-center mt-3 text-xs text-gray-600">
           <span className="flex items-center">
             <Clock size={14} className="mr-1" />
-            {Math.round((ride.duration || 0) / 60) || '0'} min
+            {duration} min
           </span>
           
           <span className="flex items-center">
             <MapPin size={14} className="mr-1" />
-            {ride.distance_to_pickup?.toFixed(1) || '0'} km away
+            {distanceToPickup} km away
           </span>
           
           {ride.passenger && (
