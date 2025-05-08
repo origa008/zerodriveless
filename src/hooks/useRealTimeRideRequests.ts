@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { RideRequest } from '@/lib/types';
-import { calculateDistance } from '@/lib/utils/locationUtils';
+import { extractCoordinates, extractLocationName } from '@/lib/utils/locationUtils';
 
 type UseRealTimeRideRequestsOptions = {
   driverId: string | undefined;
@@ -37,7 +37,7 @@ export function useRealTimeRideRequests({
     
     try {
       setLoading(true);
-      console.log(`Fetching ride requests near [${coordinates[1]}, ${coordinates[0]}]`);
+      console.log(`Fetching ride requests near [${coordinates[0]}, ${coordinates[1]}]`);
       
       // Get all searching rides
       const { data: rides, error } = await supabase
@@ -59,31 +59,18 @@ export function useRealTimeRideRequests({
         return;
       }
       
-      console.log(`Found ${rides.length} rides in searching status`);
+      console.log(`Found ${rides.length} rides in searching status`, rides);
       
       // Process and filter rides
       const nearbyRides = rides
         .map(ride => {
           try {
             // Extract coordinates from pickup_location
-            const pickupLocation = ride.pickup_location;
-            if (!pickupLocation || typeof pickupLocation !== 'object') return null;
-            
-            let pickupCoordinates: [number, number] | null = null;
-            
-            // Try to extract coordinates from JSON structure
-            if (pickupLocation && 
-                typeof pickupLocation === 'object' && 
-                'coordinates' in pickupLocation && 
-                Array.isArray(pickupLocation.coordinates) && 
-                pickupLocation.coordinates.length === 2) {
-              pickupCoordinates = [
-                Number(pickupLocation.coordinates[0]), 
-                Number(pickupLocation.coordinates[1])
-              ] as [number, number];
+            const pickupCoordinates = extractCoordinates(ride.pickup_location);
+            if (!pickupCoordinates) {
+              console.warn(`Could not extract coordinates from pickup_location for ride ${ride.id}`, ride.pickup_location);
+              return null;
             }
-            
-            if (!pickupCoordinates) return null;
             
             // Calculate distance to pickup
             const distance = calculateDistance(coordinates, pickupCoordinates);
@@ -99,8 +86,8 @@ export function useRealTimeRideRequests({
               
               if (!ride.ride_option) return defaultOption;
               
+              // Handle ride_option as object
               if (typeof ride.ride_option === 'object' && ride.ride_option !== null) {
-                // Handle object
                 const option = ride.ride_option as Record<string, any>;
                 return {
                   id: option.id || defaultOption.id,
@@ -113,41 +100,12 @@ export function useRealTimeRideRequests({
               return defaultOption;
             })();
             
-            // Handle pickup location name safely
-            const pickupName = (() => {
-              if (
-                typeof pickupLocation === 'object' && 
-                'name' in pickupLocation
-              ) {
-                return String(pickupLocation.name || 'Pickup Location');
-              }
-              return 'Pickup Location';
-            })();
+            // Extract pickup and dropoff location names
+            const pickupName = extractLocationName(ride.pickup_location, 'Pickup Location');
+            const dropoffName = extractLocationName(ride.dropoff_location, 'Dropoff Location');
             
-            // Handle dropoff location safely
-            const dropoffData = (() => {
-              const defaultDropoff = {
-                name: 'Dropoff Location',
-                coordinates: [0, 0] as [number, number]
-              };
-              
-              if (!ride.dropoff_location || typeof ride.dropoff_location !== 'object') {
-                return defaultDropoff;
-              }
-              
-              const dropoff = ride.dropoff_location as Record<string, any>;
-              const coordinates: [number, number] = (() => {
-                if (Array.isArray(dropoff.coordinates) && dropoff.coordinates.length === 2) {
-                  return [Number(dropoff.coordinates[0]), Number(dropoff.coordinates[1])];
-                }
-                return [0, 0];
-              })();
-              
-              return {
-                name: typeof dropoff.name === 'string' ? dropoff.name : defaultDropoff.name,
-                coordinates
-              };
-            })();
+            // Extract dropoff coordinates
+            const dropoffCoordinates = extractCoordinates(ride.dropoff_location) || [0, 0] as [number, number];
             
             // Create ride request object with full type safety
             const rideRequest: RideRequest = {
@@ -158,11 +116,14 @@ export function useRealTimeRideRequests({
                 name: pickupName,
                 coordinates: pickupCoordinates
               },
-              dropoff: dropoffData,
+              dropoff: {
+                name: dropoffName,
+                coordinates: dropoffCoordinates
+              },
               pickup_location: ride.pickup_location,
               dropoff_location: ride.dropoff_location,
               ride_option: rideOptionData,
-              status: ride.status as 'searching' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled',
+              status: (ride.status as 'searching' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled') || 'searching',
               price: ride.price || 0,
               currency: ride.currency || 'RS',
               distance: ride.distance || 0,

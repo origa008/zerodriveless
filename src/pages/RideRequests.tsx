@@ -118,11 +118,11 @@ const RideRequests: React.FC = () => {
       id: acceptedRide.id,
       pickup: {
         name: extractLocationName(acceptedRide.pickup_location),
-        coordinates: pickupCoords ? pickupCoords : [0, 0] as [number, number]
+        coordinates: pickupCoords || [0, 0] as [number, number]
       },
       dropoff: {
         name: extractLocationName(acceptedRide.dropoff_location),
-        coordinates: dropoffCoords ? dropoffCoords : [0, 0] as [number, number]
+        coordinates: dropoffCoords || [0, 0] as [number, number]
       },
       rideOption: {
         id: '1',

@@ -1,3 +1,4 @@
+
 /**
  * Extract coordinates from a location object which could be in various formats
  * @param location Location object from database
@@ -28,7 +29,7 @@ export function extractCoordinates(location: any): [number, number] | null {
       }
     }
     
-    // Handle object format
+    // Handle object format with coordinates array
     if (typeof location === 'object' && location !== null) {
       // Format: { coordinates: [lng, lat] }
       if (Array.isArray(location.coordinates) && location.coordinates.length >= 2) {

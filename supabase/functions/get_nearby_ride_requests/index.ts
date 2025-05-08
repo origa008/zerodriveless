@@ -30,6 +30,8 @@ serve(async (req) => {
       );
     }
 
+    console.log(`Fetching rides near [${driver_lng}, ${driver_lat}] within ${radius_km}km`);
+
     // Create Supabase client
     const supabaseUrl = Deno.env.get("SUPABASE_URL") as string;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") as string;
@@ -38,7 +40,12 @@ serve(async (req) => {
     // Query rides table for available rides
     const { data, error } = await supabase
       .from('rides')
-      .select('*')
+      .select(`
+        *,
+        passenger:profiles!passenger_id (
+          id, name, avatar
+        )
+      `)
       .eq('status', 'searching')
       .is('driver_id', null);
 
@@ -50,25 +57,69 @@ serve(async (req) => {
       );
     }
 
+    if (!data || data.length === 0) {
+      return new Response(
+        JSON.stringify([]),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
+      );
+    }
+
+    console.log(`Found ${data.length} rides in searching status`);
+
     // Calculate distances and filter by radius
     const nearbyRides = data
       .map(ride => {
-        const pickupCoords = ride.pickup_location.coordinates || 
-          [ride.pickup_location.longitude, ride.pickup_location.latitude];
-        
-        const distance = calculateDistance(
-          [driver_lng, driver_lat],
-          pickupCoords
-        );
-        
-        return {
-          ...ride,
-          distance: parseFloat(distance.toFixed(2))
-        };
+        try {
+          // Extract pickup coordinates
+          let pickupCoords: [number, number] | null = null;
+          
+          if (ride.pickup_location) {
+            if (typeof ride.pickup_location === 'string') {
+              try {
+                const parsed = JSON.parse(ride.pickup_location);
+                if (parsed && Array.isArray(parsed.coordinates) && parsed.coordinates.length >= 2) {
+                  pickupCoords = [Number(parsed.coordinates[0]), Number(parsed.coordinates[1])];
+                }
+              } catch (e) {
+                console.error("Error parsing pickup_location:", e);
+              }
+            } else if (typeof ride.pickup_location === 'object' && ride.pickup_location !== null) {
+              const loc = ride.pickup_location;
+              if (Array.isArray(loc.coordinates) && loc.coordinates.length >= 2) {
+                pickupCoords = [Number(loc.coordinates[0]), Number(loc.coordinates[1])];
+              } else if (loc.lng !== undefined && loc.lat !== undefined) {
+                pickupCoords = [Number(loc.lng), Number(loc.lat)];
+              } else if (loc.longitude !== undefined && loc.latitude !== undefined) {
+                pickupCoords = [Number(loc.longitude), Number(loc.latitude)];
+              }
+            }
+          }
+          
+          if (!pickupCoords) {
+            console.warn(`Could not extract coordinates for ride ${ride.id}`);
+            return null;
+          }
+          
+          // Calculate distance to pickup
+          const distance = calculateDistance(
+            [driver_lng, driver_lat],
+            pickupCoords
+          );
+          
+          return {
+            ...ride,
+            distance_to_pickup: parseFloat(distance.toFixed(2))
+          };
+        } catch (err) {
+          console.error(`Error processing ride ${ride.id}:`, err);
+          return null;
+        }
       })
-      .filter(ride => ride.distance <= radius_km)
-      .sort((a, b) => a.distance - b.distance);
+      .filter(ride => ride !== null && ride.distance_to_pickup <= radius_km)
+      .sort((a, b) => a.distance_to_pickup - b.distance_to_pickup);
 
+    console.log(`Returning ${nearbyRides.length} rides within ${radius_km}km`);
+    
     return new Response(
       JSON.stringify(nearbyRides),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
