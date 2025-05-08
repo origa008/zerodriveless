@@ -76,7 +76,7 @@ export function useRealTimeRideRequests({
               pickupCoordinates = [
                 Number(pickupLocation.coordinates[0]), 
                 Number(pickupLocation.coordinates[1])
-              ];
+              ] as [number, number];
             }
             
             if (!pickupCoordinates) return null;
@@ -84,39 +84,90 @@ export function useRealTimeRideRequests({
             // Calculate distance to pickup
             const distance = calculateDistance(coordinates, pickupCoordinates);
             
+            // Create ride option with safe type checking
+            let rideOptionName = 'Standard';
+            let rideOptionType = 'car';
+            
+            // Handle ride_option safely
+            if (ride.ride_option && typeof ride.ride_option === 'object') {
+              // Check if it's a non-array object first
+              if (!Array.isArray(ride.ride_option)) {
+                const rideOptionObj = ride.ride_option as Record<string, any>;
+                rideOptionName = typeof rideOptionObj.name === 'string' ? rideOptionObj.name : 'Standard';
+                rideOptionType = typeof rideOptionObj.type === 'string' ? rideOptionObj.type : 'car';
+              }
+            }
+            
             // Create ride request object with full type safety
+            const dropoffCoordinates = (() => {
+              if (
+                typeof ride.dropoff_location === 'object' && 
+                ride.dropoff_location && 
+                'coordinates' in ride.dropoff_location && 
+                Array.isArray(ride.dropoff_location.coordinates) && 
+                ride.dropoff_location.coordinates.length === 2
+              ) {
+                return [
+                  Number(ride.dropoff_location.coordinates[0]), 
+                  Number(ride.dropoff_location.coordinates[1])
+                ] as [number, number];
+              }
+              return [0, 0] as [number, number];
+            })();
+            
+            // Handle dropoff location name safely
+            const dropoffName = (() => {
+              if (
+                typeof ride.dropoff_location === 'object' && 
+                ride.dropoff_location && 
+                'name' in ride.dropoff_location
+              ) {
+                return String(ride.dropoff_location.name || 'Dropoff Location');
+              }
+              return 'Dropoff Location';
+            })();
+            
+            // Handle pickup location name safely
+            const pickupName = (() => {
+              if (
+                typeof pickupLocation === 'object' && 
+                'name' in pickupLocation
+              ) {
+                return String(pickupLocation.name || 'Pickup Location');
+              }
+              return 'Pickup Location';
+            })();
+            
+            // Make sure status is one of the allowed types
+            const status = (() => {
+              const allowedStatuses = ['searching', 'confirmed', 'in_progress', 'completed', 'cancelled'];
+              if (typeof ride.status === 'string' && allowedStatuses.includes(ride.status)) {
+                return ride.status as 'searching' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
+              }
+              return 'searching' as const;
+            })();
+            
             const rideRequest: RideRequest = {
               id: ride.id,
               passenger_id: ride.passenger_id,
               driver_id: ride.driver_id,
               pickup: {
-                name: typeof pickupLocation === 'object' && 'name' in pickupLocation ? 
-                  String(pickupLocation.name || 'Pickup Location') : 'Pickup Location',
+                name: pickupName,
                 coordinates: pickupCoordinates
               },
               dropoff: {
-                name: typeof ride.dropoff_location === 'object' && 'name' in ride.dropoff_location ? 
-                  String(ride.dropoff_location.name || 'Dropoff Location') : 'Dropoff Location',
-                coordinates: typeof ride.dropoff_location === 'object' && 'coordinates' in ride.dropoff_location && 
-                  Array.isArray(ride.dropoff_location.coordinates) && ride.dropoff_location.coordinates.length === 2 ? 
-                  [Number(ride.dropoff_location.coordinates[0]), Number(ride.dropoff_location.coordinates[1])] : [0, 0]
+                name: dropoffName,
+                coordinates: dropoffCoordinates
               },
               pickup_location: ride.pickup_location,
               dropoff_location: ride.dropoff_location,
-              ride_option: typeof ride.ride_option === 'object' ? 
-                {
-                  id: '1',
-                  name: ride.ride_option?.name || 'Standard',
-                  type: ride.ride_option?.type || 'car',
-                  basePrice: ride.price || 0
-                } : 
-                {
-                  id: '1',
-                  name: 'Standard',
-                  type: 'car',
-                  basePrice: ride.price || 0
-                },
-              status: ride.status,
+              ride_option: {
+                id: '1',
+                name: rideOptionName,
+                type: rideOptionType,
+                basePrice: typeof ride.price === 'number' ? ride.price : 0
+              },
+              status: status,
               price: ride.price,
               currency: ride.currency || 'RS',
               distance: ride.distance || 0,
@@ -187,7 +238,7 @@ export function useRealTimeRideRequests({
         .from('rides')
         .update({
           driver_id: driverId,
-          status: 'confirmed',
+          status: 'confirmed' as const,
           start_time: new Date().toISOString(),
           driver_location: {
             type: 'Point',

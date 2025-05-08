@@ -118,11 +118,11 @@ const RideRequests: React.FC = () => {
       id: acceptedRide.id,
       pickup: {
         name: extractLocationName(acceptedRide.pickup_location),
-        coordinates: pickupCoords ? pickupCoords as [number, number] : [0, 0]
+        coordinates: pickupCoords ? pickupCoords : [0, 0] as [number, number]
       },
       dropoff: {
         name: extractLocationName(acceptedRide.dropoff_location),
-        coordinates: dropoffCoords ? dropoffCoords as [number, number] : [0, 0]
+        coordinates: dropoffCoords ? dropoffCoords : [0, 0] as [number, number]
       },
       rideOption: {
         id: '1',
@@ -133,9 +133,9 @@ const RideRequests: React.FC = () => {
       price: acceptedRide.price,
       distance: acceptedRide.distance,
       duration: acceptedRide.duration,
-      status: 'confirmed',
-      paymentMethod: acceptedRide.payment_method as 'cash' | 'wallet',
-      currency: acceptedRide.currency,
+      status: 'confirmed' as const,
+      paymentMethod: (acceptedRide.payment_method as 'cash' | 'wallet') || 'cash',
+      currency: acceptedRide.currency || 'RS',
       passenger: acceptedRide.passenger
     };
     
