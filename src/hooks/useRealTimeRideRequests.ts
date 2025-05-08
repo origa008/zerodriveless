@@ -1,9 +1,8 @@
-
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { RideRequest } from '@/lib/types';
-import { extractCoordinates, extractLocationName } from '@/lib/utils/locationUtils';
+import { extractCoordinates, extractLocationName, calculateDistance } from '@/lib/utils/locationUtils';
 
 type UseRealTimeRideRequestsOptions = {
   driverId: string | undefined;
