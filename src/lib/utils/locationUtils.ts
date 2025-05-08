@@ -1,94 +1,80 @@
 
 /**
- * Extract coordinates from a location object which could be in various formats
- * @param location Location object from database
- * @returns [longitude, latitude] tuple or null if coordinates can't be extracted
+ * Utility functions for location handling
  */
-export function extractCoordinates(location: any): [number, number] | null {
-  if (!location) return null;
-  
+
+/**
+ * Extract coordinates from location object
+ */
+export function extractCoordinates(locationData: any): [number, number] | null {
   try {
-    // Handle string (JSON) format
-    if (typeof location === 'string') {
+    if (!locationData) return null;
+    
+    // Handle string JSON
+    if (typeof locationData === 'string') {
       try {
-        const parsed = JSON.parse(location);
-        if (parsed && Array.isArray(parsed.coordinates) && parsed.coordinates.length >= 2) {
-          return [Number(parsed.coordinates[0]), Number(parsed.coordinates[1])];
-        }
-        
-        if (parsed && typeof parsed.lng === 'number' && typeof parsed.lat === 'number') {
-          return [parsed.lng, parsed.lat];
-        }
-        
-        if (parsed && typeof parsed.longitude === 'number' && typeof parsed.latitude === 'number') {
-          return [parsed.longitude, parsed.latitude];
-        }
+        locationData = JSON.parse(locationData);
       } catch (e) {
-        console.error('Error parsing location string:', e);
         return null;
       }
     }
     
-    // Handle object format with coordinates array
-    if (typeof location === 'object' && location !== null) {
-      // Format: { coordinates: [lng, lat] }
-      if (Array.isArray(location.coordinates) && location.coordinates.length >= 2) {
-        return [Number(location.coordinates[0]), Number(location.coordinates[1])];
-      }
-      
-      // Format: { lng, lat }
-      if (typeof location.lng === 'number' && typeof location.lat === 'number') {
-        return [location.lng, location.lat];
-      }
-      
-      // Format: { longitude, latitude }
-      if (typeof location.longitude === 'number' && typeof location.latitude === 'number') {
-        return [location.longitude, location.latitude];
-      }
+    // Check if coordinates exist directly
+    if (locationData.coordinates && Array.isArray(locationData.coordinates) && locationData.coordinates.length === 2) {
+      return locationData.coordinates as [number, number];
+    }
+    
+    // Check for x,y format
+    if (locationData.x !== undefined && locationData.y !== undefined) {
+      return [locationData.x, locationData.y];
+    }
+    
+    // Check for longitude,latitude format
+    if (locationData.longitude !== undefined && locationData.latitude !== undefined) {
+      return [locationData.longitude, locationData.latitude];
+    }
+    
+    // Check for lng,lat format
+    if (locationData.lng !== undefined && locationData.lat !== undefined) {
+      return [locationData.lng, locationData.lat];
     }
     
     return null;
-  } catch (error) {
-    console.error('Error extracting coordinates:', error);
+  } catch (e) {
+    console.error('Error extracting coordinates:', e);
     return null;
   }
 }
 
 /**
- * Extract location name from a location object
- * @param location Location object from database
- * @returns Location name or default value if no name found
+ * Extract location name from location object
  */
-export function extractLocationName(location: any, defaultName: string = 'Unknown Location'): string {
-  if (!location) return defaultName;
-  
+export function extractLocationName(locationData: any, defaultName: string = "Unknown Location"): string {
   try {
-    // Handle string (JSON) format
-    if (typeof location === 'string') {
+    if (!locationData) return defaultName;
+    
+    // Handle string JSON
+    if (typeof locationData === 'string') {
       try {
-        const parsed = JSON.parse(location);
-        return parsed?.name || defaultName;
+        locationData = JSON.parse(locationData);
       } catch (e) {
         return defaultName;
       }
     }
     
-    // Handle object format
-    if (typeof location === 'object' && location !== null) {
-      return location.name || defaultName;
+    // Check if name exists directly on the object
+    if (typeof locationData === 'object' && locationData !== null && 'name' in locationData) {
+      return locationData.name || defaultName;
     }
     
     return defaultName;
-  } catch (error) {
+  } catch (e) {
     return defaultName;
   }
 }
 
 /**
  * Calculate distance between two points using Haversine formula
- * @param point1 [longitude, latitude]
- * @param point2 [longitude, latitude]
- * @returns Distance in kilometers
  */
 export function calculateDistance(
   point1: [number, number], 

@@ -27,3 +27,4 @@ project_id = "oiurdrlibohoaruehrzz"
 
 [functions.create_test_ride]
 verify_jwt = false
+

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/context/AuthContext';
@@ -110,7 +109,7 @@ const RideRequests: React.FC = () => {
     });
   };
   
-  // Handle accepting a ride
+  // Update the handleAcceptRide function to ensure it works properly
   const handleAcceptRide = async (ride: RideRequest) => {
     if (!user?.id) return;
     

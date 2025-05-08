@@ -25,11 +25,15 @@ serve(async (req) => {
     // Get first user id if none provided
     let actualUserId = userId;
     if (!actualUserId) {
-      const { data: users } = await supabase
+      const { data: users, error: usersError } = await supabase
         .from('profiles')
         .select('id')
         .limit(1)
         .single();
+      
+      if (usersError) {
+        throw new Error(`Error finding user: ${usersError.message}`);
+      }
       
       if (users) {
         actualUserId = users.id;
