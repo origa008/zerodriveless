@@ -59,7 +59,7 @@ const RideRequests: React.FC = () => {
     } else {
       stopTracking();
     }
-  }, [isOnline]);
+  }, [isOnline, startTracking, stopTracking]);
   
   // Set driver mode based on eligibility
   useEffect(() => {
@@ -130,9 +130,9 @@ const RideRequests: React.FC = () => {
         type: 'car',
         basePrice: acceptedRide.price || 0
       },
-      price: acceptedRide.price,
-      distance: acceptedRide.distance,
-      duration: acceptedRide.duration,
+      price: acceptedRide.price || 0,
+      distance: acceptedRide.distance || 0,
+      duration: acceptedRide.duration || 0,
       status: 'confirmed' as const,
       paymentMethod: (acceptedRide.payment_method as 'cash' | 'wallet') || 'cash',
       currency: acceptedRide.currency || 'RS',

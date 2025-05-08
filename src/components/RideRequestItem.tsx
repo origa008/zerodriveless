@@ -34,7 +34,7 @@ export const RideRequestItem: React.FC<RideRequestItemProps> = ({
               {ride.price} {ride.currency || 'RS'}
             </p>
             <p className="text-gray-500 text-xs">
-              {ride.distance?.toFixed(1) || '0'} km · {Math.round(ride.duration / 60) || '0'} min
+              {ride.distance?.toFixed(1) || '0'} km · {Math.round((ride.duration || 0) / 60) || '0'} min
             </p>
           </div>
         </div>
@@ -64,7 +64,7 @@ export const RideRequestItem: React.FC<RideRequestItemProps> = ({
         <div className="flex justify-between items-center mt-3 text-xs text-gray-600">
           <span className="flex items-center">
             <Clock size={14} className="mr-1" />
-            {Math.round(ride.duration / 60) || '0'} min
+            {Math.round((ride.duration || 0) / 60) || '0'} min
           </span>
           
           <span className="flex items-center">

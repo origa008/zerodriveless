@@ -1,3 +1,87 @@
+/**
+ * Extract coordinates from a location object which could be in various formats
+ * @param location Location object from database
+ * @returns [longitude, latitude] tuple or null if coordinates can't be extracted
+ */
+export function extractCoordinates(location: any): [number, number] | null {
+  if (!location) return null;
+  
+  try {
+    // Handle string (JSON) format
+    if (typeof location === 'string') {
+      try {
+        const parsed = JSON.parse(location);
+        if (parsed && Array.isArray(parsed.coordinates) && parsed.coordinates.length >= 2) {
+          return [Number(parsed.coordinates[0]), Number(parsed.coordinates[1])];
+        }
+        
+        if (parsed && typeof parsed.lng === 'number' && typeof parsed.lat === 'number') {
+          return [parsed.lng, parsed.lat];
+        }
+        
+        if (parsed && typeof parsed.longitude === 'number' && typeof parsed.latitude === 'number') {
+          return [parsed.longitude, parsed.latitude];
+        }
+      } catch (e) {
+        console.error('Error parsing location string:', e);
+        return null;
+      }
+    }
+    
+    // Handle object format
+    if (typeof location === 'object' && location !== null) {
+      // Format: { coordinates: [lng, lat] }
+      if (Array.isArray(location.coordinates) && location.coordinates.length >= 2) {
+        return [Number(location.coordinates[0]), Number(location.coordinates[1])];
+      }
+      
+      // Format: { lng, lat }
+      if (typeof location.lng === 'number' && typeof location.lat === 'number') {
+        return [location.lng, location.lat];
+      }
+      
+      // Format: { longitude, latitude }
+      if (typeof location.longitude === 'number' && typeof location.latitude === 'number') {
+        return [location.longitude, location.latitude];
+      }
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error extracting coordinates:', error);
+    return null;
+  }
+}
+
+/**
+ * Extract location name from a location object
+ * @param location Location object from database
+ * @returns Location name or default value if no name found
+ */
+export function extractLocationName(location: any, defaultName: string = 'Unknown Location'): string {
+  if (!location) return defaultName;
+  
+  try {
+    // Handle string (JSON) format
+    if (typeof location === 'string') {
+      try {
+        const parsed = JSON.parse(location);
+        return parsed?.name || defaultName;
+      } catch (e) {
+        return defaultName;
+      }
+    }
+    
+    // Handle object format
+    if (typeof location === 'object' && location !== null) {
+      return location.name || defaultName;
+    }
+    
+    return defaultName;
+  } catch (error) {
+    return defaultName;
+  }
+}
 
 /**
  * Calculate distance between two points using Haversine formula
@@ -22,80 +106,7 @@ export function calculateDistance(
     Math.sin(dLon/2) * Math.sin(dLon/2);
   
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  const distance = R * c;
   
-  return R * c;
-}
-
-/**
- * Extract coordinates from location data
- * @param locationData Any location object format
- * @returns [longitude, latitude] coordinates or null
- */
-export function extractCoordinates(locationData: any): [number, number] | null {
-  try {
-    if (!locationData) return null;
-    
-    // Handle string JSON
-    if (typeof locationData === 'string') {
-      try {
-        locationData = JSON.parse(locationData);
-      } catch (e) {
-        return null;
-      }
-    }
-    
-    // Check if coordinates exist directly
-    if (locationData.coordinates && Array.isArray(locationData.coordinates) && locationData.coordinates.length === 2) {
-      return [Number(locationData.coordinates[0]), Number(locationData.coordinates[1])];
-    }
-    
-    // Check for x,y format
-    if (locationData.x !== undefined && locationData.y !== undefined) {
-      return [Number(locationData.x), Number(locationData.y)];
-    }
-    
-    // Check for longitude,latitude format
-    if (locationData.longitude !== undefined && locationData.latitude !== undefined) {
-      return [Number(locationData.longitude), Number(locationData.latitude)];
-    }
-    
-    // Check for lng,lat format
-    if (locationData.lng !== undefined && locationData.lat !== undefined) {
-      return [Number(locationData.lng), Number(locationData.lat)];
-    }
-    
-    return null;
-  } catch (e) {
-    console.error('Error extracting coordinates:', e);
-    return null;
-  }
-}
-
-/**
- * Extract location name from location data
- * @param locationData Any location object format
- * @returns Location name or "Unknown"
- */
-export function extractLocationName(locationData: any): string {
-  try {
-    if (!locationData) return "Unknown";
-    
-    // Handle string JSON
-    if (typeof locationData === 'string') {
-      try {
-        locationData = JSON.parse(locationData);
-      } catch (e) {
-        return "Unknown";
-      }
-    }
-    
-    // Check if name exists directly on the object
-    if (typeof locationData === 'object' && locationData !== null && 'name' in locationData) {
-      return locationData.name || "Unknown";
-    }
-    
-    return "Unknown";
-  } catch (e) {
-    return "Unknown";
-  }
+  return distance;
 }
