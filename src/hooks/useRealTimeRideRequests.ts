@@ -146,11 +146,11 @@ export function useRealTimeRideRequests({
               passenger_id: ride.passenger_id,
               driver_id: ride.driver_id,
               pickup: {
-                name: extractLocationName(ride.pickup_location, 'Pickup Location'),
+                name: extractLocationName(ride.pickup_location),
                 coordinates: pickupCoordinates
               },
               dropoff: {
-                name: extractLocationName(ride.dropoff_location, 'Dropoff Location'),
+                name: extractLocationName(ride.dropoff_location),
                 coordinates: dropoffCoordinates
               },
               pickup_location: ride.pickup_location,
