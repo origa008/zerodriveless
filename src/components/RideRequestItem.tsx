@@ -17,6 +17,9 @@ export const RideRequestItem: React.FC<RideRequestItemProps> = ({
   isAccepting,
   onAccept
 }) => {
+  // Debug log to check ride data
+  console.log("Rendering ride request item:", ride);
+  
   const handleAccept = async () => {
     await onAccept(ride);
   };
@@ -31,7 +34,7 @@ export const RideRequestItem: React.FC<RideRequestItemProps> = ({
   const distanceToPickup = typeof ride.distance_to_pickup === 'number' ? ride.distance_to_pickup.toFixed(1) : '0';
   
   return (
-    <Card className="overflow-hidden bg-white">
+    <Card className="overflow-hidden bg-white shadow-sm">
       <CardHeader className="pb-2 pt-4 px-4">
         <div className="flex justify-between items-start">
           <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">

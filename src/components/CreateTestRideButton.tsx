@@ -25,6 +25,9 @@ export const CreateTestRideButton: React.FC<CreateTestRideButtonProps> = ({
     setIsCreating(true);
     
     try {
+      // Log user ID for debugging
+      console.log("Creating test ride with user ID:", user?.id);
+      
       const { success, error } = await createTestRideViaFunction(user?.id);
       
       if (success) {

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/context/AuthContext';
@@ -10,6 +11,7 @@ import { useRealTimeRideRequests } from '@/hooks/useRealTimeRideRequests';
 import { useDriverStatus } from '@/hooks/useDriverStatus';
 import { DriverLocationStatus } from '@/components/DriverLocationStatus';
 import { RideRequestItem } from '@/components/RideRequestItem';
+import { CreateTestRideButton } from '@/components/CreateTestRideButton';
 import { RideRequest } from '@/lib/types';
 import { extractCoordinates, extractLocationName } from '@/lib/utils/locationUtils';
 
@@ -70,8 +72,9 @@ const RideRequests: React.FC = () => {
   useEffect(() => {
     console.log("Driver status:", { isEligible, driverStatus });
     console.log("Current coordinates:", coordinates);
+    console.log("Current user ID:", user?.id);
     console.log("Ride requests:", rideRequests);
-  }, [isEligible, driverStatus, coordinates, rideRequests]);
+  }, [isEligible, driverStatus, coordinates, rideRequests, user?.id]);
   
   // Handle going online/offline
   const toggleOnlineStatus = () => {
@@ -109,9 +112,21 @@ const RideRequests: React.FC = () => {
     });
   };
   
+  // Handle creating test ride
+  const handleTestRideCreated = () => {
+    fetchRideRequests();
+  };
+  
   // Update the handleAcceptRide function to ensure it works properly
   const handleAcceptRide = async (ride: RideRequest) => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      toast({
+        title: "Error",
+        description: "You need to be logged in to accept rides",
+        variant: "destructive"
+      });
+      return;
+    }
     
     const acceptedRide = await acceptRide(ride);
     if (!acceptedRide) return;
@@ -256,26 +271,44 @@ const RideRequests: React.FC = () => {
               {isOnline ? 'Online' : 'Go Online'}
             </Button>
             
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={handleRefresh}
-              disabled={loadingRides || !isOnline}
-            >
-              {loadingRides ? (
-                <>
-                  <Loader2 size={14} className="mr-1 animate-spin" />
-                  Loading...
-                </>
-              ) : (
-                <>
-                  <RefreshCw size={14} className="mr-1" />
-                  Refresh
-                </>
-              )}
-            </Button>
+            <div className="flex gap-2">
+              <CreateTestRideButton 
+                onSuccess={handleTestRideCreated} 
+                variant="outline" 
+              />
+              
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleRefresh}
+                disabled={loadingRides || !isOnline}
+              >
+                {loadingRides ? (
+                  <>
+                    <Loader2 size={14} className="mr-1 animate-spin" />
+                    Loading...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw size={14} className="mr-1" />
+                    Refresh
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </div>
+        
+        {/* Debug Info */}
+        {import.meta.env.DEV && (
+          <div className="bg-gray-50 p-3 text-xs border rounded-lg">
+            <p className="font-bold mb-1">Debug Info:</p>
+            <p>User ID: {user?.id || "Not logged in"}</p>
+            <p>Driver eligible: {isEligible ? "Yes" : "No"}</p>
+            <p>Location tracking: {isTracking ? "Active" : "Inactive"}</p>
+            <p>Coordinates: {coordinates ? `[${coordinates[0].toFixed(4)}, ${coordinates[1].toFixed(4)}]` : "None"}</p>
+          </div>
+        )}
         
         {/* Error Display */}
         {ridesError && (
@@ -283,7 +316,7 @@ const RideRequests: React.FC = () => {
             <AlertTriangle className="h-5 w-5 text-red-500 mt-0.5 mr-2 flex-shrink-0" />
             <div>
               <p className="font-medium text-red-800">Error loading ride requests</p>
-              <p className="text-sm text-red-600 mt-1">Please try refreshing or check your internet connection.</p>
+              <p className="text-sm text-red-600 mt-1">{ridesError}</p>
               <Button
                 variant="outline"
                 size="sm"
@@ -319,13 +352,16 @@ const RideRequests: React.FC = () => {
               <MapPin className="h-6 w-6 text-gray-400" />
             </div>
             <p className="text-gray-600 mb-6">No ride requests available at the moment</p>
-            <Button 
-              onClick={handleRefresh}
-              disabled={!isOnline}
-              className="bg-primary hover:bg-primary/90"
-            >
-              Refresh Requests
-            </Button>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <CreateTestRideButton onSuccess={handleTestRideCreated} />
+              <Button 
+                onClick={handleRefresh}
+                disabled={!isOnline}
+                className="bg-primary hover:bg-primary/90"
+              >
+                Refresh Requests
+              </Button>
+            </div>
           </div>
         )}
       </div>
@@ -360,25 +396,6 @@ const RideRequests: React.FC = () => {
       <div className="p-4 max-w-md mx-auto">
         {renderContent()}
       </div>
-      
-      {/* Development Debug Info */}
-      {import.meta.env.DEV && (
-        <div className="p-4 mt-4 bg-gray-100 border-t text-xs text-gray-500">
-          <details>
-            <summary className="cursor-pointer font-medium">Debug Information</summary>
-            <pre className="mt-2 whitespace-pre-wrap overflow-x-auto">
-              User: {JSON.stringify(user?.id, null, 2)}<br />
-              Coordinates: {JSON.stringify(coordinates, null, 2)}<br />
-              Eligible: {isEligible.toString()}<br />
-              Driver Status: {JSON.stringify(driverStatus, null, 2)}<br />
-              Ride Requests: {rideRequests.length}<br />
-              Online: {isOnline.toString()}<br />
-              Tracking: {isTracking.toString()}<br />
-              Error: {ridesError || 'none'}<br />
-            </pre>
-          </details>
-        </div>
-      )}
     </div>
   );
 };

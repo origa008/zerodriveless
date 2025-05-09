@@ -32,7 +32,23 @@ export function useRealTimeRideRequests({
   
   // Function to fetch current ride requests
   const fetchRideRequests = useCallback(async () => {
-    if (!driverId || !coordinates || !isEligible) {
+    if (!driverId) {
+      console.log("Driver ID is undefined, cannot fetch ride requests");
+      setError("Driver ID is missing. Please sign in again.");
+      setLoading(false);
+      return;
+    }
+
+    if (!coordinates) {
+      console.log("Driver coordinates are undefined, cannot fetch ride requests");
+      setError("Unable to get your location. Please enable location services.");
+      setLoading(false);
+      return;
+    }
+
+    if (!isEligible) {
+      console.log("Driver is not eligible, cannot fetch ride requests");
+      setError("You are not eligible to accept rides at this time.");
       setLoading(false);
       return;
     }
@@ -82,30 +98,13 @@ export function useRealTimeRideRequests({
             // Calculate distance to pickup
             const distance = calculateDistance(coordinates, pickupCoordinates);
             
-            // Process ride option data safely
-            const rideOptionData = (() => {
-              const defaultOption = {
-                id: '1',
-                name: 'Standard',
-                type: 'car',
-                basePrice: typeof ride.price === 'number' ? ride.price : 0
-              };
-              
-              if (!ride.ride_option) return defaultOption;
-              
-              // Handle ride_option as object
-              if (typeof ride.ride_option === 'object' && ride.ride_option !== null) {
-                const option = ride.ride_option as Record<string, any>;
-                return {
-                  id: option.id || defaultOption.id,
-                  name: option.name || defaultOption.name,
-                  type: option.type || defaultOption.type,
-                  basePrice: option.basePrice || ride.price || 0
-                };
-              }
-              
-              return defaultOption;
-            })();
+            // Create a default ride option if none exists
+            const rideOptionData = {
+              id: '1',
+              name: 'Standard',
+              type: 'car',
+              basePrice: typeof ride.price === 'number' ? ride.price : 0
+            };
             
             // Extract pickup and dropoff location names
             const pickupName = extractLocationName(ride.pickup_location, 'Pickup Location');
@@ -130,7 +129,7 @@ export function useRealTimeRideRequests({
               pickup_location: ride.pickup_location,
               dropoff_location: ride.dropoff_location,
               ride_option: rideOptionData,
-              status: (ride.status as 'searching' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled') || 'searching',
+              status: 'searching',
               price: ride.price || 0,
               currency: ride.currency || 'RS',
               distance: ride.distance || 0,
@@ -177,6 +176,8 @@ export function useRealTimeRideRequests({
       return;
     }
     
+    console.log("Setting up real-time subscription for rides");
+    
     // Initial fetch
     fetchRideRequests();
     
@@ -201,6 +202,7 @@ export function useRealTimeRideRequests({
       });
     
     return () => {
+      console.log("Cleaning up real-time subscription");
       supabase.removeChannel(channel);
     };
   }, [driverId, coordinates, isEligible, autoSubscribe, fetchRideRequests]);
