@@ -32,34 +32,38 @@ export function useRealTimeRideRequests({
   
   // Function to fetch current ride requests
   const fetchRideRequests = useCallback(async () => {
-    if (!driverId) {
-      console.log("Driver ID is undefined, cannot fetch ride requests");
-      setError("Driver ID is missing. Please sign in again.");
-      setLoading(false);
-      return;
-    }
-
-    if (!coordinates) {
-      console.log("Driver coordinates are undefined, cannot fetch ride requests");
-      setError("Unable to get your location. Please enable location services.");
-      setLoading(false);
-      return;
-    }
-
-    if (!isEligible) {
-      console.log("Driver is not eligible, cannot fetch ride requests");
-      setError("You are not eligible to accept rides at this time.");
-      setLoading(false);
-      return;
-    }
-    
     try {
+      console.log("fetchRideRequests called with:", {
+        driverId,
+        coordinates,
+        isEligible
+      });
+      
+      // Basic validation checks
+      if (!driverId) {
+        setError("Driver ID is missing. Please sign in again.");
+        setLoading(false);
+        return;
+      }
+
+      if (!coordinates) {
+        setError("Unable to get your location. Please enable location services.");
+        setLoading(false);
+        return;
+      }
+
+      if (!isEligible) {
+        setError("You are not eligible to accept rides at this time.");
+        setLoading(false);
+        return;
+      }
+      
       setLoading(true);
       setError(null);
       console.log(`Fetching ride requests near [${coordinates[0]}, ${coordinates[1]}]`);
       
       // Get all searching rides
-      const { data: rides, error } = await supabase
+      const { data, error } = await supabase
         .from('rides')
         .select(`
           *,
@@ -71,64 +75,87 @@ export function useRealTimeRideRequests({
         .is('driver_id', null);
       
       if (error) {
-        console.error("Supabase error:", error);
+        console.error("Error fetching ride requests:", error);
         throw error;
       }
       
-      if (!rides || rides.length === 0) {
+      if (!data || data.length === 0) {
         console.log("No ride requests found");
         setRides([]);
         setLoading(false);
         return;
       }
       
-      console.log(`Found ${rides.length} rides in searching status`, rides);
+      console.log(`Found ${data.length} rides in searching status`, data);
       
-      // Process and filter rides
-      const nearbyRides = rides
+      // Process each ride to create properly typed RideRequest objects
+      const processedRides = data
         .map(ride => {
           try {
             // Extract coordinates from pickup_location
             const pickupCoordinates = extractCoordinates(ride.pickup_location);
             if (!pickupCoordinates) {
-              console.warn(`Could not extract coordinates from pickup_location for ride ${ride.id}`, ride.pickup_location);
+              console.warn(`Could not extract coordinates from pickup_location for ride ${ride.id}`);
               return null;
             }
             
             // Calculate distance to pickup
-            const distance = calculateDistance(coordinates, pickupCoordinates);
-            
-            // Create a default ride option if none exists
-            const rideOptionData = {
-              id: '1',
-              name: 'Standard',
-              type: 'car',
-              basePrice: typeof ride.price === 'number' ? ride.price : 0
-            };
-            
-            // Extract pickup and dropoff location names
-            const pickupName = extractLocationName(ride.pickup_location, 'Pickup Location');
-            const dropoffName = extractLocationName(ride.dropoff_location, 'Dropoff Location');
+            const distanceToPickup = calculateDistance(coordinates, pickupCoordinates);
             
             // Extract dropoff coordinates
             const dropoffCoordinates = extractCoordinates(ride.dropoff_location) || [0, 0] as [number, number];
             
-            // Create ride request object with full type safety
+            // Create a default ride option if none exists
+            let rideOption = {
+              id: '1',
+              name: 'Standard',
+              type: 'car',
+              basePrice: 0
+            };
+            
+            // Try to parse ride_option if it exists
+            if (ride.ride_option) {
+              if (typeof ride.ride_option === 'string') {
+                try {
+                  const parsed = JSON.parse(ride.ride_option);
+                  if (parsed) {
+                    rideOption = {
+                      id: parsed.id || '1',
+                      name: parsed.name || 'Standard',
+                      type: parsed.type || 'car',
+                      basePrice: parsed.basePrice || ride.price || 0
+                    };
+                  }
+                } catch (e) {
+                  console.error("Error parsing ride_option:", e);
+                }
+              } else if (typeof ride.ride_option === 'object' && ride.ride_option !== null) {
+                const opt = ride.ride_option as any;
+                rideOption = {
+                  id: opt.id || '1',
+                  name: opt.name || 'Standard',
+                  type: opt.type || 'car',
+                  basePrice: opt.basePrice || ride.price || 0
+                };
+              }
+            }
+            
+            // Create ride request object
             const rideRequest: RideRequest = {
               id: ride.id,
               passenger_id: ride.passenger_id,
               driver_id: ride.driver_id,
               pickup: {
-                name: pickupName,
+                name: extractLocationName(ride.pickup_location, 'Pickup Location'),
                 coordinates: pickupCoordinates
               },
               dropoff: {
-                name: dropoffName,
+                name: extractLocationName(ride.dropoff_location, 'Dropoff Location'),
                 coordinates: dropoffCoordinates
               },
               pickup_location: ride.pickup_location,
               dropoff_location: ride.dropoff_location,
-              ride_option: rideOptionData,
+              ride_option: rideOption,
               status: 'searching',
               price: ride.price || 0,
               currency: ride.currency || 'RS',
@@ -139,7 +166,7 @@ export function useRealTimeRideRequests({
               payment_method: ride.payment_method || 'cash',
               created_at: ride.created_at,
               passenger: ride.passenger,
-              distance_to_pickup: parseFloat(distance.toFixed(1))
+              distance_to_pickup: distanceToPickup
             };
             
             return rideRequest;
@@ -154,18 +181,13 @@ export function useRealTimeRideRequests({
         )
         .sort((a, b) => a.distance_to_pickup - b.distance_to_pickup);
       
-      console.log(`Found ${nearbyRides.length} rides within ${maxDistance}km`);
-      setRides(nearbyRides);
+      console.log(`Found ${processedRides.length} rides within ${maxDistance}km`);
+      setRides(processedRides);
+      setLoading(false);
     } catch (err: any) {
       console.error('Error fetching ride requests:', err);
       setError(err.message || "Could not load ride requests");
-      toast({
-        title: "Error",
-        description: "Could not load ride requests",
-        variant: "destructive"
-      });
       setRides([]);
-    } finally {
       setLoading(false);
     }
   }, [driverId, coordinates, isEligible, maxDistance, toast]);
@@ -216,5 +238,3 @@ export function useRealTimeRideRequests({
     acceptingRide
   };
 }
-
-export default useRealTimeRideRequests;

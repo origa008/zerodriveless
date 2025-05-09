@@ -24,7 +24,7 @@ export const RideRequestItem: React.FC<RideRequestItemProps> = ({
     await onAccept(ride);
   };
   
-  // Safely get name values with fallbacks
+  // Safely get values with fallbacks
   const pickupName = ride.pickup?.name || 'Pickup Location';
   const dropoffName = ride.dropoff?.name || 'Dropoff Location';
   const priceValue = typeof ride.price === 'number' ? ride.price : 0;

@@ -20,7 +20,7 @@ export const CreateTestRideButton: React.FC<CreateTestRideButtonProps> = ({
   const { toast } = useToast();
 
   const handleCreateTestRide = async () => {
-    if (isCreating) return;
+    if (isCreating || !user?.id) return;
     
     setIsCreating(true);
     
@@ -28,9 +28,9 @@ export const CreateTestRideButton: React.FC<CreateTestRideButtonProps> = ({
       // Log user ID for debugging
       console.log("Creating test ride with user ID:", user?.id);
       
-      const { success, error } = await createTestRideViaFunction(user?.id);
+      const result = await createTestRideViaFunction(user?.id);
       
-      if (success) {
+      if (result.success) {
         toast({
           title: "Success",
           description: "Test ride created successfully",
@@ -40,7 +40,7 @@ export const CreateTestRideButton: React.FC<CreateTestRideButtonProps> = ({
       } else {
         toast({
           title: "Error",
-          description: error || "Failed to create test ride",
+          description: result.error || "Failed to create test ride",
           variant: "destructive"
         });
       }
@@ -59,7 +59,7 @@ export const CreateTestRideButton: React.FC<CreateTestRideButtonProps> = ({
   return (
     <Button 
       onClick={handleCreateTestRide}
-      disabled={isCreating}
+      disabled={isCreating || !user?.id}
       variant={variant}
       size="sm"
     >
