@@ -18,7 +18,7 @@ export const RideRequestItem: React.FC<RideRequestItemProps> = ({
   onAccept
 }) => {
   // Debug log to check ride data
-  console.log("Rendering ride request item:", ride);
+  console.log("Rendering ride:", ride);
   
   const handleAccept = async () => {
     await onAccept(ride);
@@ -31,7 +31,6 @@ export const RideRequestItem: React.FC<RideRequestItemProps> = ({
   const currencySymbol = ride.currency || 'RS';
   const distance = typeof ride.distance === 'number' ? ride.distance.toFixed(1) : '0';
   const duration = typeof ride.duration === 'number' ? Math.round(ride.duration / 60) : 0;
-  const distanceToPickup = typeof ride.distance_to_pickup === 'number' ? ride.distance_to_pickup.toFixed(1) : '0';
   
   return (
     <Card className="overflow-hidden bg-white shadow-sm">
@@ -81,7 +80,7 @@ export const RideRequestItem: React.FC<RideRequestItemProps> = ({
           
           <span className="flex items-center">
             <MapPin size={14} className="mr-1" />
-            {distanceToPickup} km away
+            {ride.distance_to_pickup ? `${ride.distance_to_pickup.toFixed(1)} km away` : 'Unknown distance'}
           </span>
           
           {ride.passenger && (

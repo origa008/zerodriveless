@@ -1,47 +1,56 @@
-import React from 'react';
-import { useRide } from '@/lib/context/RideContext';
+
+import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
 import { Car, User } from 'lucide-react';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
+import { useRide } from '@/lib/context/RideContext';
+import { useAuth } from '@/lib/context/AuthContext';
+import { useToast } from '@/hooks/use-toast';
+import { CreateTestRideButton } from '@/components/CreateTestRideButton';
 
-interface DriverModeToggleProps {
-  className?: string;
-}
-
-const DriverModeToggle: React.FC<DriverModeToggleProps> = ({ className }) => {
+export const DriverModeToggle = () => {
+  const { user } = useAuth();
   const { isDriverMode, setDriverMode } = useRide();
   const navigate = useNavigate();
+  const { toast } = useToast();
 
   const handleToggle = () => {
-    const newMode = !isDriverMode;
-    setDriverMode(newMode);
-    
-    // Navigate to appropriate screen based on the mode
-    if (newMode) {
-      // Navigate to driver screen
-      navigate('/ride-requests');
+    if (isDriverMode) {
+      setDriverMode(false);
+      toast({
+        title: 'Switched to Passenger Mode',
+        description: 'You are now in passenger mode.',
+      });
     } else {
-      // Navigate to passenger home screen
-      navigate('/ride-requests'); // Changed to navigate to RideRequests page
+      navigate('/ride-requests');
     }
   };
 
   return (
-    <div className={`flex items-center gap-2 bg-blue-500 text-white rounded-full px-4 py-2 ${className}`}>
-      <User className={`h-4.5 w-4.5 ${!isDriverMode ? 'text-white' : 'text-gray-300'}`} />
-      <div className="flex items-center gap-2">
-        <Switch
-          checked={isDriverMode}
-          onCheckedChange={handleToggle}
-          id="driver-mode"
-          className="data-[state=checked]:bg-white/50 data-[state=unchecked]:bg-white/20"
+    <div className="fixed bottom-24 right-4 z-50 flex flex-col gap-2">
+      {user && (
+        <CreateTestRideButton
+          variant="default"
+          onSuccess={() => {
+            toast({
+              title: 'Test Ride Created',
+              description: 'Check Ride Requests page to see it.',
+            });
+          }}
         />
-        <Label htmlFor="driver-mode" className="text-sm cursor-pointer">
-          {isDriverMode ? 'Driver Mode' : 'Passenger Mode'}
-        </Label>
-      </div>
-      <Car className={`h-4.5 w-4.5 ${isDriverMode ? 'text-white' : 'text-gray-300'}`} />
+      )}
+      <Button 
+        onClick={handleToggle} 
+        className={`rounded-full shadow-lg p-3 flex items-center justify-center ${
+          isDriverMode ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'
+        }`}
+      >
+        {isDriverMode ? (
+          <User className="w-5 h-5" />
+        ) : (
+          <Car className="w-5 h-5" />
+        )}
+      </Button>
     </div>
   );
 };

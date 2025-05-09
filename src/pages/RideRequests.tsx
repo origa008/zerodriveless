@@ -7,13 +7,14 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft, MapPin, Loader2, RefreshCw, Power, AlertTriangle } from 'lucide-react';
 import { useRealTimeDriverLocation } from '@/hooks/useRealTimeDriverLocation';
-import { useRealTimeRideRequests } from '@/hooks/useRealTimeRideRequests';
 import { useDriverStatus } from '@/hooks/useDriverStatus';
 import { DriverLocationStatus } from '@/components/DriverLocationStatus';
 import { RideRequestItem } from '@/components/RideRequestItem';
 import { CreateTestRideButton } from '@/components/CreateTestRideButton';
 import { RideRequest } from '@/lib/types';
 import { extractCoordinates, extractLocationName } from '@/lib/utils/locationUtils';
+import { useRideRequestsLoader } from '@/hooks/useRideRequestsLoader';
+import { supabase } from '@/integrations/supabase/client';
 
 const RideRequests: React.FC = () => {
   const navigate = useNavigate();
@@ -38,20 +39,18 @@ const RideRequests: React.FC = () => {
   // Check if driver is eligible
   const isEligible = driverStatus.isApproved && driverStatus.hasSufficientDeposit;
   
-  // Load ride requests with real-time updates
+  // State for accepting rides
+  const [acceptingRide, setAcceptingRide] = useState<string | null>(null);
+  
+  // Load ride requests with our simplified hook
   const {
     rides: rideRequests,
     loading: loadingRides,
     error: ridesError,
-    acceptRide,
-    acceptingRide,
-    fetchRideRequests
-  } = useRealTimeRideRequests({
+    refresh: fetchRideRequests
+  } = useRideRequestsLoader({
     driverId: user?.id,
-    coordinates,
-    isEligible,
-    maxDistance: 15, // km
-    autoSubscribe: isOnline
+    enabled: isOnline && !!user?.id && isEligible
   });
   
   // Start/Stop location tracking based on online status
@@ -73,7 +72,7 @@ const RideRequests: React.FC = () => {
     console.log("Driver status:", { isEligible, driverStatus });
     console.log("Current coordinates:", coordinates);
     console.log("Current user ID:", user?.id);
-    console.log("Ride requests:", rideRequests);
+    console.log("Available ride requests:", rideRequests);
   }, [isEligible, driverStatus, coordinates, rideRequests, user?.id]);
   
   // Handle going online/offline
@@ -112,12 +111,16 @@ const RideRequests: React.FC = () => {
     });
   };
   
-  // Handle creating test ride
+  // Handle test ride creation
   const handleTestRideCreated = () => {
     fetchRideRequests();
+    toast({
+      title: "Refreshing",
+      description: "Looking for the new test ride..."
+    });
   };
   
-  // Update the handleAcceptRide function to ensure it works properly
+  // Function to accept a ride
   const handleAcceptRide = async (ride: RideRequest) => {
     if (!user?.id) {
       toast({
@@ -128,42 +131,122 @@ const RideRequests: React.FC = () => {
       return;
     }
     
-    const acceptedRide = await acceptRide(ride);
-    if (!acceptedRide) return;
-    
-    // Extract location details for the ride context
-    const pickupCoords = extractCoordinates(acceptedRide.pickup_location);
-    const dropoffCoords = extractCoordinates(acceptedRide.dropoff_location);
-    
-    // Create ride object for context
-    const currentRide = {
-      id: acceptedRide.id,
-      pickup: {
-        name: extractLocationName(acceptedRide.pickup_location),
-        coordinates: pickupCoords || [0, 0] as [number, number]
-      },
-      dropoff: {
-        name: extractLocationName(acceptedRide.dropoff_location),
-        coordinates: dropoffCoords || [0, 0] as [number, number]
-      },
-      rideOption: {
-        id: '1',
-        name: 'Standard',
-        type: 'car',
-        basePrice: acceptedRide.price || 0
-      },
-      price: acceptedRide.price || 0,
-      distance: acceptedRide.distance || 0,
-      duration: acceptedRide.duration || 0,
-      status: 'confirmed' as const,
-      paymentMethod: (acceptedRide.payment_method as 'cash' | 'wallet') || 'cash',
-      currency: acceptedRide.currency || 'RS',
-      passenger: acceptedRide.passenger
-    };
-    
-    // Set as current ride and navigate
-    setCurrentRide(currentRide);
-    navigate('/ride-progress');
+    try {
+      setAcceptingRide(ride.id);
+      console.log(`Driver ${user.id} accepting ride ${ride.id}`);
+      
+      // First, check if ride is still available
+      const { data: rideCheck, error: checkError } = await supabase
+        .from('rides')
+        .select('*')
+        .eq('id', ride.id)
+        .eq('status', 'searching')
+        .is('driver_id', null)
+        .single();
+        
+      if (checkError || !rideCheck) {
+        console.error("Error checking ride availability:", checkError);
+        toast({
+          title: "Error",
+          description: "This ride is no longer available",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      // Update ride with driver info
+      const { error: updateError } = await supabase
+        .from('rides')
+        .update({
+          driver_id: user.id,
+          status: 'confirmed',
+          start_time: new Date().toISOString()
+        })
+        .eq('id', ride.id);
+        
+      if (updateError) {
+        console.error("Error updating ride:", updateError);
+        toast({
+          title: "Error",
+          description: "Failed to accept ride",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      // Get updated ride details with passenger info
+      const { data: acceptedRide, error } = await supabase
+        .from('rides')
+        .select(`
+          *,
+          passenger:profiles!passenger_id (
+            id, name, avatar
+          )
+        `)
+        .eq('id', ride.id)
+        .single();
+        
+      if (error || !acceptedRide) {
+        console.error("Error fetching updated ride:", error);
+        toast({
+          title: "Error",
+          description: "Failed to get ride details",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      console.log("Ride accepted successfully:", acceptedRide);
+      
+      // Extract location details for the ride context
+      const pickupCoords = extractCoordinates(acceptedRide.pickup_location);
+      const dropoffCoords = extractCoordinates(acceptedRide.dropoff_location);
+      
+      // Create ride object for context
+      const currentRide = {
+        id: acceptedRide.id,
+        pickup: {
+          name: extractLocationName(acceptedRide.pickup_location),
+          coordinates: pickupCoords || [0, 0] as [number, number]
+        },
+        dropoff: {
+          name: extractLocationName(acceptedRide.dropoff_location),
+          coordinates: dropoffCoords || [0, 0] as [number, number]
+        },
+        rideOption: {
+          id: '1',
+          name: 'Standard',
+          type: 'car',
+          basePrice: acceptedRide.price || 0
+        },
+        price: acceptedRide.price || 0,
+        distance: acceptedRide.distance || 0,
+        duration: acceptedRide.duration || 0,
+        status: 'confirmed' as const,
+        paymentMethod: (acceptedRide.payment_method as 'cash' | 'wallet') || 'cash',
+        currency: acceptedRide.currency || 'RS',
+        passenger: acceptedRide.passenger
+      };
+      
+      toast({
+        title: "Success",
+        description: "You have accepted the ride",
+      });
+      
+      // Set as current ride and navigate
+      setCurrentRide(currentRide);
+      navigate('/ride-progress');
+      
+    } catch (err: any) {
+      console.error("Error accepting ride:", err);
+      toast({
+        title: "Error",
+        description: err.message || "Failed to accept ride",
+        variant: "destructive"
+      });
+    } finally {
+      setAcceptingRide(null);
+    }
   };
   
   // Render content based on driver status
@@ -300,15 +383,15 @@ const RideRequests: React.FC = () => {
         </div>
         
         {/* Debug Info */}
-        {import.meta.env.DEV && (
-          <div className="bg-gray-50 p-3 text-xs border rounded-lg">
-            <p className="font-bold mb-1">Debug Info:</p>
-            <p>User ID: {user?.id || "Not logged in"}</p>
-            <p>Driver eligible: {isEligible ? "Yes" : "No"}</p>
-            <p>Location tracking: {isTracking ? "Active" : "Inactive"}</p>
-            <p>Coordinates: {coordinates ? `[${coordinates[0].toFixed(4)}, ${coordinates[1].toFixed(4)}]` : "None"}</p>
-          </div>
-        )}
+        <div className="bg-gray-50 p-3 text-xs border rounded-lg">
+          <p className="font-bold mb-1">Debug Info:</p>
+          <p>User ID: {user?.id || "Not logged in"}</p>
+          <p>Driver eligible: {isEligible ? "Yes" : "No"}</p>
+          <p>Location tracking: {isTracking ? "Active" : "Inactive"}</p>
+          <p>Coordinates: {coordinates ? `[${coordinates[0].toFixed(4)}, ${coordinates[1].toFixed(4)}]` : "None"}</p>
+          <p>Found rides: {rideRequests.length}</p>
+          <p>Error: {ridesError || "None"}</p>
+        </div>
         
         {/* Error Display */}
         {ridesError && (
