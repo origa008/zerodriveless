@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Clock, MapPin } from 'lucide-react';
+import { Clock, MapPin, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { RideRequest } from '@/lib/types';
