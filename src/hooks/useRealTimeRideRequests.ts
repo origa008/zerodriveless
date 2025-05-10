@@ -21,7 +21,7 @@ export function useRealTimeRideRequests({
   driverId,
   coordinates,
   isEligible,
-  maxDistance = 10, // km
+  maxDistance = 2, // Changed default to 2km
   autoSubscribe = true
 }: UseRealTimeRideRequestsOptions) {
   const [rides, setRides] = useState<RideRequest[]>([]);
@@ -33,10 +33,11 @@ export function useRealTimeRideRequests({
   // Function to fetch current ride requests
   const fetchRideRequestsCallback = useCallback(async () => {
     try {
-      console.log("fetchRideRequests called with:", {
+      console.log("Fetching ride requests with:", {
         driverId,
         coordinates,
-        isEligible
+        isEligible,
+        maxDistance
       });
       
       // Basic validation checks

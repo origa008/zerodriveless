@@ -3,12 +3,15 @@ import { supabase } from '@/integrations/supabase/client';
 import { processRideData } from '@/lib/utils/rideProcessingUtils';
 
 /**
- * Fetch ride requests from the database
+ * Fetch ride requests from the database based on driver location
+ * @param driverId - The ID of the driver
+ * @param coordinates - The current coordinates of the driver [longitude, latitude]
+ * @param maxDistance - Maximum distance in kilometers (default: 2km)
  */
 export async function fetchRideRequests(
   driverId: string | undefined,
   coordinates: [number, number] | null,
-  maxDistance: number = 10
+  maxDistance: number = 2 // Set default to 2km
 ) {
   try {
     // Basic validation checks
@@ -20,7 +23,7 @@ export async function fetchRideRequests(
       throw new Error("Unable to get your location. Please enable location services.");
     }
     
-    console.log(`Fetching ride requests near [${coordinates[0]}, ${coordinates[1]}]`);
+    console.log(`Fetching ride requests near [${coordinates[0]}, ${coordinates[1]}] within ${maxDistance}km radius`);
     
     // Get all searching rides
     const { data, error } = await supabase
@@ -46,7 +49,7 @@ export async function fetchRideRequests(
     
     console.log(`Found ${data.length} rides in searching status`, data);
     
-    // Process the ride data
+    // Process the ride data and filter by distance
     return processRideData(data, coordinates, maxDistance);
   } catch (err: any) {
     console.error('Error fetching ride requests:', err);
@@ -60,7 +63,7 @@ export async function fetchRideRequests(
 export function subscribeToRideRequests(onUpdate: () => void) {
   console.log("Setting up real-time subscription for rides");
   
-  // Set up real-time subscription
+  // Set up real-time subscription - will trigger when any ride in searching status changes
   const channel = supabase
     .channel('ride_requests_changes')
     .on(

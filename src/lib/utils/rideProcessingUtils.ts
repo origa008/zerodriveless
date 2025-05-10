@@ -4,11 +4,12 @@ import { extractCoordinates, extractLocationName, calculateDistance } from '@/li
 
 /**
  * Process ride data from database into properly typed RideRequest objects
+ * and filter by distance to driver
  */
 export function processRideData(
-  rideData: any, 
+  rideData: any[], 
   driverCoordinates: [number, number] | null,
-  maxDistance: number
+  maxDistance: number = 2 // Default to 2km
 ): RideRequest[] {
   if (!rideData || !driverCoordinates) {
     return [];
