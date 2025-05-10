@@ -1,9 +1,8 @@
 
 import React from 'react';
-import { Clock, MapPin, User, DollarSign } from 'lucide-react';
+import { Clock, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardHeader, CardContent, CardFooter } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { RideRequest } from '@/lib/types';
 
 interface RideRequestItemProps {
@@ -17,9 +16,6 @@ export const RideRequestItem: React.FC<RideRequestItemProps> = ({
   isAccepting,
   onAccept
 }) => {
-  // Debug log to check ride data
-  console.log("Rendering ride:", ride);
-  
   const handleAccept = async () => {
     await onAccept(ride);
   };
@@ -30,80 +26,62 @@ export const RideRequestItem: React.FC<RideRequestItemProps> = ({
   const priceValue = typeof ride.price === 'number' ? ride.price : 0;
   const currencySymbol = ride.currency || 'RS';
   const distance = typeof ride.distance === 'number' ? ride.distance.toFixed(1) : '0';
-  const duration = typeof ride.duration === 'number' ? Math.round(ride.duration / 60) : 0;
   
   return (
-    <Card className="overflow-hidden bg-white shadow-sm">
-      <CardHeader className="pb-2 pt-4 px-4">
-        <div className="flex justify-between items-start">
-          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-            {ride.ride_option?.name || 'Standard'}
-          </Badge>
-          
-          <div className="text-right">
-            <p className="font-bold text-lg">
-              {priceValue} {currencySymbol}
-            </p>
-            <p className="text-gray-500 text-xs">
-              {distance} km · {duration} min
-            </p>
-          </div>
-        </div>
-      </CardHeader>
-      
-      <CardContent className="px-4 py-2">
-        <div className="space-y-3">
-          <div className="flex items-start">
-            <div className="flex flex-col items-center mr-3">
-              <div className="w-3 h-3 rounded-full bg-green-500"></div>
-              <div className="w-0.5 h-8 bg-gray-300 my-1"></div>
-              <div className="w-3 h-3 rounded-full bg-red-500"></div>
+    <Card className="overflow-hidden bg-white shadow-sm border-0">
+      <CardContent className="p-4">
+        <h2 className="text-3xl font-bold mb-6">Ride Request</h2>
+        <div className="border-t border-b py-4 mb-4">
+          <div className="flex items-start mb-4">
+            <div className="flex flex-col items-center mr-4">
+              <div className="w-6 h-6 rounded-full bg-gray-300 flex items-center justify-center">
+                <MapPin className="h-4 w-4 text-gray-500" />
+              </div>
+              <div className="w-0.5 h-10 bg-gray-200"></div>
             </div>
-            <div className="flex-1 space-y-4">
-              <div>
-                <p className="text-xs text-gray-500">Pickup</p>
-                <p className="font-medium text-sm truncate">{pickupName}</p>
+            <div>
+              <p className="text-lg text-gray-500 font-normal">{pickupName}</p>
+            </div>
+          </div>
+          
+          <div className="flex items-start">
+            <div className="flex flex-col items-center mr-4">
+              <div className="w-6 h-6 rounded-full bg-black flex items-center justify-center">
+                <MapPin className="h-4 w-4 text-white" />
               </div>
-              <div>
-                <p className="text-xs text-gray-500">Dropoff</p>
-                <p className="font-medium text-sm truncate">{dropoffName}</p>
-              </div>
+            </div>
+            <div>
+              <p className="text-lg font-medium">{dropoffName}</p>
             </div>
           </div>
         </div>
         
-        <div className="flex justify-between items-center mt-3 text-xs text-gray-600">
-          <span className="flex items-center">
-            <Clock size={14} className="mr-1" />
-            {duration} min
-          </span>
-          
-          <span className="flex items-center">
-            <MapPin size={14} className="mr-1" />
-            {ride.distance_to_pickup ? `${ride.distance_to_pickup.toFixed(1)} km away` : 'Unknown distance'}
-          </span>
-          
-          {ride.passenger && (
-            <span className="flex items-center">
-              <User size={14} className="mr-1" />
-              {ride.passenger.name || "Passenger"}
-            </span>
-          )}
+        <div className="flex justify-between mb-4">
+          <div>
+            <p className="text-gray-500">Distance</p>
+            <p className="text-2xl font-bold">{ride.distance_to_pickup ? `${ride.distance_to_pickup.toFixed(1)} km` : `${distance} km`}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-gray-500">Price</p>
+            <p className="text-2xl font-bold">
+              {priceValue} <span className="text-gray-500">{currencySymbol}</span>
+            </p>
+          </div>
         </div>
       </CardContent>
       
-      <CardFooter className="px-4 py-3 bg-gray-50/50">
+      <CardFooter className="p-0">
         <Button
           onClick={handleAccept}
           disabled={isAccepting}
-          className="w-full bg-green-600 hover:bg-green-700"
+          className="w-full py-6 rounded-none bg-black hover:bg-gray-800 text-white text-xl font-medium"
         >
           {isAccepting ? (
             <>
-              <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-              Accepting...
+              <div className="h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+              Processing...
             </>
-          ) : 'Accept Ride'}
+          ) : 'Accept'}
         </Button>
       </CardFooter>
     </Card>

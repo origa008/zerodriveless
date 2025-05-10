@@ -1,108 +1,81 @@
 
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Loader2, Plus } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/context/AuthContext';
+import { PlusCircle, Loader2 } from 'lucide-react';
+import { createTestRide } from '@/lib/utils/dbFunctions';
 import { useToast } from '@/hooks/use-toast';
 
 interface CreateTestRideButtonProps {
+  variant?: "default" | "outline";
   onSuccess?: () => void;
-  variant?: 'default' | 'outline' | 'secondary' | 'ghost' | 'link' | 'destructive';
 }
 
-export const CreateTestRideButton: React.FC<CreateTestRideButtonProps> = ({ 
-  onSuccess, 
-  variant = 'outline'
+export const CreateTestRideButton: React.FC<CreateTestRideButtonProps> = ({
+  variant = "default",
+  onSuccess
 }) => {
   const [isCreating, setIsCreating] = useState(false);
   const { user } = useAuth();
   const { toast } = useToast();
-
+  
   const handleCreateTestRide = async () => {
-    if (isCreating || !user?.id) return;
+    if (!user?.id) {
+      toast({
+        title: 'Error',
+        description: 'You must be logged in to create a test ride',
+        variant: 'destructive'
+      });
+      return;
+    }
     
     setIsCreating(true);
-    console.log("Creating test ride for user:", user.id);
     
     try {
-      // Create test ride directly using Supabase client
-      const { data, error } = await supabase
-        .from('rides')
-        .insert({
-          passenger_id: user.id,
-          pickup_location: { 
-            type: "Point",
-            coordinates: [73.0479, 33.6844],
-            name: "Test Pickup Location"
-          },
-          dropoff_location: {
-            type: "Point",
-            coordinates: [73.0682, 33.7294],
-            name: "Test Dropoff Location"
-          },
-          status: 'searching',
-          price: 250,
-          distance: 5.2,
-          duration: 15 * 60, // 15 minutes in seconds
-          ride_option: { 
-            id: "1", 
-            name: "Standard", 
-            type: "car",
-            basePrice: 250
-          },
-          currency: 'RS',
-          payment_method: 'cash'
-        })
-        .select()
-        .single();
+      const { success, error, data } = await createTestRide(user.id);
       
-      if (error) {
-        console.error("Supabase error creating test ride:", error);
-        throw error;
+      if (success && data) {
+        toast({
+          title: 'Success',
+          description: 'Test ride created successfully',
+        });
+        
+        if (onSuccess) {
+          onSuccess();
+        }
+      } else {
+        throw new Error(error || 'Failed to create test ride');
       }
-      
-      console.log("Test ride created successfully with ID:", data?.id);
-      
-      toast({
-        title: "Success",
-        description: "Test ride created successfully",
-      });
-      
-      if (onSuccess) onSuccess();
-      
     } catch (err: any) {
-      console.error("Error creating test ride:", err);
       toast({
-        title: "Error",
-        description: err.message || "Failed to create test ride",
-        variant: "destructive"
+        title: 'Error',
+        description: err.message || 'Failed to create test ride',
+        variant: 'destructive'
       });
     } finally {
       setIsCreating(false);
     }
   };
-
+  
   return (
-    <Button 
-      onClick={handleCreateTestRide}
-      disabled={isCreating || !user?.id}
+    <Button
       variant={variant}
       size="sm"
+      onClick={handleCreateTestRide}
+      disabled={isCreating || !user}
+      className={variant === "default" ? "bg-black hover:bg-gray-800 text-white" : "border-black text-black"}
     >
       {isCreating ? (
         <>
-          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+          <Loader2 size={14} className="mr-1 animate-spin" />
           Creating...
         </>
       ) : (
         <>
-          <Plus className="h-4 w-4 mr-1" />
+          <PlusCircle size={14} className="mr-1" />
           Create Test Ride
         </>
       )}
     </Button>
   );
 };
-
-export default CreateTestRideButton;

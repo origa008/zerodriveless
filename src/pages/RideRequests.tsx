@@ -5,7 +5,7 @@ import { useAuth } from '@/lib/context/AuthContext';
 import { useRide } from '@/lib/context/RideContext';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, MapPin, Loader2, RefreshCw, Power, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, MapPin, Loader2, RefreshCw, Power } from 'lucide-react';
 import { useRealTimeDriverLocation } from '@/hooks/useRealTimeDriverLocation';
 import { useDriverStatus } from '@/hooks/useDriverStatus';
 import { DriverLocationStatus } from '@/components/DriverLocationStatus';
@@ -66,14 +66,6 @@ const RideRequests: React.FC = () => {
   useEffect(() => {
     setDriverMode(isEligible);
   }, [isEligible, setDriverMode]);
-  
-  // Debug logging
-  useEffect(() => {
-    console.log("Driver status:", { isEligible, driverStatus });
-    console.log("Current coordinates:", coordinates);
-    console.log("Current user ID:", user?.id);
-    console.log("Available ride requests:", rideRequests);
-  }, [isEligible, driverStatus, coordinates, rideRequests, user?.id]);
   
   // Handle going online/offline
   const toggleOnlineStatus = () => {
@@ -254,7 +246,7 @@ const RideRequests: React.FC = () => {
     if (driverStatus.isLoading) {
       return (
         <div className="flex flex-col items-center justify-center p-8">
-          <Loader2 className="h-8 w-8 text-primary animate-spin mb-4" />
+          <Loader2 className="h-8 w-8 text-black animate-spin mb-4" />
           <p className="text-center text-gray-600">Checking your driver status...</p>
         </div>
       );
@@ -264,8 +256,8 @@ const RideRequests: React.FC = () => {
     if (!driverStatus.isRegistered) {
       return (
         <div className="bg-white rounded-lg p-6 shadow-sm text-center">
-          <div className="mx-auto w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center mb-4">
-            <MapPin className="h-6 w-6 text-amber-600" />
+          <div className="mx-auto w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+            <MapPin className="h-6 w-6 text-gray-500" />
           </div>
           <h2 className="text-xl font-bold mb-2">Register as a Driver</h2>
           <p className="text-gray-600 mb-6 max-w-md mx-auto">
@@ -273,7 +265,7 @@ const RideRequests: React.FC = () => {
           </p>
           <Button 
             onClick={() => navigate('/official-driver')}
-            className="bg-primary hover:bg-primary/90"
+            className="bg-black hover:bg-gray-800 text-white"
           >
             Register as Driver
           </Button>
@@ -285,8 +277,8 @@ const RideRequests: React.FC = () => {
     if (driverStatus.isPending) {
       return (
         <div className="bg-white rounded-lg p-6 shadow-sm text-center">
-          <div className="mx-auto w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center mb-4">
-            <Loader2 className="h-6 w-6 text-blue-600" />
+          <div className="mx-auto w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+            <Loader2 className="h-6 w-6 text-black" />
           </div>
           <h2 className="text-xl font-bold mb-2">Application Pending</h2>
           <p className="text-gray-600 mb-6 max-w-md mx-auto">
@@ -296,12 +288,13 @@ const RideRequests: React.FC = () => {
             <Button 
               onClick={() => navigate('/')}
               variant="outline"
+              className="border-black text-black"
             >
               Go to Home
             </Button>
             <Button 
               onClick={() => navigate('/official-driver')}
-              className="bg-primary hover:bg-primary/90"
+              className="bg-black hover:bg-gray-800 text-white"
             >
               View Application
             </Button>
@@ -314,8 +307,8 @@ const RideRequests: React.FC = () => {
     if (driverStatus.isApproved && !driverStatus.hasSufficientDeposit) {
       return (
         <div className="bg-white rounded-lg p-6 shadow-sm text-center">
-          <div className="mx-auto w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center mb-4">
-            <MapPin className="h-6 w-6 text-amber-600" />
+          <div className="mx-auto w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+            <MapPin className="h-6 w-6 text-gray-500" />
           </div>
           <h2 className="text-xl font-bold mb-2">Security Deposit Required</h2>
           <p className="text-gray-600 mb-6 max-w-md mx-auto">
@@ -323,7 +316,7 @@ const RideRequests: React.FC = () => {
           </p>
           <Button 
             onClick={() => navigate('/wallet')}
-            className="bg-primary hover:bg-primary/90"
+            className="bg-black hover:bg-gray-800 text-white"
           >
             Add Funds to Wallet
           </Button>
@@ -348,7 +341,7 @@ const RideRequests: React.FC = () => {
               variant={isOnline ? "default" : "outline"} 
               size="sm"
               onClick={toggleOnlineStatus}
-              className={isOnline ? "bg-green-600 hover:bg-green-700" : ""}
+              className={isOnline ? "bg-black hover:bg-gray-800 text-white" : "border-black text-black"}
             >
               <Power className="h-4 w-4 mr-1" />
               {isOnline ? 'Online' : 'Go Online'}
@@ -365,6 +358,7 @@ const RideRequests: React.FC = () => {
                 size="sm" 
                 onClick={handleRefresh}
                 disabled={loadingRides || !isOnline}
+                className="border-black text-black"
               >
                 {loadingRides ? (
                   <>
@@ -382,40 +376,10 @@ const RideRequests: React.FC = () => {
           </div>
         </div>
         
-        {/* Debug Info */}
-        <div className="bg-gray-50 p-3 text-xs border rounded-lg">
-          <p className="font-bold mb-1">Debug Info:</p>
-          <p>User ID: {user?.id || "Not logged in"}</p>
-          <p>Driver eligible: {isEligible ? "Yes" : "No"}</p>
-          <p>Location tracking: {isTracking ? "Active" : "Inactive"}</p>
-          <p>Coordinates: {coordinates ? `[${coordinates[0].toFixed(4)}, ${coordinates[1].toFixed(4)}]` : "None"}</p>
-          <p>Found rides: {rideRequests.length}</p>
-          <p>Error: {ridesError || "None"}</p>
-        </div>
-        
-        {/* Error Display */}
-        {ridesError && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start">
-            <AlertTriangle className="h-5 w-5 text-red-500 mt-0.5 mr-2 flex-shrink-0" />
-            <div>
-              <p className="font-medium text-red-800">Error loading ride requests</p>
-              <p className="text-sm text-red-600 mt-1">{ridesError}</p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleRefresh}
-                className="mt-2 text-red-600 border-red-200 hover:bg-red-50"
-              >
-                Try Again
-              </Button>
-            </div>
-          </div>
-        )}
-        
         {/* Ride Requests */}
         {loadingRides ? (
           <div className="py-6 flex flex-col items-center">
-            <Loader2 className="h-8 w-8 text-primary animate-spin mb-3" />
+            <Loader2 className="h-8 w-8 text-black animate-spin mb-3" />
             <p className="text-gray-600">Looking for ride requests...</p>
           </div>
         ) : rideRequests.length > 0 ? (
@@ -432,7 +396,7 @@ const RideRequests: React.FC = () => {
         ) : (
           <div className="py-10 text-center bg-white rounded-lg shadow-sm">
             <div className="mx-auto w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-3">
-              <MapPin className="h-6 w-6 text-gray-400" />
+              <MapPin className="h-6 w-6 text-gray-500" />
             </div>
             <p className="text-gray-600 mb-6">No ride requests available at the moment</p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
@@ -440,7 +404,7 @@ const RideRequests: React.FC = () => {
               <Button 
                 onClick={handleRefresh}
                 disabled={!isOnline}
-                className="bg-primary hover:bg-primary/90"
+                className="bg-black hover:bg-gray-800 text-white"
               >
                 Refresh Requests
               </Button>
@@ -460,7 +424,7 @@ const RideRequests: React.FC = () => {
             variant="ghost" 
             size="icon" 
             onClick={() => navigate('/')} 
-            className="mr-2"
+            className="mr-2 text-black"
           >
             <ArrowLeft size={20} />
           </Button>
