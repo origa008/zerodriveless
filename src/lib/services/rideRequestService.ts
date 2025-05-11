@@ -26,6 +26,7 @@ export async function fetchRideRequests(
     console.log(`Fetching ride requests near [${coordinates[0]}, ${coordinates[1]}] within ${maxDistance}km radius`);
     
     // Get all rides in searching status that don't belong to the current user
+    // Note: We're explicitly excluding rides created by the current user
     const { data, error } = await supabase
       .from('rides')
       .select(`
@@ -36,7 +37,7 @@ export async function fetchRideRequests(
       `)
       .eq('status', 'searching')
       .is('driver_id', null)
-      .neq('passenger_id', driverId); // Don't show driver's own ride requests
+      .neq('passenger_id', driverId); // Don't show user's own ride requests
     
     if (error) {
       console.error("Error fetching ride requests:", error);

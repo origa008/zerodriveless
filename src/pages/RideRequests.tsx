@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/context/AuthContext';
@@ -49,8 +50,7 @@ const RideRequests: React.FC = () => {
     refresh: fetchRideRequests
   } = useRideRequestsLoader({
     driverId: user?.id,
-    enabled: isOnline && !!user?.id && isEligible,
-    autoRefreshInterval: 15000 // Refresh every 15 seconds
+    enabled: isOnline && !!user?.id && isEligible
   });
   
   // Start/Stop location tracking based on online status
@@ -151,7 +151,7 @@ const RideRequests: React.FC = () => {
         .from('rides')
         .update({
           driver_id: user.id,
-          status: 'accepted', // Now this is a valid status in our type definition
+          status: 'confirmed',
           start_time: new Date().toISOString()
         })
         .eq('id', ride.id);
@@ -214,7 +214,7 @@ const RideRequests: React.FC = () => {
         price: acceptedRide.price || 0,
         distance: acceptedRide.distance || 0,
         duration: acceptedRide.duration || 0,
-        status: 'accepted' as const, // This is now explicitly allowed by the type
+        status: 'confirmed' as const,
         paymentMethod: (acceptedRide.payment_method as 'cash' | 'wallet') || 'cash',
         currency: acceptedRide.currency || 'RS',
         passenger: acceptedRide.passenger
@@ -227,7 +227,7 @@ const RideRequests: React.FC = () => {
       
       // Set as current ride and navigate
       setCurrentRide(currentRide);
-      navigate('/ride-completed'); // Changed from '/ride-progress' to '/ride-completed'
+      navigate('/ride-progress');
       
     } catch (err: any) {
       console.error("Error accepting ride:", err);

@@ -1,4 +1,3 @@
-
 // Basic types for the ride application
 
 export type Location = {
@@ -34,7 +33,7 @@ export type Ride = {
   price: number;
   distance: number;
   duration: number;
-  status: 'searching' | 'accepted' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
+  status: 'searching' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
   paymentMethod: PaymentMethod;
   currency: string;
   driver?: Driver;
@@ -167,7 +166,7 @@ export interface RideRequest {
   pickup_location?: any; // For backward compatibility
   dropoff_location?: any; // For backward compatibility 
   ride_option: RideOption; // Change this from any to RideOption
-  status: 'searching' | 'accepted' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
+  status: 'searching' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
   price: number;
   currency: string;
   distance: number;

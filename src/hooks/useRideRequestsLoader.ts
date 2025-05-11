@@ -9,14 +9,12 @@ interface UseRideRequestsLoaderProps {
   driverId?: string;
   enabled?: boolean;
   maxDistance?: number;
-  autoRefreshInterval?: number; // Time in ms to auto-refresh
 }
 
 export function useRideRequestsLoader({
   driverId,
   enabled = true,
-  maxDistance = 2,
-  autoRefreshInterval = 30000 // Default refresh every 30 seconds
+  maxDistance = 2
 }: UseRideRequestsLoaderProps) {
   const [rides, setRides] = useState<RideRequest[]>([]);
   const [loading, setLoading] = useState(false);
@@ -58,20 +56,11 @@ export function useRideRequestsLoader({
     // Set up real-time subscription
     const channel = subscribeToRideRequests(fetchRideRequestsHandler);
     
-    // Set up periodic refresh
-    const refreshInterval = setInterval(() => {
-      if (enabled && driverId && coordinates) {
-        console.log('Auto-refreshing ride requests...');
-        fetchRideRequestsHandler();
-      }
-    }, autoRefreshInterval);
-    
-    // Clean up subscription and interval
+    // Clean up subscription
     return () => {
-      clearInterval(refreshInterval);
       supabase.removeChannel(channel);
     };
-  }, [driverId, enabled, fetchRideRequestsHandler, coordinates, autoRefreshInterval]);
+  }, [driverId, enabled, fetchRideRequestsHandler]);
   
   // Refresh when location changes
   useEffect(() => {
