@@ -151,7 +151,7 @@ const RideRequests: React.FC = () => {
         .from('rides')
         .update({
           driver_id: user.id,
-          status: 'accepted', // Now this is a valid status in our type definition
+          status: 'accepted', // Changed from 'confirmed' to 'accepted'
           start_time: new Date().toISOString()
         })
         .eq('id', ride.id);
@@ -214,7 +214,7 @@ const RideRequests: React.FC = () => {
         price: acceptedRide.price || 0,
         distance: acceptedRide.distance || 0,
         duration: acceptedRide.duration || 0,
-        status: 'accepted' as const, // This is now explicitly allowed by the type
+        status: 'accepted' as const, // Changed from 'confirmed' to 'accepted'
         paymentMethod: (acceptedRide.payment_method as 'cash' | 'wallet') || 'cash',
         currency: acceptedRide.currency || 'RS',
         passenger: acceptedRide.passenger
