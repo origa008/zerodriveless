@@ -1,113 +1,48 @@
 
 import { RideRequest } from '@/lib/types';
-import { extractCoordinates, extractLocationName, calculateDistance } from '@/lib/utils/locationUtils';
+import { calculateDistance } from '@/lib/utils/locationUtils';
 
 /**
- * Process ride data from database into properly typed RideRequest objects
- * and filter by distance to driver
+ * Process ride data from database and filter by distance
  */
-export function processRideData(
-  rideData: any[], 
-  driverCoordinates: [number, number] | null,
-  maxDistance: number = 2 // Default to 2km
-): RideRequest[] {
-  if (!rideData || !driverCoordinates) {
-    return [];
-  }
+export const processRideData = (
+  data: any[],
+  userLocation: [number, number],
+  maxDistance: number = 2 // Default max distance is 2km
+): RideRequest[] => {
+  if (!data || !data.length) return [];
   
-  // Process each ride to create properly typed RideRequest objects
-  const processedRides = rideData
+  // Process and filter rides
+  const processedRides = data
     .map(ride => {
       try {
-        // Extract coordinates from pickup_location
-        const pickupCoordinates = extractCoordinates(ride.pickup_location);
-        if (!pickupCoordinates) {
-          console.warn(`Could not extract coordinates from pickup_location for ride ${ride.id}`);
+        // Extract pickup coordinates - we expect them to be in format [longitude, latitude]
+        const pickupLocation = ride.pickup_location;
+        if (!pickupLocation || !pickupLocation.coordinates) {
+          console.warn('Invalid pickup location format for ride:', ride.id);
           return null;
         }
         
-        // Calculate distance to pickup
-        const distanceToPickup = calculateDistance(driverCoordinates, pickupCoordinates);
+        // Calculate distance between driver and pickup location
+        const pickupCoords = pickupLocation.coordinates;
+        const distanceToPickup = calculateDistance(
+          userLocation,
+          [pickupCoords[0], pickupCoords[1]]
+        );
         
-        // Extract dropoff coordinates
-        const dropoffCoordinates = extractCoordinates(ride.dropoff_location) || [0, 0] as [number, number];
-        
-        // Create a default ride option if none exists
-        let rideOption = {
-          id: '1',
-          name: 'Standard',
-          type: 'car',
-          basePrice: 0
+        // Add distance to ride object
+        return {
+          ...ride,
+          distance_to_pickup: parseFloat(distanceToPickup.toFixed(1))
         };
-        
-        // Try to parse ride_option if it exists
-        if (ride.ride_option) {
-          if (typeof ride.ride_option === 'string') {
-            try {
-              const parsed = JSON.parse(ride.ride_option);
-              if (parsed) {
-                rideOption = {
-                  id: parsed.id || '1',
-                  name: parsed.name || 'Standard',
-                  type: parsed.type || 'car',
-                  basePrice: parsed.basePrice || ride.price || 0
-                };
-              }
-            } catch (e) {
-              console.error("Error parsing ride_option:", e);
-            }
-          } else if (typeof ride.ride_option === 'object' && ride.ride_option !== null) {
-            const opt = ride.ride_option as any;
-            rideOption = {
-              id: opt.id || '1',
-              name: opt.name || 'Standard',
-              type: opt.type || 'car',
-              basePrice: opt.basePrice || ride.price || 0
-            };
-          }
-        }
-        
-        // Create ride request object
-        const rideRequest: RideRequest = {
-          id: ride.id,
-          passenger_id: ride.passenger_id,
-          driver_id: ride.driver_id,
-          pickup: {
-            name: extractLocationName(ride.pickup_location),
-            coordinates: pickupCoordinates
-          },
-          dropoff: {
-            name: extractLocationName(ride.dropoff_location),
-            coordinates: dropoffCoordinates
-          },
-          pickup_location: ride.pickup_location,
-          dropoff_location: ride.dropoff_location,
-          ride_option: rideOption,
-          status: ride.status as 'searching' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled',
-          price: ride.price || 0,
-          currency: ride.currency || 'RS',
-          distance: ride.distance || 0,
-          duration: ride.duration || 0,
-          start_time: ride.start_time,
-          end_time: ride.end_time,
-          payment_method: ride.payment_method || 'cash',
-          created_at: ride.created_at,
-          passenger: ride.passenger,
-          distance_to_pickup: distanceToPickup
-        };
-        
-        return rideRequest;
       } catch (err) {
-        console.error('Error processing ride:', err);
+        console.error('Error processing ride data:', err);
         return null;
       }
     })
-    .filter((ride): ride is RideRequest => 
-      ride !== null && 
-      ride.distance_to_pickup <= maxDistance
-    )
-    .sort((a, b) => a.distance_to_pickup - b.distance_to_pickup);
+    .filter(Boolean) // Remove any null entries
+    .filter(ride => ride.distance_to_pickup <= maxDistance) // Filter by max distance
+    .sort((a, b) => a.distance_to_pickup - b.distance_to_pickup); // Sort by nearest first
     
-  console.log(`Found ${processedRides.length} rides within ${maxDistance}km`);
-  return processedRides;
-}
+  return processedRides as RideRequest[];
+};
