@@ -546,6 +546,10 @@ export type Database = {
         Args: { user_id: string; amount: number }
         Returns: undefined
       }
+      check_driver_ownership: {
+        Args: { driver_user_id: string }
+        Returns: boolean
+      }
       check_if_user_owns_driver_details: {
         Args: { driver_user_id: string }
         Returns: boolean

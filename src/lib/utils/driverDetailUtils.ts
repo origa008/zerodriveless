@@ -12,7 +12,7 @@ export async function getDriverDetails(userId: string) {
       .from('driver_details')
       .select('*')
       .eq('user_id', userId)
-      .single();
+      .maybeSingle();
     
     if (error) {
       console.error("Error fetching driver details:", error);
@@ -38,13 +38,13 @@ export async function isRegisteredDriver(userId: string): Promise<boolean> {
       .eq('user_id', userId)
       .maybeSingle();
     
-    if (error || !data) {
+    if (error) {
       console.error("Error checking driver registration:", error);
       return false;
     }
     
     // Driver is registered if they have a record and are approved with sufficient deposit
-    return data.status === 'approved' && data.has_sufficient_deposit;
+    return data?.status === 'approved' && data?.has_sufficient_deposit === true;
   } catch (err) {
     console.error("Exception checking driver registration:", err);
     return false;

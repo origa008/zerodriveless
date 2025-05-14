@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { useRide } from '@/lib/context/RideContext';
 import { useNavigate } from 'react-router-dom';
 import { Switch } from '@/components/ui/switch';
-import { useToast } from '@/hooks/use-toast';
+import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/lib/context/AuthContext';
 import { isEligibleDriver } from '@/lib/utils/driverDetailUtils';
 
@@ -29,6 +29,7 @@ const ModeSwitcher: React.FC<ModeSwitcherProps> = () => {
       }
 
       try {
+        setIsLoading(true);
         const result = await isEligibleDriver(user.id);
         console.log("Driver eligibility check result:", result);
         setIsEligible(result.eligible);

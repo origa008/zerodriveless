@@ -1,7 +1,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/hooks/use-toast';
+import { useToast } from '@/components/ui/use-toast';
 import { RideRequest } from '@/lib/types';
 import { useRideRequestProcessing } from '@/hooks/useRideRequestProcessing';
 import { fetchRideRequests, subscribeToRideRequests } from '@/lib/services/rideRequestService';
@@ -21,7 +21,7 @@ export function useRealTimeRideRequests({
   driverId,
   coordinates,
   isEligible,
-  maxDistance = 2, // Changed default to 2km
+  maxDistance = 2,
   autoSubscribe = true
 }: UseRealTimeRideRequestsOptions) {
   const [rides, setRides] = useState<RideRequest[]>([]);
@@ -64,6 +64,7 @@ export function useRealTimeRideRequests({
       
       // Fetch ride requests using our service
       const processedRides = await fetchRideRequests(driverId, coordinates, maxDistance);
+      console.log("Fetched ride requests:", processedRides.length);
       setRides(processedRides);
       
     } catch (err: any) {
@@ -87,8 +88,14 @@ export function useRealTimeRideRequests({
     // Set up real-time subscription
     const channel = subscribeToRideRequests(fetchRideRequestsCallback);
     
+    // Set up periodic refresh (every 30 seconds)
+    const refreshInterval = setInterval(() => {
+      fetchRideRequestsCallback();
+    }, 30000);
+    
     return () => {
       console.log("Cleaning up real-time subscription");
+      clearInterval(refreshInterval);
       supabase.removeChannel(channel);
     };
   }, [driverId, coordinates, isEligible, autoSubscribe, fetchRideRequestsCallback]);
