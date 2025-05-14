@@ -86,8 +86,25 @@ export const submitDriverRegistration = async (
     // Get user email from session if not provided in details
     const userEmail = details.email || (await supabase.auth.getUser()).data.user?.email || '';
     
-    // Create driver details object using type-safe approach
-    const driverDetails: Omit<DriverDetailInsert, 'email'> = {
+    // Check if an application already exists
+    const { data: existingApp, error: checkError } = await supabase
+      .from('driver_details')
+      .select('id, status')
+      .eq('user_id', userId)
+      .maybeSingle();
+    
+    if (checkError) throw checkError;
+    
+    // If application exists and it's in approved status, don't allow update
+    if (existingApp && existingApp.status === 'approved') {
+      return { 
+        success: false, 
+        error: "You're already an approved driver. No need to submit again." 
+      };
+    }
+    
+    // Create driver details object
+    const driverDetails = {
       user_id: userId,
       full_name: details.fullName,
       cnic_number: details.cnicNumber,
@@ -104,23 +121,9 @@ export const submitDriverRegistration = async (
       vehicle_registration_url: documentUrls.vehicleRegistration,
       vehicle_photo_url: documentUrls.vehiclePhoto,
       selfie_with_cnic_url: documentUrls.selfieWithCNIC,
-      selfie_photo_url: documentUrls.selfiePhoto
-    };
-    
-    // Use a separate insertion object to include email
-    const insertData = {
-      ...driverDetails,
+      selfie_photo_url: documentUrls.selfiePhoto,
       email: userEmail
     };
-    
-    // Check if an application already exists
-    const { data: existingApp, error: checkError } = await supabase
-      .from('driver_details')
-      .select('id, status')
-      .eq('user_id', userId)
-      .maybeSingle();
-    
-    if (checkError) throw checkError;
     
     let error;
     if (existingApp) {
@@ -128,8 +131,8 @@ export const submitDriverRegistration = async (
       console.log("Updating existing application:", existingApp.id);
       const { error: updateError } = await supabase
         .from('driver_details')
-        .update(insertData)
-        .eq('id', existingApp.id);
+        .update(driverDetails)
+        .eq('user_id', userId); // Use user_id instead of id to avoid issues with RLS policies
         
       error = updateError;
     } else {
@@ -137,12 +140,15 @@ export const submitDriverRegistration = async (
       console.log("Creating new driver application");
       const { error: insertError } = await supabase
         .from('driver_details')
-        .insert(insertData);
+        .insert(driverDetails);
         
       error = insertError;
     }
     
-    if (error) throw error;
+    if (error) {
+      console.error("Error submitting driver registration:", error);
+      throw error;
+    }
     
     // Update user profile to mark them as having applied
     const { error: profileError } = await supabase

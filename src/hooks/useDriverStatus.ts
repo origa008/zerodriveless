@@ -2,7 +2,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { getDriverRegistrationStatus } from '@/lib/utils/driverUtils';
 
 export interface DriverStatus {
   isRegistered: boolean;
@@ -31,7 +30,7 @@ export function useDriverStatus(userId: string | undefined) {
       try {
         console.log("Checking driver eligibility for user:", userId);
         
-        // Get driver details using our fixed function
+        // Get driver details using maybeSingle to avoid errors when no record exists
         const { data: driverDetails, error: driverError } = await supabase
           .from('driver_details')
           .select('*')
@@ -86,6 +85,8 @@ export function useDriverStatus(userId: string | undefined) {
             // Update the has_sufficient_deposit flag in driver_details if needed
             if (hasSufficientDeposit !== driverDetails.has_sufficient_deposit) {
               console.log(`Updating deposit status from ${driverDetails.has_sufficient_deposit} to ${hasSufficientDeposit}`);
+              
+              // Update the has_sufficient_deposit flag
               await supabase
                 .from('driver_details')
                 .update({ has_sufficient_deposit: hasSufficientDeposit })

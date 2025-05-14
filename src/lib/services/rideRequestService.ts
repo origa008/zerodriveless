@@ -25,7 +25,7 @@ export async function fetchRideRequests(
     
     console.log(`Fetching ride requests near [${coordinates[0]}, ${coordinates[1]}] within ${maxDistance}km radius`);
     
-    // Get all rides in searching status that don't belong to the current user
+    // Get all rides in searching status that don't have a driver assigned
     const { data, error } = await supabase
       .from('rides')
       .select(`
@@ -48,7 +48,7 @@ export async function fetchRideRequests(
       return [];
     }
     
-    console.log(`Found ${data.length} rides in searching status`, data);
+    console.log(`Found ${data.length} rides in searching status`);
     
     // Process the ride data and filter by distance
     return processRideData(data, coordinates, maxDistance);
