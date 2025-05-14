@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { getDriverRegistrationStatus } from '@/lib/utils/driverUtils';
 
 export interface DriverStatus {
   isRegistered: boolean;
@@ -30,7 +31,7 @@ export function useDriverStatus(userId: string | undefined) {
       try {
         console.log("Checking driver eligibility for user:", userId);
         
-        // Check if user is registered as driver
+        // Get driver details using our fixed function
         const { data: driverDetails, error: driverError } = await supabase
           .from('driver_details')
           .select('*')

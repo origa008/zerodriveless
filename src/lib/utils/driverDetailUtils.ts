@@ -32,19 +32,86 @@ export async function getDriverDetails(userId: string) {
  */
 export async function isRegisteredDriver(userId: string): Promise<boolean> {
   try {
-    const { count, error } = await supabase
+    const { data, error } = await supabase
       .from('driver_details')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', userId);
+      .select('status, has_sufficient_deposit')
+      .eq('user_id', userId)
+      .single();
     
     if (error) {
       console.error("Error checking driver registration:", error);
       return false;
     }
     
-    return count !== null && count > 0;
+    // Driver is registered if they have a record and are approved with sufficient deposit
+    return data && data.status === 'approved' && data.has_sufficient_deposit;
   } catch (err) {
     console.error("Exception checking driver registration:", err);
     return false;
+  }
+}
+
+/**
+ * Checks if a user is eligible to be a driver and returns detailed info
+ */
+export async function isEligibleDriver(userId: string): Promise<{ 
+  eligible: boolean; 
+  reason?: string;
+  redirectTo?: string;
+}> {
+  try {
+    // Use our security definer function through the select query
+    const { data, error } = await supabase
+      .from('driver_details')
+      .select('status, has_sufficient_deposit, deposit_amount_required')
+      .eq('user_id', userId)
+      .maybeSingle(); // Use maybeSingle to handle cases where no record exists
+    
+    if (error) {
+      console.error("Error checking driver eligibility:", error);
+      return { 
+        eligible: false,
+        reason: "Error checking driver status",
+        redirectTo: "/official-driver"
+      };
+    }
+    
+    // If no driver record exists, they need to register
+    if (!data) {
+      return { 
+        eligible: false,
+        reason: "You need to register as a driver first",
+        redirectTo: "/official-driver"
+      };
+    }
+    
+    // If not approved, pending review
+    if (data.status !== 'approved') {
+      return {
+        eligible: false,
+        reason: "Your driver application is pending approval",
+        redirectTo: "/official-driver"
+      };
+    }
+    
+    // If approved but doesn't have sufficient deposit
+    if (!data.has_sufficient_deposit) {
+      const requiredAmount = data.deposit_amount_required || 3000;
+      return {
+        eligible: false,
+        reason: `You need to deposit at least ${requiredAmount} to your wallet`,
+        redirectTo: "/wallet"
+      };
+    }
+    
+    // All checks passed
+    return { eligible: true };
+  } catch (err) {
+    console.error("Exception checking driver eligibility:", err);
+    return { 
+      eligible: false,
+      reason: "An error occurred checking your driver status",
+      redirectTo: "/official-driver"
+    };
   }
 }

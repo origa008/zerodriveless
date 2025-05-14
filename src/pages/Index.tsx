@@ -12,7 +12,7 @@ import BottomNavigation from '@/components/layout/BottomNavigation';
 import Sidebar from '@/components/layout/Sidebar';
 import PassengerPanel from '@/components/ride/PassengerPanel';
 import { useToast } from '@/hooks/use-toast';
-import { isEligibleDriver } from '@/lib/utils/driverUtils';
+import { isEligibleDriver } from '@/lib/utils/driverDetailUtils';
 
 const Index: React.FC = () => {
   const navigate = useNavigate();
@@ -48,9 +48,9 @@ const Index: React.FC = () => {
     const checkDriverEligibility = async () => {
       if (user?.id) {
         try {
-          const eligible = await isEligibleDriver(user.id);
-          console.log("Driver eligibility check:", eligible);
-          setIsEligible(eligible);
+          const result = await isEligibleDriver(user.id);
+          console.log("Driver eligibility check result:", result);
+          setIsEligible(result.eligible);
         } catch (error) {
           console.error("Error checking driver eligibility:", error);
           setIsEligible(false);
@@ -114,21 +114,44 @@ const Index: React.FC = () => {
     return null;
   }
   
-  const handleSwitchToDriver = () => {
-    if (isEligible) {
-      navigate('/ride-requests');
-    } else {
+  const handleSwitchToDriver = async () => {
+    if (!user?.id) {
       toast({
-        title: "Driver Registration Required",
-        description: "You need to register as a driver before accessing this feature.",
-        variant: "default"
+        title: 'Login Required',
+        description: 'Please log in to switch modes.',
+        variant: 'destructive'
       });
-      navigate('/official-driver');
+      navigate('/login');
+      return;
+    }
+    
+    try {
+      const result = await isEligibleDriver(user.id);
+      
+      if (result.eligible) {
+        setDriverMode(true);
+        navigate('/ride-requests');
+      } else {
+        toast({
+          title: "Driver Registration Required",
+          description: result.reason || "You need to register as a driver before accessing this feature.",
+          variant: "default"
+        });
+        navigate(result.redirectTo || '/official-driver');
+      }
+    } catch (error) {
+      console.error("Error checking driver eligibility:", error);
+      toast({
+        title: 'Error',
+        description: 'Could not verify driver status',
+        variant: 'destructive'
+      });
     }
   };
   
   console.log("Rendering main Index content for user:", user.name);
-  return <div className="min-h-screen bg-white">
+  return (
+    <div className="min-h-screen bg-white">
       <div className="relative">
         <div className="absolute top-4 right-4 z-50">
           <Button 
@@ -147,7 +170,8 @@ const Index: React.FC = () => {
       <PassengerPanel />
       
       <BottomNavigation />
-    </div>;
+    </div>
+  );
 };
 
 export default Index;

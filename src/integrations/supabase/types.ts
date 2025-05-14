@@ -546,6 +546,10 @@ export type Database = {
         Args: { user_id: string; amount: number }
         Returns: undefined
       }
+      check_if_user_owns_driver_details: {
+        Args: { driver_user_id: string }
+        Returns: boolean
+      }
       create_referral: {
         Args: { referrer_code: string; referred_id: string }
         Returns: undefined

@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/lib/context/AuthContext';
-import { isEligibleDriver } from '@/lib/utils/dbFunctions';
+import { isEligibleDriver } from '@/lib/utils/driverDetailUtils';
 
 interface ModeSwitcherProps {
   isDriverEligible?: boolean;
@@ -30,6 +30,7 @@ const ModeSwitcher: React.FC<ModeSwitcherProps> = () => {
 
       try {
         const result = await isEligibleDriver(user.id);
+        console.log("Driver eligibility check result:", result);
         setIsEligible(result.eligible);
         setIsLoading(false);
       } catch (error) {
@@ -70,7 +71,7 @@ const ModeSwitcher: React.FC<ModeSwitcherProps> = () => {
           });
           
           // Navigate to the appropriate page based on the issue
-          navigate(result.redirectTo || '/register-driver');
+          navigate(result.redirectTo || '/official-driver');
           setIsLoading(false);
           return;
         }
