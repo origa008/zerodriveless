@@ -30,10 +30,10 @@ export function useDriverStatus(userId: string | undefined) {
       try {
         console.log("Checking driver eligibility for user:", userId);
         
-        // Get driver details using maybeSingle to avoid errors when no record exists
+        // Simple direct query to avoid recursion
         const { data: driverDetails, error: driverError } = await supabase
           .from('driver_details')
-          .select('*')
+          .select('status, has_sufficient_deposit, deposit_amount_required')
           .eq('user_id', userId)
           .maybeSingle();
 
@@ -65,12 +65,12 @@ export function useDriverStatus(userId: string | undefined) {
         // User is registered, check approval status
         const isApproved = driverDetails.status === 'approved';
         
-        // Check deposit status
+        // Use existing deposit status from database
         let hasSufficientDeposit = driverDetails.has_sufficient_deposit;
         const depositRequired = driverDetails.deposit_amount_required || 3000;
-
-        // If deposit field isn't reliable, check wallet directly
-        if (isApproved && !hasSufficientDeposit) {
+        
+        // If approved and deposit status needs verification, check wallet directly
+        if (isApproved) {
           console.log("Checking wallet balance for deposit requirement");
           const { data: wallet } = await supabase
             .from('wallets')
@@ -80,17 +80,27 @@ export function useDriverStatus(userId: string | undefined) {
             
           if (wallet) {
             console.log(`Wallet balance: ${wallet.balance}, required: ${depositRequired}`);
-            hasSufficientDeposit = wallet.balance >= depositRequired;
+            const hasEnoughBalance = wallet.balance >= depositRequired;
             
-            // Update the has_sufficient_deposit flag in driver_details if needed
-            if (hasSufficientDeposit !== driverDetails.has_sufficient_deposit) {
-              console.log(`Updating deposit status from ${driverDetails.has_sufficient_deposit} to ${hasSufficientDeposit}`);
+            // Only update database if the status has changed
+            if (hasEnoughBalance !== hasSufficientDeposit) {
+              console.log(`Updating deposit status from ${hasSufficientDeposit} to ${hasEnoughBalance}`);
               
-              // Update the has_sufficient_deposit flag
-              await supabase
-                .from('driver_details')
-                .update({ has_sufficient_deposit: hasSufficientDeposit })
-                .eq('user_id', userId);
+              // Update using client-side function to avoid RLS issues
+              await supabase.rpc('update_driver_deposit_status', { 
+                driver_id: userId, 
+                has_deposit: hasEnoughBalance 
+              }).catch(err => {
+                console.log("RPC not available, using direct update:", err);
+                
+                // Fallback to direct update
+                supabase
+                  .from('driver_details')
+                  .update({ has_sufficient_deposit: hasEnoughBalance })
+                  .eq('user_id', userId);
+              });
+              
+              hasSufficientDeposit = hasEnoughBalance;
             }
           }
         }

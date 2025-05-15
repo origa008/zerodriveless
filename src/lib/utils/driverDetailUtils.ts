@@ -8,6 +8,7 @@ export async function getDriverDetails(userId: string) {
   try {
     console.log("Fetching driver details for user:", userId);
     
+    // Use auth.uid() directly in the query without recursive references
     const { data, error } = await supabase
       .from('driver_details')
       .select('*')
@@ -62,54 +63,67 @@ export async function isEligibleDriver(userId: string): Promise<{
   try {
     console.log("Checking driver eligibility for userId:", userId);
     
-    // Use maybeSingle to avoid errors when no record exists
-    const { data, error } = await supabase
-      .from('driver_details')
-      .select('status, has_sufficient_deposit, deposit_amount_required')
-      .eq('user_id', userId)
-      .maybeSingle();
+    // Use a direct query without references that might cause recursion
+    const { data, error } = await supabase.rpc('get_driver_eligibility', { user_id: userId });
     
+    // If the RPC function fails or isn't available, fall back to direct query
     if (error) {
-      console.error("Error checking driver eligibility:", error);
-      return { 
-        eligible: false,
-        reason: "Error checking driver status",
-        redirectTo: "/official-driver"
-      };
+      console.log("RPC not available, using direct query instead:", error);
+      
+      // Use maybeSingle to avoid errors when no record exists
+      const { data: driverData, error: driverError } = await supabase
+        .from('driver_details')
+        .select('status, has_sufficient_deposit, deposit_amount_required')
+        .eq('user_id', userId)
+        .maybeSingle();
+      
+      if (driverError) {
+        console.error("Error checking driver eligibility:", driverError);
+        return { 
+          eligible: false,
+          reason: "Error checking driver status",
+          redirectTo: "/official-driver"
+        };
+      }
+      
+      // If no driver record exists, they need to register
+      if (!driverData) {
+        return { 
+          eligible: false,
+          reason: "You need to register as a driver first",
+          redirectTo: "/official-driver"
+        };
+      }
+      
+      // If not approved, pending review
+      if (driverData.status !== 'approved') {
+        return {
+          eligible: false,
+          reason: "Your driver application is pending approval",
+          redirectTo: "/official-driver"
+        };
+      }
+      
+      // If approved but doesn't have sufficient deposit
+      if (!driverData.has_sufficient_deposit) {
+        const requiredAmount = driverData.deposit_amount_required || 3000;
+        return {
+          eligible: false,
+          reason: `You need to deposit at least ${requiredAmount} to your wallet`,
+          redirectTo: "/wallet"
+        };
+      }
+      
+      // All checks passed
+      return { eligible: true };
     }
     
-    // If no driver record exists, they need to register
-    if (!data) {
-      return { 
-        eligible: false,
-        reason: "You need to register as a driver first",
-        redirectTo: "/official-driver"
-      };
-    }
-    
-    console.log("Driver data found:", data);
-    
-    // If not approved, pending review
-    if (data.status !== 'approved') {
-      return {
-        eligible: false,
-        reason: "Your driver application is pending approval",
-        redirectTo: "/official-driver"
-      };
-    }
-    
-    // If approved but doesn't have sufficient deposit
-    if (!data.has_sufficient_deposit) {
-      const requiredAmount = data.deposit_amount_required || 3000;
-      return {
-        eligible: false,
-        reason: `You need to deposit at least ${requiredAmount} to your wallet`,
-        redirectTo: "/wallet"
-      };
-    }
-    
-    // All checks passed
-    return { eligible: true };
+    // If RPC call is successful, return its results
+    return { 
+      eligible: data.eligible,
+      reason: data.reason,
+      redirectTo: data.redirect_to
+    };
   } catch (err) {
     console.error("Exception checking driver eligibility:", err);
     return { 

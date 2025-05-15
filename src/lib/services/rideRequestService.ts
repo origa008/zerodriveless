@@ -25,7 +25,33 @@ export async function fetchRideRequests(
     
     console.log(`Fetching ride requests near [${coordinates[0]}, ${coordinates[1]}] within ${maxDistance}km radius`);
     
-    // Get all rides in searching status
+    // Get driver details to check eligibility first
+    const { data: driverDetails, error: driverError } = await supabase
+      .from('driver_details')
+      .select('status, has_sufficient_deposit')
+      .eq('user_id', driverId)
+      .maybeSingle();
+      
+    if (driverError) {
+      console.error("Error checking driver status:", driverError);
+      throw new Error("Error checking driver status. Please try again.");
+    }
+    
+    // Check if driver is eligible to see ride requests
+    if (!driverDetails) {
+      throw new Error("You are not registered as a driver.");
+    }
+    
+    if (driverDetails.status !== 'approved') {
+      throw new Error("Your driver application is pending approval.");
+    }
+    
+    if (!driverDetails.has_sufficient_deposit) {
+      throw new Error("You need to add the required deposit to your wallet.");
+    }
+    
+    // Now get available rides that match the driver's criteria
+    // Directly query for 'searching' rides without driver assigned
     const { data, error } = await supabase
       .from('rides')
       .select(`
